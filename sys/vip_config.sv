@@ -6,6 +6,18 @@ module vip_config
 	
 	input       [7:0] ARX,
 	input       [7:0] ARY,
+	input             CFG_SET,
+
+	input      [11:0] WIDTH,
+	input      [11:0] HFP,
+	input      [11:0] HBP,
+	input      [11:0] HS,
+	input      [11:0] HEIGHT,
+	input      [11:0] VFP,
+	input      [11:0] VBP,
+	input      [11:0] VS,
+	
+	input      [11:0] VSET,
 
 	output reg  [8:0] address,
 	output reg        write,
@@ -13,156 +25,134 @@ module vip_config
 	input             waitrequest
 );
 
-//Any input video resolution up to 1920x1080 is supported.
 
-//Output video parameters.
-//It's good to keep 1280x720@60 resolution among all cores as most compatible resolution.
-parameter  WIDTH  = 1280;
-parameter  HEIGHT = 720;
-parameter  HFP    = 110;
-parameter  HBP    = 220;
-parameter  HS     = 40;
-parameter  VFP    = 5;
-parameter  VBP    = 20;
-parameter  VS     = 5;
+reg         newres = 1;
 
+wire [21:0] init[23] =
+'{
+	//video mode
+	{newres, 2'd2, 7'd04, 12'd0  }, //Bank
+	{newres, 2'd2, 7'd30, 12'd0  }, //Valid
+	{newres, 2'd2, 7'd05, 12'd0  }, //Progressive/Interlaced
+	{newres, 2'd2, 7'd06, w      }, //Active pixel count
+	{newres, 2'd2, 7'd07, h      }, //Active line count
+	{newres, 2'd2, 7'd09, hfp    }, //Horizontal Front Porch
+	{newres, 2'd2, 7'd10, hs     }, //Horizontal Sync Length
+	{newres, 2'd2, 7'd11, hb     }, //Horizontal Blanking (HFP+HBP+HSync)
+	{newres, 2'd2, 7'd12, vfp    }, //Vertical Front Porch
+	{newres, 2'd2, 7'd13, vs     }, //Vertical Sync Length
+	{newres, 2'd2, 7'd14, vb     }, //Vertical blanking (VFP+VBP+VSync)
+	{newres, 2'd2, 7'd30, 12'd1  }, //Valid
+	{newres, 2'd2, 7'd00, 12'd1  }, //Go
 
-reg  [31:0] wcalc;
-reg  [31:0] hcalc;
+	//mixer
+	{  1'd1, 2'd1, 7'd03, w      }, //Bkg Width
+	{  1'd1, 2'd1, 7'd04, h      }, //Bkg Height
+	{  1'd1, 2'd1, 7'd08, posx   }, //Pos X
+	{  1'd1, 2'd1, 7'd09, posy   }, //Pos Y
+	{  1'd1, 2'd1, 7'd10, 12'd1  }, //Enable Video 0
+	{  1'd1, 2'd1, 7'd00, 12'd1  }, //Go
 
-wire [31:0] videow = (wcalc > WIDTH)  ? WIDTH  : wcalc;
-wire [31:0] videoh = (hcalc > HEIGHT) ? HEIGHT : hcalc;
+	//scaler
+	{  1'd1, 2'd0, 7'd03, videow }, //Output Width
+	{  1'd1, 2'd0, 7'd04, videoh }, //Output Height
+	{  1'd1, 2'd0, 7'd00, 12'd1  }, //Go
 
-wire [31:0] posx   = (WIDTH - videow)>>1;
-wire [31:0] posy   = (HEIGHT- videoh)>>1;
+	22'h3FFFFF
+};
 
+reg [11:0] w;
+reg [11:0] hfp;
+reg [11:0] hbp;
+reg [11:0] hs;
+reg [11:0] hb;
+reg [11:0] h;
+reg [11:0] vfp;
+reg [11:0] vbp;
+reg [11:0] vs;
+reg [11:0] vb;
+
+reg [11:0] videow;
+reg [11:0] videoh;
+
+reg [11:0] posx;
+reg [11:0] posy;
 
 always @(posedge clk) begin
-	reg [7:0] state = 0;
-	reg [7:0] arx, ary;
-	integer timeout = 0;
+	reg  [7:0] state = 0;
+	reg  [7:0] arx, ary;
+	reg  [7:0] arxd, aryd;
+	reg [11:0] vset, vsetd;
+	reg        cfg, cfgd;
+	reg [31:0] wcalc;
+	reg [31:0] hcalc;
+	reg [12:0] timeout = 0;
 
-	if(reset || (!state && ((arx != ARX) || (ary != ARY)))) begin
-		arx <= ARX;
-		ary <= ARY;
-		timeout <= 0;
-		write   <= 0;
+	arxd  <= ARX;
+	aryd  <= ARY;
+	vsetd <= VSET;
+	
+	cfg   <= CFG_SET;
+	cfgd  <= cfg;
+
+	write <= 0;
+	if(reset || (arx != arxd) || (ary != aryd) || (vset != vsetd) || (~cfgd && cfg)) begin
+		arx <= arxd;
+		ary <= aryd;
+		vset <= vsetd;
+		timeout <= '1;
+		state <= 0;
+		if(reset || (~cfgd && cfg)) newres <= 1;
 	end
 	else
-	if(timeout < 1000000)
+	if(timeout > 0)
 	begin
-		timeout <= timeout + 1;
-		write <= 0;
+		timeout <= timeout - 1'd1;
 		state <= 1;
+		if(!(timeout & 'h1f)) case(timeout>>5)
+			5:	begin
+					w   <= WIDTH;
+					hfp <= HFP;
+					hbp <= HBP;
+					hs  <= HS;
+					h   <= HEIGHT;
+					vfp <= VFP;
+					vbp <= VBP;
+					vs  <= VS;
+				end
+			4: begin
+					hb  <= hfp+hbp+hs;
+					vb  <= vfp+vbp+vs;
+				end
+			3: begin
+					wcalc <= vset ? (vset*arx)/ary : (h*arx)/ary;
+					hcalc <= (w*ary)/arx;
+				end
+			2: begin
+					videow <= (!vset && (wcalc > w))    ? w : wcalc[11:0];
+					videoh <= vset ? vset : (hcalc > h) ? h : hcalc[11:0];
+				end
+			1: begin
+					posx <= (w - videow)>>1;
+					posy <= (h - videoh)>>1;
+				end
+		endcase
 	end
 	else
 	if(~waitrequest && state)
 	begin
 		state <= state + 1'd1;
-		write <= 1;
-
-		case(state)
-			01: begin
-					wcalc <= (HEIGHT*arx)/ary;
-					hcalc <= (WIDTH*ary)/arx;
-				end
-		endcase
-		
-		if(state&3) write <= 0;
-		else 
-		case(state>>2)
-			//scaler
-			01: begin
-					address   <= 'h003; //Output Width
-					writedata <= videow;
-				end
-			02: begin
-					address   <= 'h004; //Output Height
-					writedata <= videoh;
-				end
-			03: begin
-					address   <= 'h000; //Go
-					writedata <= 1;
-				end
-
-			//mixer
-			10: begin
-					address   <= 'h083; //Bkg Width
-					writedata <= WIDTH;
-				end
-			11: begin
-					address   <= 'h084; //Bkg Height
-					writedata <= HEIGHT;
-				end
-			12: begin
-					address   <= 'h088; //Pos X
-					writedata <= posx;
-				end
-			13: begin
-					address   <= 'h089; //Pos Y
-					writedata <= posy;
-				end
-			14: begin
-					address   <= 'h08A; //Enable Video 0
-					writedata <= 1;
-				end
-			15: begin
-					address   <= 'h080; //Go
-					writedata <= 1;
-				end
-
-			//video mode
-			20: begin
-					address   <= 'h104; //Bank
-					writedata <= 0;
-				end
-			21: begin
-					address   <= 'h105; //Progressive/Interlaced
-					writedata <= 0;
-				end
-			22: begin
-					address   <= 'h106; //Active pixel count
-					writedata <= WIDTH;
-				end
-			23: begin
-					address   <= 'h107; //Active line count
-					writedata <= HEIGHT;
-				end
-			24: begin
-					address   <= 'h109; //Horizontal Front Porch
-					writedata <= HFP;
-				end
-			25: begin
-					address   <= 'h10A; //Horizontal Sync Length
-					writedata <= HS;
-				end
-			26: begin
-					address   <= 'h10B; //Horizontal Blanking (HFP+HBP+HSync)
-					writedata <= HFP+HBP+HS;
-				end
-			27: begin
-					address   <= 'h10C; //Vertical Front Porch
-					writedata <= VFP;
-				end
-			28: begin
-					address   <= 'h10D; //Vertical Sync Length
-					writedata <= VS;
-				end
-			29: begin
-					address   <= 'h10E; //Vertical blanking (VFP+VBP+VSync)
-					writedata <= VFP+VBP+VS;
-				end
-			30: begin
-					address   <= 'h11E; //Valid
-					writedata <= 1;
-				end
-			31: begin
-					address   <= 'h100; //Go
-					writedata <= 1;
-				end
-
-			default: write  <= 0;
-		endcase
+		write <= 0;
+		if((state&3)==3) begin
+			if(init[state>>2] == 22'h3FFFFF) begin
+				state  <= 0;
+				newres <= 0;
+			end
+			else begin
+				writedata <= 0;
+				{write, address, writedata[11:0]} <= init[state>>2];
+			end
+		end
 	end
 end
 

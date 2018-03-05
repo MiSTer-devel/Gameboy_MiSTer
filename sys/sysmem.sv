@@ -27,7 +27,18 @@ module sysmem_lite
 	input          reset_cold_req,        //     reset.cold_req
 	output         reset_reset,           //          .reset
 	input          reset_reset_req,       //          .reset_req
-	input          reset_warm_req         //          .warm_req
+	input          reset_warm_req,        //          .warm_req
+
+	input          vbuf_clk,              //      vbuf.clk
+	input   [27:0] vbuf_address,          //      vbuf.address
+	input    [7:0] vbuf_burstcount,       //          .burstcount
+	output         vbuf_waitrequest,      //          .waitrequest
+	output [127:0] vbuf_readdata,         //          .readdata
+	output         vbuf_readdatavalid,    //          .readdatavalid
+	input          vbuf_read,             //          .read
+	input  [127:0] vbuf_writedata,        //          .writedata
+	input   [15:0] vbuf_byteenable,       //          .byteenable
+	input          vbuf_write             //          .write
 );
 
 assign ctl_clock = clk_vip_clk;
@@ -42,16 +53,16 @@ sysmem_HPS_fpga_interfaces fpga_interfaces (
 	.f2h_warm_rst_req_n       (~reset_source_reset_warm_reset), // f2h_warm_reset_req.reset_n
 	.h2f_user0_clk            (clk_vip_clk),                    //    h2f_user0_clock.clk
 	.h2f_rst_n                (hps_h2f_reset_reset),            //          h2f_reset.reset_n
-	.f2h_sdram0_clk           (clk_vip_clk),                    //   f2h_sdram0_clock.clk
-	.f2h_sdram0_ADDRESS       (0),                              //    f2h_sdram0_data.address
-	.f2h_sdram0_BURSTCOUNT    (0),                              //                   .burstcount
-	.f2h_sdram0_WAITREQUEST   (),                               //                   .waitrequest
-	.f2h_sdram0_READDATA      (),                               //                   .readdata
-	.f2h_sdram0_READDATAVALID (),                               //                   .readdatavalid
-	.f2h_sdram0_READ          (0),                              //                   .read
-	.f2h_sdram0_WRITEDATA     (0),                              //                   .writedata
-	.f2h_sdram0_BYTEENABLE    (0),                              //                   .byteenable
-	.f2h_sdram0_WRITE         (0),                              //                   .write
+	.f2h_sdram0_clk           (vbuf_clk),                       //   f2h_sdram0_clock.clk
+	.f2h_sdram0_ADDRESS       (vbuf_address),                   //    f2h_sdram0_data.address
+	.f2h_sdram0_BURSTCOUNT    (vbuf_burstcount),                //                   .burstcount
+	.f2h_sdram0_WAITREQUEST   (vbuf_waitrequest),               //                   .waitrequest
+	.f2h_sdram0_READDATA      (vbuf_readdata),                  //                   .readdata
+	.f2h_sdram0_READDATAVALID (vbuf_readdatavalid),             //                   .readdatavalid
+	.f2h_sdram0_READ          (vbuf_read),                      //                   .read
+	.f2h_sdram0_WRITEDATA     (vbuf_writedata),                 //                   .writedata
+	.f2h_sdram0_BYTEENABLE    (vbuf_byteenable),                //                   .byteenable
+	.f2h_sdram0_WRITE         (vbuf_write),                     //                   .write
 	.f2h_sdram1_clk           (ramclk1_clk),                    //   f2h_sdram1_clock.clk
 	.f2h_sdram1_ADDRESS       (ram1_address),                   //    f2h_sdram1_data.address
 	.f2h_sdram1_BURSTCOUNT    (ram1_burstcount),                //                   .burstcount
@@ -81,6 +92,7 @@ reset_source reset_source (
 	.cold_req   (reset_cold_req),                //  reset_ctl.cold_req
 	.reset      (reset_reset),                   //           .reset
 	.reset_req  (reset_reset_req),               //           .reset_req
+	.reset_vip  (0),                             //           .reset_vip
 	.warm_req   (reset_warm_req),                //           .warm_req
 	.reset_warm (reset_source_reset_warm_reset), // reset_warm.reset
 	.reset_cold (reset_source_reset_cold_reset)  // reset_cold.reset

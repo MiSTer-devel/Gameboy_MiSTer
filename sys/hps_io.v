@@ -33,7 +33,7 @@
 module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 (
 	input             clk_sys,
-	inout      [43:0] HPS_BUS,
+	inout      [44:0] HPS_BUS,
 
 	// parameter STRLEN and the actual length of conf_str have to match
 	input [(8*STRLEN)-1:0] conf_str,
@@ -99,7 +99,11 @@ module hps_io #(parameter STRLEN=0, PS2DIV=2000, WIDE=0, VDNUM=1, PS2WE=0)
 	input             ps2_mouse_data_in,
 
 	// ps2 alternative interface.
-	output reg [65:0] ps2_key   = 0, // up to 8 bytes per key (pause)
+
+	// [8] - extended, [9] - pressed, [10] - toggles with every press/release
+	output reg [10:0] ps2_key = 0,
+	
+	// [24] - toggles with every event
 	output reg [24:0] ps2_mouse = 0
 );
 
@@ -151,6 +155,7 @@ wire ce_pix  = HPS_BUS[41];
 wire de      = HPS_BUS[40];
 wire hs      = HPS_BUS[39];
 wire vs      = HPS_BUS[38];
+wire vs_hdmi = HPS_BUS[44];
 
 reg [31:0] vid_hcnt = 0;
 reg [31:0] vid_vcnt = 0;
@@ -222,7 +227,28 @@ always @(posedge clk_100) begin
 	if(old_de2 & ~old_de) calch <= 0;
 end
 
+reg [31:0] vid_vtime_hdmi;
+always @(posedge clk_100) begin
+	integer vtime;
+	reg old_vs, old_vs2;
+
+	old_vs <= vs_hdmi;
+	old_vs2 <= old_vs;
+
+	vtime <= vtime + 1'd1;
+
+	if(~old_vs2 & old_vs) begin
+		vid_vtime_hdmi <= vtime;
+		vtime <= 0;
+	end
+end
+
+
 /////////////////////////////////////////////////////////
+
+reg [31:0] ps2_key_raw = 0;
+wire       pressed  = (ps2_key_raw[15:8] != 8'hf0);
+wire       extended = (~pressed ? (ps2_key_raw[23:16] == 8'he0) : (ps2_key_raw[15:8] == 8'he0));
 
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
@@ -236,11 +262,15 @@ always@(posedge clk_sys) begin
 	b_wr <= (b_wr<<1);
 
 	{kbd_rd,kbd_we,mouse_rd,mouse_we} <= 0;
-	ps2_key[65] <= kbd_txempty;
 	
 	if(~io_enable) begin
 		if(cmd == 4 && !ps2skip) ps2_mouse[24] <= ~ps2_mouse[24];
-		if(cmd == 5 && !ps2skip) ps2_key[64]   <= ~ps2_key[64];
+		if(cmd == 5 && !ps2skip) begin
+			ps2_key <= {~ps2_key[10], pressed, extended, ps2_key_raw[7:0]};
+			if(ps2_key_raw == 'hE012E07C) ps2_key[9:0] <= 'h37C; // prnscr pressed
+			if(ps2_key_raw == 'h7CE0F012) ps2_key[9:0] <= 'h17C; // prnscr released
+			if(ps2_key_raw == 'hF014F077) ps2_key[9:0] <= 'h377; // pause  pressed
+		end
 		if(cmd == 'h22) RTC[64] <= ~RTC[64];
 		if(cmd == 'h24) TIMESTAMP[32] <= ~TIMESTAMP[32];
 		cmd <= 0;
@@ -266,7 +296,7 @@ always@(posedge clk_sys) begin
 
 				sd_buff_addr <= 0;
 				img_mounted <= 0;
-				if(io_din == 5) ps2_key[63:0] <= 0;
+				if(io_din == 5) ps2_key_raw <= 0;
 			end else begin
 
 				case(cmd)
@@ -292,7 +322,7 @@ always@(posedge clk_sys) begin
 					// store incoming ps2 keyboard bytes 
 					'h05: begin
 							if(&io_din[15:8]) ps2skip <= 1;
-							if(~&io_din[15:8] & ~ps2skip) ps2_key[63:0] <= {ps2_key[55:0], io_din[7:0]};
+							if(~&io_din[15:8] & ~ps2skip) ps2_key_raw[31:0] <= {ps2_key_raw[23:0], io_din[7:0]};
 							kbd_data <= io_din[7:0];
 							kbd_we <= 1;
 						end
@@ -385,6 +415,8 @@ always@(posedge clk_sys) begin
 									9: io_dout <= vid_vtime[31:16];
 								  10: io_dout <= vid_pix[15:0];
 								  11: io_dout <= vid_pix[31:16];
+								  12: io_dout <= vid_vtime_hdmi[15:0];
+								  13: io_dout <= vid_vtime_hdmi[31:16];
 								endcase
 						end
 
@@ -412,7 +444,6 @@ reg  [7:0] kbd_data;
 reg        kbd_we;
 wire [8:0] kbd_data_host;
 reg        kbd_rd;
-wire       kbd_txempty;
 
 ps2_device keyboard
 (
@@ -424,7 +455,6 @@ ps2_device keyboard
 	.ps2_clk(clk_ps2),
 	.ps2_clk_out(ps2_kbd_clk_out),
 	.ps2_dat_out(ps2_kbd_data_out),
-	.tx_empty(kbd_txempty),
 	
 	.ps2_clk_in(ps2_kbd_clk_in  || !PS2WE),
 	.ps2_dat_in(ps2_kbd_data_in || !PS2WE),
