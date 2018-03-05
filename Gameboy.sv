@@ -249,26 +249,42 @@ wire [8:0] mbc1_addr =
 	(cart_addr[15:14] == 2'b01)?{1'b0, mbc1_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-127
 	(cart_addr[15:13] == 3'b101)?{7'b1000000, mbc1_ram_bank}:         // 8k RAM Bank 0-3
 	9'd0;
+	
+wire [8:0] mbc2_addr = 
+	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
+	(cart_addr[15:14] == 2'b01)?{1'b0, mbc2_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-15
+   //todo         																	// 512x4bits RAM, built-in into the MBC2 chip (Read/Write)
+	9'd0;	
 
 // -------------------------- RAM banking ------------------------
 
 // in mode 0 (16/8 mode) the ram is not banked 
 // in mode 1 (4/32 mode) four ram banks are used
 wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc1_ram_bank_reg:2'b00) & ram_mask;
+wire [1:0] mbc2_ram_bank = (mbc2_mode ? mbc2_ram_bank_reg:2'b00) & ram_mask;//todo
 
 // -------------------------- ROM banking ------------------------
    
 // in mode 0 (16/8 mode) the ram bank select signals are the upper rom address lines 
 // in mode 1 (4/32 mode) the upper two rom address lines are 2'b00
 wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc1_ram_bank_reg, mbc1_rom_bank_reg};
+wire [6:0] mbc2_rom_bank_mode = { mbc2_mode?2'b00:mbc2_ram_bank_reg, mbc2_rom_bank_reg};//todo
 // mask address lines to enable proper mirroring
-wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask;
+wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask;//128
+wire [6:0] mbc2_rom_bank = mbc2_rom_bank_mode & rom_mask;//16
 
 // --------------------- CPU register interface ------------------
 reg mbc1_ram_enable;
 reg mbc1_mode;
 reg [4:0] mbc1_rom_bank_reg;
 reg [1:0] mbc1_ram_bank_reg;
+
+reg mbc2_ram_enable;
+reg mbc2_mode;
+reg [4:0] mbc2_rom_bank_reg;//todo
+reg [1:0] mbc2_ram_bank_reg;//todo
+
+
 always @(posedge clk_sys) begin
 	if(reset) begin
 		mbc1_rom_bank_reg <= 5'd1;
@@ -311,19 +327,34 @@ wire [6:0] rom_mask =                   	// 0 - 2 banks, 32k direct mapped
 	   (cart_rom_size == 3)?7'b0001111:  	// 3 - 16 banks = 256k
 	   (cart_rom_size == 4)?7'b0011111:  	// 4 - 32 banks = 512k
 	   (cart_rom_size == 5)?7'b0111111:  	// 5 - 64 banks = 1M
-	   7'b1111111;                       	// 6 - 128 banks = 2M
+	   (cart_rom_size == 6)?7'b1111111:    // 6 - 128 banks = 2M		
+//?		(cart_rom_size == 6)?7'b1111111:    // 7 - ??? banks = 4M
+//?		(cart_rom_size == 6)?7'b1111111:    // 8 - ??? banks = 8M
+		(cart_rom_size == 82)?7'b1000111:   //$52 - 72 banks = 1.1M
+		(cart_rom_size == 83)?7'b1001111:   //$53 - 80 banks = 1.2M
+//		(cart_rom_size == 84)?7'b1011111:
+                            7'b1011111;   //$54 - 96 banks = 1.5M
 
-// MBC types
-// 0 - none
-// 1 - mbc1
-// 2 - mbc1 + ram
-// 3 - mbc1 + ram + bat
-
-// MBC1, MBC1+RAM, MBC1+RAM+BAT
-wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
+wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3) || ~status[6];
+wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
+wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
+wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
+wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
+wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
+wire tama5 = (cart_mbc_type == 253);
+//wire tama6 = (cart_mbc_type == ???);
+wire HuC1 = (cart_mbc_type == 254);
+wire HuC3 = (cart_mbc_type == 255);
 
 wire [8:0] mbc_bank =
 	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
+	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
+//	mbc3?mbc3_addr:
+//	mbc4?mbc4_addr:
+//	mbc5?mbc5_addr:
+//	tama5?tama5_addr:
+//	HuC1?HuC1_addr:
+//	HuC3?HuC3_addr:
 	{7'b0000000, cart_addr[14:13]};  // no MBC, 32k linear address
 
 always @(posedge clk_sys) begin
