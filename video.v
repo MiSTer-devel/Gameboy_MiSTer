@@ -165,9 +165,10 @@ end
 
 always @(posedge clk) begin
 	irq <= 1'b0;
-
+	
+	//TODO: investigate and fix timing of lyc=ly
 	// lyc=ly coincidence
-	if(stat[6] && (h_cnt == 0) && lyc_match)
+	if(stat[6] && (h_cnt == 250) && lyc_match) //h_cnt==0 too late, when early(say h_count=1 messes up radarmission)
 		irq <= 1'b1;
 		
 	// begin of oam phase
@@ -449,63 +450,75 @@ wire [2:0] tile_line = window_ena?win_line[2:0]:bg_line[2:0];
 
 wire win_start = lcdc_win_ena && (v_cnt >= wy_r) && de && (wx_r >= 7) && (pcnt == wx_r-8);
 
+
+
 // each memory access takes two cycles
-always @(negedge clk) begin
-	// this ly change h_cnt is wrong!!!
-	if(h_cnt == 0)
-		ly <= (v_cnt >= 153)?(v_cnt-8'd153):(v_cnt+8'd1);
+always @(negedge clk or negedge lcdc_on) begin
 
-	if(h_cnt != 455) begin
-		h_cnt <= h_cnt + 9'd1;
-
-		// make sure sginals don't change during the line
-		// latch at latest possible moment (one clock before display starts)
-		if(h_cnt == OAM_LEN-2) begin
-			scx_r <= scx;
-			wx_r <= wx;
-			scy_r <= scy;
-		end
-
-		// increment address at the end of each 8-pixel-cycle. But don't
-		// increment while waiting for current cycle to end due to window start
-		if(!hblank && h_cnt[2:0] == 3'b111 && (skip <= 8))
-			bg_tile_map_addr[4:0] <= bg_tile_map_addr[4:0] + 1'd1;
-
-		// begin of line
-		if(h_cnt == OAM_LEN-1) begin
-			// set tile map address for this line, assume there is no window
-			bg_tile_map_addr[9:5] <= bg_line[7:3];
-			bg_tile_map_addr[4:0] <= scx_r[7:3];
+	//TODO: fix flicker probably lcd.v needs to be syncronized with this
+	if (!lcdc_on) begin // don't increase counters if lcdoff 
+		//reset counters
+		h_cnt <= 9'd0;  
+		v_cnt <= 8'd0;
+		ly <= 8'd0;
 		
-			// special case wx < 8: line starts with window, no background 
-			// visible at all
-			if(lcdc_win_ena && (v_cnt >= wy_r) && (wx_r < 8)) begin
+	end else begin
+		// this ly change h_cnt is wrong!!!
+		if(h_cnt == 0)
+			ly <= (v_cnt >= 153)?(v_cnt-8'd153):(v_cnt+8'd1);
+	
+		if(h_cnt != 455) begin
+			h_cnt <= h_cnt + 9'd1;
+	
+			// make sure sginals don't change during the line
+			// latch at latest possible moment (one clock before display starts)
+			if(h_cnt == OAM_LEN-2) begin
+				scx_r <= scx;
+				wx_r <= wx;
+				scy_r <= scy;
+			end
+	
+			// increment address at the end of each 8-pixel-cycle. But don't
+			// increment while waiting for current cycle to end due to window start
+			if(!hblank && h_cnt[2:0] == 3'b111 && (skip <= 8))
+				bg_tile_map_addr[4:0] <= bg_tile_map_addr[4:0] + 1'd1;
+	
+			// begin of line
+			if(h_cnt == OAM_LEN-1) begin
+				// set tile map address for this line, assume there is no window
+				bg_tile_map_addr[9:5] <= bg_line[7:3];
+				bg_tile_map_addr[4:0] <= scx_r[7:3];
+			
+				// special case wx < 8: line starts with window, no background 
+				// visible at all
+				if(lcdc_win_ena && (v_cnt >= wy_r) && (wx_r < 8)) begin
+					window_ena <= 1'b1;
+					bg_tile_map_addr[9:5] <= win_line[7:3];
+					bg_tile_map_addr[4:0] <= 5'd0;           // window always start with its very left
+				end
+			end
+			
+			// check if the window starts here
+			if(win_start) begin
 				window_ena <= 1'b1;
 				bg_tile_map_addr[9:5] <= win_line[7:3];
 				bg_tile_map_addr[4:0] <= 5'd0;           // window always start with its very left
 			end
-		end
+		end else begin
+			window_ena <= 1'b0;   // next line starts with background
 		
-		// check if the window starts here
-		if(win_start) begin
-			window_ena <= 1'b1;
-			bg_tile_map_addr[9:5] <= win_line[7:3];
-			bg_tile_map_addr[4:0] <= 5'd0;           // window always start with its very left
-		end
-	end else begin
-		window_ena <= 1'b0;   // next line starts with background
-	
-		// end of line reached
-		h_cnt <= 9'd0;
-			
-		if(v_cnt != 153)
-			v_cnt <= v_cnt + 8'd1;
-		else begin
-			// start of new image
-			v_cnt <= 8'd0;
-			
-			// make sure sginals don't change during the image
-			wy_r <= wy;
+			// end of line reached
+			h_cnt <= 9'd0;
+				
+			if(v_cnt != 153)
+				v_cnt <= v_cnt + 8'd1;
+			else begin
+				// start of new image
+				v_cnt <= 8'd0;
+				
+				// make sure sginals don't change during the image
+				wy_r <= wy;
+			end
 		end
 	end
 end
