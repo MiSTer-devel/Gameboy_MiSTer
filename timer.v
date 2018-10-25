@@ -45,9 +45,14 @@ module timer (
 // clk_div[8] = 8khz
 // clk_div[9] = 4khz
 
+wire resetdiv = cpu_sel && cpu_wr && (cpu_addr == 2'b00); //resetdiv also resets internal counter
+
 reg [9:0] clk_div;
-always @(posedge clk)
-	clk_div <= clk_div + 10'd1;
+always @(posedge clk or posedge resetdiv)
+	if(resetdiv)
+	  clk_div <= 10'd6;
+	else
+	  clk_div <= clk_div + 10'd1;
 
 reg [7:0] div;
 reg [7:0] tma;
