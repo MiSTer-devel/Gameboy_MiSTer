@@ -402,7 +402,7 @@ wire [6:0] rom_mask =                   	// 0 - 2 banks, 32k direct mapped
 //		(cart_rom_size == 84)?7'b1011111:
                             7'b1011111;   //$54 - 96 banks = 1.5M
 
-wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
+wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3) || ~status[6];
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
@@ -414,14 +414,14 @@ wire HuC1 = (cart_mbc_type == 254);
 wire HuC3 = (cart_mbc_type == 255);
 
 wire [8:0] mbc_bank =
-	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
-	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
+//	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
 	mbc3?mbc3_addr:
 //	mbc4?mbc4_addr:
 	mbc5?mbc5_addr:
 //	tama5?tama5_addr:
 //	HuC1?HuC1_addr:
 //	HuC3?HuC3_addr:
+	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
 	{7'b0000000, cart_addr[14:13]};  // no MBC, 32k linear address
 
 always @(posedge clk_sys) begin
