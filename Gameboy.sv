@@ -253,7 +253,7 @@ wire [8:0] mbc1_addr =
 wire [8:0] mbc2_addr = 
 	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
 	(cart_addr[15:14] == 2'b01)?{1'b0, mbc2_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-15
-   //todo         																	// 512x4bits RAM, built-in into the MBC2 chip (Read/Write)
+   (cart_addr[15:9] == 7'b1010000)?{9'b100000000}:                   // 512x4bits RAM, built-in into the MBC2 chip (Read/Write)
 	9'd0;
 	
 wire [8:0] mbc3_addr = 
@@ -272,17 +272,15 @@ wire [8:0] mbc5_addr =
 
 // in mode 0 (16/8 mode) the ram is not banked 
 // in mode 1 (4/32 mode) four ram banks are used
-wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc1_ram_bank_reg:2'b00) & ram_mask;
-wire [1:0] mbc2_ram_bank = (mbc2_mode ? mbc2_ram_bank_reg:2'b00) & ram_mask;//todo
-wire [1:0] mbc3_ram_bank = mbc3_ram_bank_reg & ram_mask;
-wire [1:0] mbc5_ram_bank = mbc5_ram_bank_reg & ram_mask;
+wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc_ram_bank_reg:2'b00) & ram_mask;
+wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg & ram_mask;
+wire [1:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
 
 // -------------------------- ROM banking ------------------------
    
 // in mode 0 (16/8 mode) the ram bank select signals are the upper rom address lines 
 // in mode 1 (4/32 mode) the upper two rom address lines are 2'b00
-wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc1_ram_bank_reg, mbc1_rom_bank_reg};
-wire [6:0] mbc2_rom_bank_mode = { mbc2_mode?2'b00:mbc2_ram_bank_reg, mbc2_rom_bank_reg};//todo
+wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc_ram_bank_reg, mbc_rom_bank_reg[4:0]};
 
 // in mode 0 map memory at A000-BFFF
 // in mode 1 map rtc register at A000-BFFF
@@ -290,87 +288,58 @@ wire [6:0] mbc2_rom_bank_mode = { mbc2_mode?2'b00:mbc2_ram_bank_reg, mbc2_rom_ba
 
 // mask address lines to enable proper mirroring
 wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask;//128
-wire [6:0] mbc2_rom_bank = mbc2_rom_bank_mode & rom_mask;//16
-wire [6:0] mbc3_rom_bank = mbc3_rom_bank_reg & rom_mask;//128
-wire [6:0] mbc5_rom_bank = mbc5_rom_bank_reg & rom_mask;//128 for now 
+wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg & rom_mask;//16
+wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg & rom_mask;//128
+wire [6:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;//128 for now 
 
 
 // --------------------- CPU register interface ------------------
 reg mbc_ram_enable;
-
-
 reg mbc1_mode;
-reg [4:0] mbc1_rom_bank_reg;
-reg [1:0] mbc1_ram_bank_reg;
-
-reg mbc2_mode;
-reg [4:0] mbc2_rom_bank_reg;//todo
-reg [1:0] mbc2_ram_bank_reg;//todo
-
 reg mbc3_mode;
-reg [6:0] mbc3_rom_bank_reg;
-reg [1:0] mbc3_ram_bank_reg;
-
-reg [6:0] mbc5_rom_bank_reg; // for now reg [8:0] when remapping sdram for 8mb rom
-reg [1:0] mbc5_ram_bank_reg; // for now reg [2:0] when remapping sdram for 8mb rom
-
-always @(posedge clk_sys) begin
-   if(reset) begin
-      mbc_ram_enable <= 1'b0;
-	end else if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
-			mbc_ram_enable <= (cart_di[3:0] == 4'ha);
-end	
-		
+reg [6:0] mbc_rom_bank_reg; // for now reg [8:0] when remapping sdram for 8mb rom (mbc5)
+reg [1:0] mbc_ram_bank_reg; // for now reg [2:0] when remapping sdram for 8mb rom (mbc5)
 
 
 always @(posedge clk_sys) begin
 	if(reset) begin
-		mbc1_rom_bank_reg <= 5'd1;
-		mbc1_ram_bank_reg <= 2'd0;
+		mbc_rom_bank_reg <= 5'd1;
+		mbc_ram_bank_reg <= 2'd0;
       mbc1_mode <= 1'b0;
+		mbc3_mode <= 1'b0;
+		mbc_ram_enable <= 1'b0;
 	end else if(ce_cpu) begin
+		
+		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
-			if(cart_di[4:0]==0) mbc1_rom_bank_reg <= 5'd1;
-			else   				  mbc1_rom_bank_reg <= cart_di[4:0];
+			if(~mbc5 && cart_di[4:0]==0) mbc_rom_bank_reg <= 5'd1;
+			else   				  mbc_rom_bank_reg <= cart_di[6:0];
 		end	
-		if(cart_wr && (cart_addr[15:13] == 3'b010))
-			mbc1_ram_bank_reg <= cart_di[1:0];
-		if(cart_wr && (cart_addr[15:13] == 3'b011))
-			mbc1_mode <= cart_di[0];
+		
+		//write to RAM bank register
+		if(cart_wr && (cart_addr[15:13] == 3'b010)) begin
+			if (mbc3) begin
+			  if (cart_di[3]==1)
+					mbc3_mode <= 1'b1; //enable RTC
+				else begin
+					mbc3_mode <= 1'b0; //enable RAM
+					mbc_ram_bank_reg <= cart_di[1:0];
+		     end
+			end else
+				mbc_ram_bank_reg <= cart_di[1:0];
+		end
+
+		// MBC1 ROM/RAM Mode Select
+		if(mbc1 && cart_wr && (cart_addr[15:13] == 3'b011))
+				mbc1_mode <= cart_di[0];
+		
+		//RAM enable/disable
+		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
+			mbc_ram_enable <= (cart_di[3:0] == 4'ha);
+
 	end
 end
 
-always @(posedge clk_sys) begin
-	if(reset) begin
-		mbc3_rom_bank_reg <= 5'd1;
-		mbc3_ram_bank_reg <= 2'd0;
-      mbc3_mode <= 1'b0;
-	end else if(ce_cpu) begin
-		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
-			if(cart_di[4:0]==0) mbc3_rom_bank_reg <= 5'd1;
-			else   				  mbc3_rom_bank_reg <= cart_di[6:0];
-		end	
-		if(cart_wr && (cart_addr[15:13] == 3'b010))
-			if (cart_di[3]==1)
-				mbc3_mode <= 1;
-		   else begin
-			  mbc3_mode <= 0;
-			  mbc3_ram_bank_reg <= cart_di[1:0];
-		   end
-	 end
-end
-
-always @(posedge clk_sys) begin
-	if(reset) begin
-		mbc5_rom_bank_reg <= 5'd1;
-		mbc5_ram_bank_reg <= 2'd0;
-	end else if(ce_cpu) begin
-		if(cart_wr && (cart_addr[15:13] == 3'b001))
-		   mbc5_rom_bank_reg <= cart_di[6:0];
-		if(cart_wr && (cart_addr[15:13] == 3'b010))
-			  mbc5_ram_bank_reg <= cart_di[1:0];
-	 end
-end
 
 // extract header fields extracted from cartridge
 // during download
@@ -402,7 +371,7 @@ wire [6:0] rom_mask =                   	// 0 - 2 banks, 32k direct mapped
 //		(cart_rom_size == 84)?7'b1011111:
                             7'b1011111;   //$54 - 96 banks = 1.5M
 
-wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3) || ~status[6];
+wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
@@ -414,14 +383,13 @@ wire HuC1 = (cart_mbc_type == 254);
 wire HuC3 = (cart_mbc_type == 255);
 
 wire [8:0] mbc_bank =
-//	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
+   mbc1?mbc1_addr:						// MBC1, 16k bank 0, 16k bank 1-127 + ram
+	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
 	mbc3?mbc3_addr:
-//	mbc4?mbc4_addr:
 	mbc5?mbc5_addr:
 //	tama5?tama5_addr:
 //	HuC1?HuC1_addr:
-//	HuC3?HuC3_addr:
-	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
+//	HuC3?HuC3_addr:              
 	{7'b0000000, cart_addr[14:13]};  // no MBC, 32k linear address
 
 always @(posedge clk_sys) begin
@@ -439,9 +407,14 @@ always @(posedge clk_sys) begin
 	end
 end
 
-//TODO: e.g. output and read timer register values from mbc3 when selected
+//TODO: e.g. output and read timer register values from mbc3 when selected 
 wire [7:0]  cart_di;    // data from cpu to cart
-wire [7:0]  cart_do = ~cart_ready ? 8'h00 : ((cart_addr[15:13] == 3'b101) && ~mbc_ram_enable)?8'hFF:cart_addr[0] ? sdram_do[15:8] : sdram_do[7:0]; //return 0xff when reading from disabled ram
+wire [7:0]  cart_do = ~cart_ready ? 8'h00 :
+                      ((cart_addr[15:13] == 3'b101) && ~mbc_ram_enable)?8'hFF: //return 0xff when reading from disabled ram
+							 ((cart_addr[15:9] == 7'b1010000) && mbc2)?cart_addr[0]?{4'hF,sdram_do[11:8]}:{4'hF,sdram_do[3:0]}:  //mask 4 top bits from RAM when using MBC2
+							 cart_addr[0]?sdram_do[15:8]:sdram_do[7:0];
+
+
 wire [15:0] cart_addr;
 wire cart_rd;
 wire cart_wr;
