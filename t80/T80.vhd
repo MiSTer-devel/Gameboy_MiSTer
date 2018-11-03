@@ -366,7 +366,11 @@ begin
 			DO <= "00000000";
 
 			ACC <= (others => '1');
-			F <= (others => '1');
+			if Mode = 3 then
+				F <= "11110000";
+			else
+				F <= (others => '1');
+			end if;
 			Ap <= (others => '1');
 			Fp <= (others => '1');
 			I <= (others => '0');
@@ -698,7 +702,12 @@ begin
 				when "11001" =>
 					SP(15 downto 8) <= unsigned(Save_Mux);
 				when "11011" =>
-					F <= Save_Mux;
+					if Mode = 3 then
+						F(7 downto 4) <= Save_Mux(7 downto 4);
+						F(3 downto 0) <= "0000"; -- bit 3 to 0 always return 0
+					else
+						F <= Save_Mux;
+					end if;
 				when others =>
 				end case;
 				if XYbit_undoc='1' then
