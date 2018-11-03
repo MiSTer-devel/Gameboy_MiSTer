@@ -83,6 +83,8 @@ wire [7:0] cpu_di =
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
 		sel_joy?joy_do:         // joystick register
+		sel_sb?8'h0:
+		sel_sc?8'h7E:
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
@@ -156,7 +158,7 @@ wire [3:0] joy_p5 = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4
 reg  [1:0] p54;
 
 always @(posedge clk) begin
-	if(reset) p54 <= 2'b11;
+	if(reset) p54 <= 2'b00;
 	else if(sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
 
