@@ -150,6 +150,7 @@ architecture rtl of T80 is
 
 	-- Help Registers
 	signal TmpAddr              : std_logic_vector(15 downto 0);        -- Temporary address register
+	signal TmpAddr2             : std_logic_vector(15 downto 0);        -- Temporary address register
 	signal IR                   : std_logic_vector(7 downto 0);         -- Instruction register
 	signal ISet                 : std_logic_vector(1 downto 0);         -- Instruction set selector
 	signal RegBusA_r            : std_logic_vector(15 downto 0);
@@ -223,6 +224,7 @@ architecture rtl of T80 is
 	signal LDZ                  : std_logic;
 	signal LDW                  : std_logic;
 	signal LDSPHL               : std_logic;
+	signal LDHLSP               : std_logic;
 	signal IORQ_i               : std_logic;
 	signal Special_LD           : std_logic_vector(2 downto 0);
 	signal ExchangeDH           : std_logic;
@@ -292,6 +294,7 @@ begin
 			LDZ         => LDZ,
 			LDW         => LDW,
 			LDSPHL      => LDSPHL,
+			LDHLSP		=> LDHLSP,
 			Special_LD  => Special_LD,
 			ExchangeDH  => ExchangeDH,
 			ExchangeRp  => ExchangeRp,
@@ -397,6 +400,14 @@ begin
 			Read_To_Reg_r <= "00000";
 
 			MCycles <= MCycles_d;
+			
+			if LDHLSP = '1' and TState = 1 then
+					   TmpAddr <= std_logic_vector(SP xor unsigned(Save_Mux) xor unsigned(TmpAddr2)); 
+						F(Flag_Z) <= '0';	
+						F(Flag_N) <= '0';
+						F(Flag_H) <= TmpAddr(4);
+						F(Flag_C) <= TmpAddr(8);
+			end if;
 
       if Mode = 3 then
         IStatus <= "10";
@@ -592,6 +603,7 @@ begin
 						end if;
 					end if;
 				end if;
+				
 
 				if LDSPHL = '1' then
 					SP <= unsigned(RegBusC);
@@ -777,6 +789,8 @@ begin
 			-- EX HL,DL
 			Alternate & "10" when ExchangeDH = '1' and TState = 3 else
 			Alternate & "01" when ExchangeDH = '1' and TState = 4 else
+			-- LDHLSP
+			"010" when LDHLSP = '1' and TState = 4 else
 			-- Bus A / Write
 			RegAddrA_r;
 
@@ -790,7 +804,7 @@ begin
 			signed(RegBusA) + 1;
 
 	process (Save_ALU_r, Auto_Wait_t1, ALU_OP_r, Read_To_Reg_r,
-			ExchangeDH, IncDec_16, MCycle, TState, Wait_n)
+			ExchangeDH, IncDec_16, MCycle, TState, Wait_n,LDHLSP)
 	begin
 		RegWEH <= '0';
 		RegWEL <= '0';
@@ -808,6 +822,11 @@ begin
 			RegWEH <= '1';
 			RegWEL <= '1';
 		end if;
+		
+		if LDHLSP = '1' and MCycle = "010" and TState = 4 then
+			RegWEH <= '1';
+			RegWEL <= '1';
+		end if;
 
 		if IncDec_16(2) = '1' and ((TState = 2 and Wait_n = '1' and MCycle /= "001") or (TState = 3 and MCycle = "001")) then
 			case IncDec_16(1 downto 0) is
@@ -820,11 +839,17 @@ begin
 	end process;
 
 	process (Save_Mux, RegBusB, RegBusA_r, ID16,
-			ExchangeDH, IncDec_16, MCycle, TState, Wait_n)
+			ExchangeDH, IncDec_16, MCycle, TState, Wait_n, LDHLSP)
 	begin
 		RegDIH <= Save_Mux;
 		RegDIL <= Save_Mux;
-
+		
+		if LDHLSP = '1' and MCycle = "010" and TState = 4 then
+			TmpAddr2 <= std_logic_vector(unsigned(signed(SP) + signed(Save_Mux)));
+			RegDIH <= TmpAddr2(15 downto 8);
+			RegDIL <= TmpAddr2(7 downto 0);
+		end if;
+		
 		if ExchangeDH = '1' and TState = 3 then
 			RegDIH <= RegBusB(15 downto 8);
 			RegDIL <= RegBusB(7 downto 0);

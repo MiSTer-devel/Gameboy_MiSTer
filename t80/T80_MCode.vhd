@@ -121,9 +121,10 @@ entity T80_MCode is
 		JumpXY                  : out std_logic;
 		Call                    : out std_logic;
 		RstP                    : out std_logic;
-		LDZ                             : out std_logic;
-		LDW                             : out std_logic;
+		LDZ                     : out std_logic;
+		LDW                     : out std_logic;
 		LDSPHL                  : out std_logic;
+		LDHLSP						: out std_logic;
 		Special_LD              : out std_logic_vector(2 downto 0); -- A,I;A,R;I,A;R,A;None
 		ExchangeDH              : out std_logic;
 		ExchangeRp              : out std_logic;
@@ -223,6 +224,7 @@ begin
 		LDZ <= '0';
 		LDW <= '0';
 		LDSPHL <= '0';
+		LDHLSP <= '0';
 		Special_LD <= "000";
 		ExchangeDH <= '0';
 		ExchangeRp <= '0';
@@ -1297,24 +1299,16 @@ begin
 					when others => null;
 					end case;
 				when "11" =>
-					-- LD HL,SP+n       -- Not correct !!!!!!!!!!!!!!!!!!! //shoud be mcycles=011, n is signed
-					MCycles <= "101";
+					-- LD HL,SP+n
+					MCycles <= "011";
 					case to_integer(unsigned(MCycle)) is
+					when 1 =>
+					  Inc_PC <= '1';
 					when 2 =>
-						Inc_PC <= '1';
-						LDZ <= '1';
+					  LDHLSP <= '1';
+					  Inc_PC <= '1';
 					when 3 =>
-						Set_Addr_To <= aZI;
-						Inc_PC <= '1';
-						LDW <= '1';
-					when 4 =>
-						Set_BusA_To(2 downto 0) <= "101"; -- L
-						Read_To_Reg <= '1';
-						Inc_WZ <= '1';
-						Set_Addr_To <= aZI;
-					when 5 =>
-						Set_BusA_To(2 downto 0) <= "100"; -- H
-						Read_To_Reg <= '1';
+					  LDHLSP <= '1';
 					when others => null;
 					end case;
 				end case;

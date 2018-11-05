@@ -173,6 +173,7 @@ package T80_Pack is
 		LDZ                     : out std_logic;
 		LDW                     : out std_logic;
 		LDSPHL                  : out std_logic;
+		LDHLSP                  : out std_logic;
 		Special_LD              : out std_logic_vector(2 downto 0); -- A,I;A,R;I,A;R,A;None
 		ExchangeDH              : out std_logic;
 		ExchangeRp              : out std_logic;
