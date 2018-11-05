@@ -151,6 +151,7 @@ architecture rtl of T80 is
 	-- Help Registers
 	signal TmpAddr              : std_logic_vector(15 downto 0);        -- Temporary address register
 	signal TmpAddr2             : std_logic_vector(15 downto 0);        -- Temporary address register
+	signal TmpAddr3             : std_logic_vector(15 downto 0);        -- Temporary address register
 	signal IR                   : std_logic_vector(7 downto 0);         -- Instruction register
 	signal ISet                 : std_logic_vector(1 downto 0);         -- Instruction set selector
 	signal RegBusA_r            : std_logic_vector(15 downto 0);
@@ -225,6 +226,7 @@ architecture rtl of T80 is
 	signal LDW                  : std_logic;
 	signal LDSPHL               : std_logic;
 	signal LDHLSP               : std_logic;
+	signal ADDSPdd					 : std_logic;
 	signal IORQ_i               : std_logic;
 	signal Special_LD           : std_logic_vector(2 downto 0);
 	signal ExchangeDH           : std_logic;
@@ -295,6 +297,7 @@ begin
 			LDW         => LDW,
 			LDSPHL      => LDSPHL,
 			LDHLSP		=> LDHLSP,
+			ADDSPdd		=> ADDSPdd,
 			Special_LD  => Special_LD,
 			ExchangeDH  => ExchangeDH,
 			ExchangeRp  => ExchangeRp,
@@ -407,6 +410,14 @@ begin
 						F(Flag_N) <= '0';
 						F(Flag_H) <= TmpAddr(4);
 						F(Flag_C) <= TmpAddr(8);
+			end if;
+			
+			if ADDSPdd = '1' and TState = 4 then
+				TmpAddr3 <= std_logic_vector(SP xor unsigned(Save_Mux) xor unsigned(TmpAddr)); 
+				F(Flag_Z) <= '0';	
+				F(Flag_N) <= '0';
+				F(Flag_H) <= TmpAddr3(4);
+				F(Flag_C) <= TmpAddr3(8);
 			end if;
 
       if Mode = 3 then
@@ -604,6 +615,10 @@ begin
 					end if;
 				end if;
 				
+				if ADDSPdd = '1' and TState = 2 then
+				   TmpAddr<=std_logic_vector(SP);
+					SP <= unsigned(signed(SP)+signed(Save_Mux));
+				end if;
 
 				if LDSPHL = '1' then
 					SP <= unsigned(RegBusC);

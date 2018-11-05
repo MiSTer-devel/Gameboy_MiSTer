@@ -125,6 +125,7 @@ entity T80_MCode is
 		LDW                     : out std_logic;
 		LDSPHL                  : out std_logic;
 		LDHLSP						: out std_logic;
+		ADDSPdd						: out std_logic;
 		Special_LD              : out std_logic_vector(2 downto 0); -- A,I;A,R;I,A;R,A;None
 		ExchangeDH              : out std_logic;
 		ExchangeRp              : out std_logic;
@@ -225,6 +226,7 @@ begin
 		LDW <= '0';
 		LDSPHL <= '0';
 		LDHLSP <= '0';
+		ADDSPdd <= '0';
 		Special_LD <= "000";
 		ExchangeDH <= '0';
 		ExchangeRp <= '0';
@@ -1272,19 +1274,10 @@ begin
 					MCycles <= "100";
 					case to_integer(unsigned(MCycle)) is
 					when 2 =>
-						ALU_Op <= "0000";
-						Inc_PC <= '1';
-						Read_To_Reg <= '1';
-						Save_ALU <= '1';
-						Set_BusA_To <= "1000";
-						Set_BusB_To <= "0110";
+						-- Inc_PC <= '1';
 					when 3 =>
-						NoRead <= '1';
-						Read_To_Reg <= '1';
-						Save_ALU <= '1';
-						ALU_Op <= "0001";
-						Set_BusA_To <= "1001";
-						Set_BusB_To <= "1110";  -- Incorrect unsigned !!!!!!!!!!!!!!!!!!!!!
+					  Inc_PC <= '1';
+					  ADDSPdd <= '1';						
 					when others =>
 					end case;
 				when "10" =>
