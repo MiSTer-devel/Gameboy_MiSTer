@@ -22,7 +22,6 @@
 module timer (
 	input  reset,
    input  clk,    // 4 Mhz cpu clock
-
 	output reg irq,
 	
 	// cpu register interface
@@ -52,7 +51,10 @@ always @(posedge clk or posedge resetdiv)
 	if(resetdiv)
 	  clk_div <= 10'd6;
 	else
-	  clk_div <= clk_div + 10'd1;
+		if (reset)
+		     clk_div <= 10'd6;
+		  else
+	        clk_div <= clk_div + 10'd1;
 
 reg [7:0] div;
 reg [7:0] tma;
@@ -65,6 +67,7 @@ always @(posedge clk) begin
 		tma <= 0;
 		tac <= 0;
 		irq <= 0;
+		div <= 0;
 	end else begin
 		irq <= 0;
 

@@ -177,7 +177,7 @@ wire irq_n = !(ie_r & if_r);
 
 reg [4:0] if_r;
 reg [4:0] ie_r; // writing  $ffff sets the irq enable mask
-always @(posedge clk) begin
+always @(negedge clk) begin //negedge to trigger interrupt earlier
 	reg old_ack = 0;
 	
 	if(reset) begin
