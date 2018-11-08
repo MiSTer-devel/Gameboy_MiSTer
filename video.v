@@ -435,6 +435,7 @@ wire bg_tile_obj_rd = (!vblank) && (!hblank) && (h_cnt[2:1] == 2'b11);
 // Mode 10:  oam
 // Mode 11:  oam and vram
 assign mode = 
+   !lcdc_on?2'b00:
 	vblank?2'b01:
 	oam?2'b10:
 	hblank?2'b00:
