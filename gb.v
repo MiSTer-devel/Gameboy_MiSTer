@@ -63,6 +63,13 @@ wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram a
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
 					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001));
+					
+//DMA can select from $0000 to $F100					
+wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
+wire dma_sel_cram = dma_addr[15:13] == 3'b101;           // 8k cart ram at $a000
+wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $8000
+wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
+
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
@@ -251,7 +258,7 @@ wire [7:0] video_do;
 wire [12:0] video_addr;
 wire [15:0] dma_addr;
 wire video_rd, dma_rd;
-wire [7:0] dma_data = (dma_addr[15:14]==2'b11)?iram_do:cart_do;
+wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?vram_do:cart_do;
 
 video video (
 	.reset	    ( reset         ),
@@ -284,7 +291,7 @@ video video (
 wire cpu_wr_vram = sel_vram && !cpu_wr_n;
 wire [7:0] vram_do;
 wire vram_wren = video_rd?1'b0:cpu_wr_vram;
-wire [12:0] vram_addr = video_rd?video_addr:cpu_addr[12:0];
+wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
 
 spram #(13) vram (
 	.clock      ( clk           ),
@@ -313,8 +320,8 @@ spram #(7) zpram (
 // ------------------------- 8k internal ram --------------------------
 // --------------------------------------------------------------------
 
-wire iram_wren = dma_rd?1'b0:cpu_wr_iram;
-wire [12:0] iram_addr = dma_rd?dma_addr[12:0]:cpu_addr[12:0];
+wire iram_wren = (dma_rd&&dma_sel_iram)?1'b0:cpu_wr_iram;
+wire [12:0] iram_addr = (dma_rd&&dma_sel_iram)?dma_addr[12:0]:cpu_addr[12:0];
 
 wire cpu_wr_iram = sel_iram && !cpu_wr_n;
 wire [7:0] iram_do;
@@ -342,9 +349,11 @@ end
 // combine boot rom data with cartridge data
 wire [7:0] rom_do = ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?boot_rom_do:cart_do;
 
+wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
+
 assign cart_di = cpu_do;
-assign cart_addr = dma_rd?dma_addr:cpu_addr;
-assign cart_rd = dma_rd || ((sel_rom || sel_cram) && !cpu_rd_n);
+assign cart_addr = (dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
+assign cart_rd = (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n;
 
 wire [7:0] boot_rom_do;
