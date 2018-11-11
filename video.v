@@ -195,6 +195,7 @@ always @(posedge clk) begin
 		scx <= 8'h00;
 		wy <= 8'h00;
 		wx <= 8'h00;
+		stat <= 8'h00;
 		bgp <= 8'hfc;
 		obp0 <= 8'hff;
 		obp1 <= 8'hff;
