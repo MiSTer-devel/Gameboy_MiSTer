@@ -359,96 +359,6 @@ begin
 					null;
 				end case;
 			end if;
-
-			if s1_read = '1' then
-				case s1_addr is
-       										-- Square 1
-				when "010000" =>	-- NR10 FF10 -PPP NSSS Sweep period, negate, shift
-					s1_readdata <= '1' & sq1_swper & sq1_swdir & sq1_swshift;
-				when "010001" =>	-- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
-					s1_readdata <= sq1_duty & "111111";
-				when "010010" =>	-- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
-					s1_readdata <= sq1_vol & sq1_envsgn & sq1_envper;
-				when "010011" =>	-- NR13 FF13 FFFF FFFF Frequency LSB
-					s1_readdata <= X"FF";
-				when "010100" =>	-- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
-					s1_readdata <= '0' & sq1_lenchk & "111111";
-
-													-- Square 2
-				when "010110" =>	-- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
-					s1_readdata <= sq2_duty & "111111";
-				when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
-					s1_readdata <= sq2_vol & sq2_envsgn & sq2_envper;
-				when "011000" =>	-- NR23 FF18 FFFF FFFF Frequency LSB
-					s1_readdata <= X"FF";
-				when "011001" =>	-- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
-					s1_readdata <= '0' & sq2_lenchk & "111111";
-
-				when "100110" =>	-- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
-					s1_readdata <= snd_enable & "00000" & sq2_playing & sq1_playing;
-
-													-- Wave
-				when "011010" =>	-- NR30 FF1A E--- ---- DAC power
-					s1_readdata <= wav_enable & "1111111";
-				when "011011" =>	-- NR31 FF1B LLLL LLLL Length load (256-L)
-					s1_readdata <= X"FF";
-				when "011100" =>	-- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
-					s1_readdata <= '1' & wav_volsh & "11111";
-				when "011101" =>	-- NR33 FF1D FFFF FFFF Frequency LSB
-					s1_readdata <= X"FF";
-				when "011110" =>	-- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
-					s1_readdata <= wav_trigger & wav_lenchk & "111111";
-
-													-- Noise
-				when "100000" =>	-- NR41 FF20 --LL LLLL Length load (64-L)
-					s1_readdata <= X"FF";
-				when "100001" =>	-- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
-					s1_readdata <= noi_svol & noi_envsgn & noi_envper;
-				when "100010" =>	-- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
-					s1_readdata <= noi_freqsh & noi_short &	noi_div;
-				when "100011" =>	-- NR44 FF23 TL-- ---- Trigger, Length enable
-					s1_readdata <= noi_trigger & noi_lenchk & "111111"; 
-
-													-- Wave Table
-				when "110000" =>	--      FF30 0000 1111 Samples 0 and 1
-					s1_readdata <= wav_ram(0) & wav_ram(1);
-				when "110001" =>	--      FF31 0000 1111 Samples 2 and 3
-					s1_readdata <= wav_ram(2) & wav_ram(3);
-				when "110010" =>	--      FF32 0000 1111 Samples 4 and 5
-					s1_readdata <= wav_ram(4) & wav_ram(5);
-				when "110011" =>	--      FF33 0000 1111 Samples 6 and 31
-					s1_readdata <= wav_ram(6) & wav_ram(7);
-				when "110100" =>	--      FF34 0000 1111 Samples 8 and 31
-					s1_readdata <= wav_ram(8) & wav_ram(9);
-				when "110101" =>	--      FF35 0000 1111 Samples 10 and 11
-					s1_readdata <= wav_ram(10) & wav_ram(11);
-				when "110110" =>	--      FF36 0000 1111 Samples 12 and 13
-					s1_readdata <= wav_ram(12) & wav_ram(13);
-				when "110111" =>	--      FF37 0000 1111 Samples 14 and 15
-					s1_readdata <= wav_ram(14) & wav_ram(15);
-				when "111000" =>	--      FF38 0000 1111 Samples 16 and 17
-					s1_readdata <= wav_ram(16) & wav_ram(17);
-				when "111001" =>	--      FF39 0000 1111 Samples 18 and 19
-					s1_readdata <= wav_ram(18) & wav_ram(19);
-				when "111010" =>	--      FF3A 0000 1111 Samples 20 and 21
-					s1_readdata <= wav_ram(20) & wav_ram(21);
-				when "111011" =>	--      FF3B 0000 1111 Samples 22 and 23
-					s1_readdata <= wav_ram(22) & wav_ram(23);
-				when "111100" =>	--      FF3C 0000 1111 Samples 24 and 25
-					s1_readdata <= wav_ram(24) & wav_ram(25);
-				when "111101" =>	--      FF3D 0000 1111 Samples 26 and 27
-					s1_readdata <= wav_ram(26) & wav_ram(27);
-				when "111110" =>	--      FF3E 0000 1111 Samples 28 and 29
-					s1_readdata <= wav_ram(28) & wav_ram(29);
-				when "111111" =>	--      FF3F 0000 1111 Samples 30 and 31
-					s1_readdata <= wav_ram(30) & wav_ram(31);
-
-				when others =>
-					s1_readdata <= X"FF";
-				end case;
-
-			end if;
-
 			wav_shift_r := wav_shift;
 		end if;
 
@@ -460,6 +370,96 @@ begin
 				snd_enable <= s1_writedata(7);
 			end if;
 		end if;
+	end process;
+	
+	process(s1_addr)
+	begin
+		case s1_addr is
+											-- Square 1
+			when "010000" =>	-- NR10 FF10 -PPP NSSS Sweep period, negate, shift
+				s1_readdata <= '1' & sq1_swper & sq1_swdir & sq1_swshift;
+			when "010001" =>	-- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
+				s1_readdata <= sq1_duty & "111111";
+			when "010010" =>	-- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
+				s1_readdata <= sq1_svol & sq1_envsgn & sq1_envper;
+			when "010011" =>	-- NR13 FF13 FFFF FFFF Frequency LSB
+				s1_readdata <= X"FF";
+			when "010100" =>	-- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
+				s1_readdata <= '1' & sq1_lenchk & "111111";
+	
+												-- Square 2
+			when "010110" =>	-- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
+				s1_readdata <= sq2_duty & "111111";
+			when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
+				s1_readdata <= sq2_vol & sq2_envsgn & sq2_envper;
+			when "011000" =>	-- NR23 FF18 FFFF FFFF Frequency LSB
+				s1_readdata <= X"FF";
+			when "011001" =>	-- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
+				s1_readdata <= '1' & sq2_lenchk & "111111";
+	
+			when "100110" =>	-- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
+				s1_readdata <= snd_enable & "11100" & sq2_playing & sq1_playing;
+	
+												-- Wave
+			when "011010" =>	-- NR30 FF1A E--- ---- DAC power
+				s1_readdata <= wav_enable & "1111111";
+			when "011011" =>	-- NR31 FF1B LLLL LLLL Length load (256-L)
+				s1_readdata <= X"FF";
+			when "011100" =>	-- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
+				s1_readdata <= '1' & wav_volsh & "11111";
+			when "011101" =>	-- NR33 FF1D FFFF FFFF Frequency LSB
+				s1_readdata <= X"FF";
+			when "011110" =>	-- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
+				s1_readdata <= '1' & wav_lenchk & "111111";
+	
+												-- Noise
+			when "100000" =>	-- NR41 FF20 --LL LLLL Length load (64-L)
+				s1_readdata <= X"FF";
+			when "100001" =>	-- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
+				s1_readdata <= noi_svol & noi_envsgn & noi_envper;
+			when "100010" =>	-- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
+				s1_readdata <= noi_freqsh & noi_short &	noi_div;
+			when "100011" =>	-- NR44 FF23 TL-- ---- Trigger, Length enable
+				s1_readdata <= '1' & noi_lenchk & "111111"; 
+	
+												-- Wave Table
+			when "110000" =>	--      FF30 0000 1111 Samples 0 and 1
+				s1_readdata <= wav_ram(0) & wav_ram(1);
+			when "110001" =>	--      FF31 0000 1111 Samples 2 and 3
+				s1_readdata <= wav_ram(2) & wav_ram(3);
+			when "110010" =>	--      FF32 0000 1111 Samples 4 and 5
+				s1_readdata <= wav_ram(4) & wav_ram(5);
+			when "110011" =>	--      FF33 0000 1111 Samples 6 and 31
+				s1_readdata <= wav_ram(6) & wav_ram(7);
+			when "110100" =>	--      FF34 0000 1111 Samples 8 and 31
+				s1_readdata <= wav_ram(8) & wav_ram(9);
+			when "110101" =>	--      FF35 0000 1111 Samples 10 and 11
+				s1_readdata <= wav_ram(10) & wav_ram(11);
+			when "110110" =>	--      FF36 0000 1111 Samples 12 and 13
+				s1_readdata <= wav_ram(12) & wav_ram(13);
+			when "110111" =>	--      FF37 0000 1111 Samples 14 and 15
+				s1_readdata <= wav_ram(14) & wav_ram(15);
+			when "111000" =>	--      FF38 0000 1111 Samples 16 and 17
+				s1_readdata <= wav_ram(16) & wav_ram(17);
+			when "111001" =>	--      FF39 0000 1111 Samples 18 and 19
+				s1_readdata <= wav_ram(18) & wav_ram(19);
+			when "111010" =>	--      FF3A 0000 1111 Samples 20 and 21
+				s1_readdata <= wav_ram(20) & wav_ram(21);
+			when "111011" =>	--      FF3B 0000 1111 Samples 22 and 23
+				s1_readdata <= wav_ram(22) & wav_ram(23);
+			when "111100" =>	--      FF3C 0000 1111 Samples 24 and 25
+				s1_readdata <= wav_ram(24) & wav_ram(25);
+			when "111101" =>	--      FF3D 0000 1111 Samples 26 and 27
+				s1_readdata <= wav_ram(26) & wav_ram(27);
+			when "111110" =>	--      FF3E 0000 1111 Samples 28 and 29
+				s1_readdata <= wav_ram(28) & wav_ram(29);
+			when "111111" =>	--      FF3F 0000 1111 Samples 30 and 31
+				s1_readdata <= wav_ram(30) & wav_ram(31);
+	
+			when others =>
+				s1_readdata <= X"FF";
+		end case;
+	
 	end process;
 
 	sound : process(clk, snd_enable, en_snd, en_len, en_env, en_sweep)
