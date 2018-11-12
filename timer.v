@@ -106,6 +106,6 @@ assign cpu_do =
 	(cpu_addr == 2'b00)?div:
 	(cpu_addr == 2'b01)?tima:
 	(cpu_addr == 2'b10)?tma:
-	{5'b00000, tac};
+	{5'b11111, tac};
 	
 endmodule

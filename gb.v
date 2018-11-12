@@ -53,6 +53,10 @@ wire sel_timer = (cpu_addr[15:4] == 12'hff0) && (cpu_addr[3:2] == 2'b01);
 wire sel_video_reg = cpu_addr[15:4] == 12'hff4;
 wire sel_video_oam = cpu_addr[15:8] == 8'hfe;
 wire sel_joy  = cpu_addr == 16'hff00;                // joystick controller
+wire sel_sb  = cpu_addr == 16'hff01;  			        // serial SB - Serial transfer data
+wire sel_sc  = cpu_addr == 16'hff02;  			        // SC - Serial Transfer Control (R/W)
+wire sel_nr50 = cpu_addr == 16'hff24;					  // Channel control / ON-OFF / Volume (R/W) //readonly no games use it
+wire sel_nr51 = cpu_addr == 16'hff25;					  // Selection of Sound output terminal (R/W) //readonly no games use it
 wire sel_rom  = !cpu_addr[15];                       // lower 32k are rom
 wire sel_cram = cpu_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire sel_vram = cpu_addr[15:13] == 3'b100;           // 8k video ram at $8000
@@ -82,6 +86,8 @@ wire [7:0] cpu_di =
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
+		sel_nr50?8'h77:
+		sel_nr51?8'hF3:
 		sel_audio?audio_do:     // audio registers
 		sel_rom?rom_do:         // boot rom + cartridge rom
 		sel_cram?rom_do:        // cartridge ram
@@ -89,7 +95,7 @@ wire [7:0] cpu_di =
 		sel_zpram?zpram_do:     // zero page ram
 		sel_iram?iram_do:       // internal ram
 		sel_ie?{3'b000, ie_r}:  // interrupt enable register
-		sel_if?{3'b000, if_r}:  // interrupt flag register
+		sel_if?{3'b111, if_r}:  // interrupt flag register
 		8'hff;
 
 wire cpu_wr_n;
