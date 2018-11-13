@@ -1307,24 +1307,45 @@ begin
 				end case;
 			else
 				-- RET cc
-				MCycles <= "011";
-				case to_integer(unsigned(MCycle)) is
-				when 1 =>
-					if is_cc_true(F, to_bitvector(IR(5 downto 3))) then
-						Set_Addr_TO <= aSP;
-					else
-						MCycles <= "001";
-					end if;
-					TStates <= "101";
-				when 2 =>
-					IncDec_16 <= "0111";
-					Set_Addr_To <= aSP;
-					LDZ <= '1';
-				when 3 =>
-					Jump <= '1';
-					IncDec_16 <= "0111";
-				when others => null;
-				end case;
+				if Mode = 3 then
+					MCycles <= "101";
+					case to_integer(unsigned(MCycle)) is
+					when 2 =>
+						if is_cc_true(F, to_bitvector(IR(5 downto 3))) then
+							Set_Addr_TO <= aSP;
+						else
+							MCycles <= "010";
+						end if;
+						TStates <= "101";
+					when 3 =>
+						IncDec_16 <= "0111";
+						Set_Addr_To <= aSP;
+						LDZ <= '1';
+					when 4 =>
+						Jump <= '1';
+						IncDec_16 <= "0111";
+					when others => null;
+					end case;
+				else
+					MCycles <= "011";
+					case to_integer(unsigned(MCycle)) is
+					when 1 =>
+						if is_cc_true(F, to_bitvector(IR(5 downto 3))) then
+							Set_Addr_TO <= aSP;
+						else
+							MCycles <= "001";
+						end if;
+						TStates <= "101";
+					when 2 =>
+						IncDec_16 <= "0111";
+						Set_Addr_To <= aSP;
+						LDZ <= '1';
+					when 3 =>
+						Jump <= '1';
+						IncDec_16 <= "0111";
+					when others => null;
+					end case;
+				end if;
 			end if;
 		when "11000111"|"11001111"|"11010111"|"11011111"|"11100111"|"11101111"|"11110111"|"11111111" =>
 			-- RST p

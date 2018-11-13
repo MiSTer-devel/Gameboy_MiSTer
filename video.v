@@ -195,6 +195,7 @@ always @(posedge clk) begin
 		scx <= 8'h00;
 		wy <= 8'h00;
 		wx <= 8'h00;
+		stat <= 8'h00;
 		bgp <= 8'hfc;
 		obp0 <= 8'hff;
 		obp1 <= 8'hff;
@@ -221,7 +222,7 @@ end
 assign cpu_do = 
 	cpu_sel_oam?oam_do:
 	(cpu_addr[3:0] == 4'h0)?lcdc:
-	(cpu_addr[3:0] == 4'h1)?{stat[7:3], lyc_match, mode}:
+	(cpu_addr[3:0] == 4'h1)?{1'b1,stat[6:3], lyc_match, mode}:
 	(cpu_addr[3:0] == 4'h2)?scy:
 	(cpu_addr[3:0] == 4'h3)?scx:
 	(cpu_addr[3:0] == 4'h4)?ly:

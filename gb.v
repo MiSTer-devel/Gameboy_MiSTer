@@ -53,6 +53,10 @@ wire sel_timer = (cpu_addr[15:4] == 12'hff0) && (cpu_addr[3:2] == 2'b01);
 wire sel_video_reg = cpu_addr[15:4] == 12'hff4;
 wire sel_video_oam = cpu_addr[15:8] == 8'hfe;
 wire sel_joy  = cpu_addr == 16'hff00;                // joystick controller
+wire sel_sb  = cpu_addr == 16'hff01;  			        // serial SB - Serial transfer data
+wire sel_sc  = cpu_addr == 16'hff02;  			        // SC - Serial Transfer Control (R/W)
+wire sel_nr50 = cpu_addr == 16'hff24;					  // Channel control / ON-OFF / Volume (R/W) //readonly no games use it
+wire sel_nr51 = cpu_addr == 16'hff25;					  // Selection of Sound output terminal (R/W) //readonly no games use it
 wire sel_rom  = !cpu_addr[15];                       // lower 32k are rom
 wire sel_cram = cpu_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire sel_vram = cpu_addr[15:13] == 3'b100;           // 8k video ram at $8000
@@ -63,6 +67,13 @@ wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram a
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
 					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001));
+					
+//DMA can select from $0000 to $F100					
+wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
+wire dma_sel_cram = dma_addr[15:13] == 3'b101;           // 8k cart ram at $a000
+wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $8000
+wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
+
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
@@ -72,9 +83,13 @@ wire [7:0] cpu_di =
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
 		sel_joy?joy_do:         // joystick register
+		sel_sb?8'h0:
+		sel_sc?8'h7E:
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
+		sel_nr50?8'h77:
+		sel_nr51?8'hF3:
 		sel_audio?audio_do:     // audio registers
 		sel_rom?rom_do:         // boot rom + cartridge rom
 		sel_cram?rom_do:        // cartridge ram
@@ -82,7 +97,7 @@ wire [7:0] cpu_di =
 		sel_zpram?zpram_do:     // zero page ram
 		sel_iram?iram_do:       // internal ram
 		sel_ie?{3'b000, ie_r}:  // interrupt enable register
-		sel_if?{3'b000, if_r}:  // interrupt flag register
+		sel_if?{3'b111, if_r}:  // interrupt flag register
 		8'hff;
 
 wire cpu_wr_n;
@@ -143,7 +158,7 @@ wire [3:0] joy_p5 = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4
 reg  [1:0] p54;
 
 always @(posedge clk) begin
-	if(reset) p54 <= 2'b11;
+	if(reset) p54 <= 2'b00;
 	else if(sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
 
@@ -251,7 +266,7 @@ wire [7:0] video_do;
 wire [12:0] video_addr;
 wire [15:0] dma_addr;
 wire video_rd, dma_rd;
-wire [7:0] dma_data = (dma_addr[15:14]==2'b11)?iram_do:cart_do;
+wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?vram_do:cart_do;
 
 video video (
 	.reset	    ( reset         ),
@@ -284,7 +299,7 @@ video video (
 wire cpu_wr_vram = sel_vram && !cpu_wr_n;
 wire [7:0] vram_do;
 wire vram_wren = video_rd?1'b0:cpu_wr_vram;
-wire [12:0] vram_addr = video_rd?video_addr:cpu_addr[12:0];
+wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
 
 spram #(13) vram (
 	.clock      ( clk           ),
@@ -313,8 +328,8 @@ spram #(7) zpram (
 // ------------------------- 8k internal ram --------------------------
 // --------------------------------------------------------------------
 
-wire iram_wren = dma_rd?1'b0:cpu_wr_iram;
-wire [12:0] iram_addr = dma_rd?dma_addr[12:0]:cpu_addr[12:0];
+wire iram_wren = (dma_rd&&dma_sel_iram)?1'b0:cpu_wr_iram;
+wire [12:0] iram_addr = (dma_rd&&dma_sel_iram)?dma_addr[12:0]:cpu_addr[12:0];
 
 wire cpu_wr_iram = sel_iram && !cpu_wr_n;
 wire [7:0] iram_do;
@@ -342,9 +357,11 @@ end
 // combine boot rom data with cartridge data
 wire [7:0] rom_do = ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?boot_rom_do:cart_do;
 
+wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
+
 assign cart_di = cpu_do;
-assign cart_addr = dma_rd?dma_addr:cpu_addr;
-assign cart_rd = dma_rd || ((sel_rom || sel_cram) && !cpu_rd_n);
+assign cart_addr = (dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
+assign cart_rd = (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n;
 
 wire [7:0] boot_rom_do;
