@@ -176,11 +176,11 @@ wire irq_ack = !cpu_iorq_n && !cpu_m1_n;
 
 // irq vector
 wire [7:0] irq_vec = 
-			if_r[0]?8'h40:   // vsync
-			if_r[1]?8'h48:   // lcdc
-			if_r[2]?8'h50:   // timer
-			if_r[3]?8'h58:   // serial
-			if_r[4]?8'h60:   // input
+			if_r[0]&&ie_r[0]?8'h40:   // vsync
+			if_r[1]&&ie_r[1]?8'h48:   // lcdc
+			if_r[2]&&ie_r[2]?8'h50:   // timer
+			if_r[3]&&ie_r[3]?8'h58:   // serial
+			if_r[4]&&ie_r[4]?8'h60:   // input
 			8'h55;
 
 wire vs = (lcd_mode == 2'b01);
