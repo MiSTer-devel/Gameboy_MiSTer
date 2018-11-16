@@ -1105,6 +1105,8 @@ begin
 								IntCycle <= '1';
 								IntE_FF1 <= '0';
 								IntE_FF2 <= '0';
+							elsif (Halt_FF = '1' and INT_s = '1' and Mode = 3) then
+								Halt_FF <= '0';
 							end if;
 						else
 							MCycle <= std_logic_vector(unsigned(MCycle) + 1);
