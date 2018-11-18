@@ -49,6 +49,8 @@ module emu
 	output        VGA_HS,
 	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
+	output        VGA_F1,
+	output  [1:0] VGA_SL,
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -95,10 +97,21 @@ module emu
 	output        SDRAM_nCS,
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
-	output        SDRAM_nWE
+	output        SDRAM_nWE,
+
+	input         UART_CTS,
+	output        UART_RTS,
+	input         UART_RXD,
+	output        UART_TXD,
+	output        UART_DTR,
+	input         UART_DSR
 );
 
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0; 
+assign VGA_F1 = 0;
+
+assign {UART_RTS, UART_TXD, UART_DTR} = 0;
+
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_USER  = ioctl_download;
@@ -481,6 +494,7 @@ lcd lcd (
 	 .b      ( video_b    )
 );
 
+assign VGA_SL = 0;
 assign VGA_R  = {video_r,video_r[5:4]};
 assign VGA_G  = {video_g,video_g[5:4]};
 assign VGA_B  = {video_b,video_b[5:4]};
