@@ -151,7 +151,6 @@ architecture rtl of T80 is
 	-- Help Registers
 	signal TmpAddr              : std_logic_vector(15 downto 0);        -- Temporary address register
 	signal TmpAddr2             : std_logic_vector(15 downto 0);        -- Temporary address register
-	signal TmpAddr3             : std_logic_vector(15 downto 0);        -- Temporary address register
 	signal IR                   : std_logic_vector(7 downto 0);         -- Instruction register
 	signal ISet                 : std_logic_vector(1 downto 0);         -- Instruction set selector
 	signal RegBusA_r            : std_logic_vector(15 downto 0);
@@ -359,6 +358,8 @@ begin
 		ALU_Q;
 
 	process (RESET_n, CLK_n)
+	variable temp_c : unsigned(8 downto 0);
+	variable temp_h : unsigned(4 downto 0);
 	begin
 		if RESET_n = '0' then
 			PC <= (others => '0');  -- Program Counter
@@ -404,20 +405,22 @@ begin
 
 			MCycles <= MCycles_d;
 			
-			if LDHLSP = '1' and TState = 1 then
-					   TmpAddr <= std_logic_vector(SP xor unsigned(Save_Mux) xor unsigned(TmpAddr2)); 
-						F(Flag_Z) <= '0';	
-						F(Flag_N) <= '0';
-						F(Flag_H) <= TmpAddr(4);
-						F(Flag_C) <= TmpAddr(8);
-			end if;
-			
-			if ADDSPdd = '1' and TState = 4 then
-				TmpAddr3 <= std_logic_vector(SP xor unsigned(Save_Mux) xor unsigned(TmpAddr)); 
+			if LDHLSP = '1' and MCycle = "011" and TState = 1 then
+			   temp_c := unsigned('0'&SP(7 downto 0))+unsigned('0'&Save_Mux);
+				temp_h := unsigned('0'&SP(3 downto 0))+unsigned('0'&Save_Mux(3 downto 0));
 				F(Flag_Z) <= '0';	
 				F(Flag_N) <= '0';
-				F(Flag_H) <= TmpAddr3(4);
-				F(Flag_C) <= TmpAddr3(8);
+				F(Flag_H) <= temp_h(4);
+				F(Flag_C) <= temp_c(8);
+			end if;
+			
+			if ADDSPdd = '1' and TState = 1 then
+			   temp_c := unsigned('0'&SP(7 downto 0))+unsigned('0'&Save_Mux);
+				temp_h := unsigned('0'&SP(3 downto 0))+unsigned('0'&Save_Mux(3 downto 0));
+				F(Flag_Z) <= '0';	
+				F(Flag_N) <= '0';
+				F(Flag_H) <= temp_h(4);
+				F(Flag_C) <= temp_c(8);
 			end if;
 
       if Mode = 3 then
@@ -1105,6 +1108,8 @@ begin
 								IntCycle <= '1';
 								IntE_FF1 <= '0';
 								IntE_FF2 <= '0';
+							elsif (Halt_FF = '1' and INT_s = '1' and Mode = 3) then
+								Halt_FF <= '0';
 							end if;
 						else
 							MCycle <= std_logic_vector(unsigned(MCycle) + 1);
