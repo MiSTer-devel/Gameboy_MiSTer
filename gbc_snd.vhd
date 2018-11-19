@@ -49,6 +49,7 @@ architecture SYN of gbc_snd is
 	signal sq1_duty		: std_logic_vector(1 downto 0);		-- Sq1 duty cycle
 	signal sq1_slen		: std_logic_vector(5 downto 0);		-- Sq1 play length
 	signal sq1_svol		: std_logic_vector(3 downto 0);		-- Sq1 initial volume
+
 	signal sq1_envsgn		: std_logic;											-- Sq1 envelope sign
 	signal sq1_envper		: std_logic_vector(2 downto 0);		-- Sq1 envelope period
 	signal sq1_freq		: std_logic_vector(10 downto 0);	-- Sq1 frequency
@@ -57,12 +58,15 @@ architecture SYN of gbc_snd is
 
 	signal sq1_fr2			: std_logic_vector(10 downto 0);	-- Sq1 frequency (shadow copy)
 	signal sq1_vol			: std_logic_vector(3 downto 0);		-- Sq1 initial volume
+	signal sq1_volchange : std_logic;
+	
 	signal sq1_playing	: std_logic;											-- Sq1 channel active
 	signal sq1_wav			: std_logic_vector(5 downto 0);		-- Sq1 output waveform
 
 	signal sq2_duty		: std_logic_vector(1 downto 0);		-- Sq2 duty cycle
 	signal sq2_slen		: std_logic_vector(5 downto 0);		-- Sq2 play length
 	signal sq2_svol		: std_logic_vector(3 downto 0);		-- Sq2 initial volume
+	signal sq2_volchange : std_logic;
 	signal sq2_envsgn		: std_logic;											-- Sq2 envelope sign
 	signal sq2_envper		: std_logic_vector(2 downto 0);		-- Sq2 envelope period
 	signal sq2_freq		: std_logic_vector(10 downto 0);	-- Sq2 frequency
@@ -218,6 +222,9 @@ begin
 			noi_div		<= (others => '0');
 			noi_trigger	<= '0';
 			noi_lenchk	<= '0';
+			
+			ch_map 		<= (others => '0');
+	      ch_vol		<= (others => '0');
 
 		elsif rising_edge(clk) then
 			if en_snd then
@@ -235,6 +242,9 @@ begin
 				end loop;
 				wav_ram(31) <= wav_temp;
 			end if;
+			
+			sq2_volchange <= '0';
+			sq1_volchange <= '0';
 
 			if s1_write = '1' then
 				case s1_addr is
@@ -248,6 +258,7 @@ begin
 					sq1_slen <= s1_writedata(5 downto 0);
 				when "010010" =>	-- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
 					sq1_svol <= s1_writedata(7 downto 4);
+					sq1_volchange <= '1';
 					sq1_envsgn <= s1_writedata(3);
 					sq1_envper <= s1_writedata(2 downto 0);
 				when "010011" =>	-- NR13 FF13 FFFF FFFF Frequency LSB
@@ -263,6 +274,7 @@ begin
 					sq2_slen <= s1_writedata(5 downto 0);
 				when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
 					sq2_svol <= s1_writedata(7 downto 4);
+					sq2_volchange <= '1';
 					sq2_envsgn <= s1_writedata(3);
 					sq2_envper <= s1_writedata(2 downto 0);
 				when "011000" =>	-- NR23 FF18 FFFF FFFF Frequency LSB
@@ -302,8 +314,8 @@ begin
 					noi_lenchk <= s1_writedata(6);
 
 --									-- Control/Status
-				when "100100" =>	ch_vol  <= s1_writedata;
-				when "100101" =>	ch_map  <= s1_writedata;
+				when "100100" =>	ch_vol  <= s1_writedata; -- NR50 FF24
+				when "100101" =>	ch_map  <= s1_writedata; -- NR51 FF25
 --
 													-- Wave Table
 				when "110000" =>	--      FF30 0000 1111 Samples 0 and 1
@@ -391,7 +403,7 @@ begin
 			when "010110" =>	-- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
 				s1_readdata <= sq2_duty & "111111";
 			when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
-				s1_readdata <= sq2_vol & sq2_envsgn & sq2_envper;
+				s1_readdata <= sq2_svol & sq2_envsgn & sq2_envper;
 			when "011000" =>	-- NR23 FF18 FFFF FFFF Frequency LSB
 				s1_readdata <= X"FF";
 			when "011001" =>	-- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
@@ -455,6 +467,13 @@ begin
 				s1_readdata <= wav_ram(28) & wav_ram(29);
 			when "111111" =>	--      FF3F 0000 1111 Samples 30 and 31
 				s1_readdata <= wav_ram(30) & wav_ram(31);
+		
+			-- Control/Status
+			when "100100" =>
+				s1_readdata <= ch_vol; -- NR50 FF24
+			when "100101" =>
+				s1_readdata  <= ch_map; -- NR51 FF25
+			
 	
 			when others =>
 				s1_readdata <= X"FF";
@@ -691,6 +710,10 @@ begin
 					--sq1_wav <= "000000";
 				end if;
 			end if;
+			
+			if sq1_trigger = '1' or sq1_volchange = '1' then
+				sq1_vol <= sq1_svol;
+			end if;
 
 			-- Check sample trigger and start playing
 			if sq1_trigger = '1' then
@@ -698,7 +721,6 @@ begin
 				sq1_fcnt := unsigned(sq1_freq);
 				noi_lfsr := (others => '1');
 				sq1_playing <= '1';
-				sq1_vol <= sq1_svol;
 				sq1_envcnt := "000";
 				sq1_swcnt := "000";
 				sq1_len := '0' & sq1_slen;
@@ -742,13 +764,16 @@ begin
 					--sq2_wav <= "000000";
 				end if;
 			end if;
+			
+			if sq2_volchange ='1' or sq2_trigger= '1' then
+				sq2_vol <= sq2_svol;
+			end if;
 
 			-- Check sample trigger and start playing
 			if sq2_trigger = '1' then
 				sq2_fr2 <= sq2_freq;
 				sq2_fcnt := unsigned(sq2_freq);
 				sq2_playing <= '1';
-				sq2_vol <= sq2_svol;
 				sq2_envcnt := "000";
 				sq2_len := '0' & sq2_slen;
 				sq2_phase := 0;
