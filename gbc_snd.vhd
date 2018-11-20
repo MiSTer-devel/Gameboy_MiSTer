@@ -90,6 +90,7 @@ architecture SYN of gbc_snd is
 	signal wav_wav			: std_logic_vector(5 downto 0);		-- Wave output waveform
 	signal wav_ram			: wav_arr_t;											-- Wave table
 	signal wav_shift		: boolean;
+	signal wav_index		: unsigned(4 downto 0);
 
 	signal noi_slen		: std_logic_vector(5 downto 0);
 	signal noi_svol		: std_logic_vector(3 downto 0);
@@ -225,6 +226,7 @@ begin
 			
 			ch_map 		<= (others => '0');
 	      ch_vol		<= (others => '0');
+			wav_index	<= (others => '0');
 
 		elsif rising_edge(clk) then
 			if en_snd then
@@ -236,11 +238,12 @@ begin
 
 			-- Rotate wave table on rising edge of wav_shift
 			if wav_shift and not wav_shift_r then
-				wav_temp := wav_ram(0);
-				for I in 0 to 30 loop
-					wav_ram(I) <= wav_ram(I+1);
-				end loop;
-				wav_ram(31) <= wav_temp;
+--				wav_temp := wav_ram(0);
+--				for I in 0 to 30 loop
+--					wav_ram(I) <= wav_ram(I+1);
+--				end loop;
+--				wav_ram(31) <= wav_temp;
+				wav_index <= wav_index + 1;
 			end if;
 			
 			sq2_volchange <= '0';
@@ -892,9 +895,12 @@ begin
 
 			if wav_enable = '1' and wav_volsh /= "00" then
 				case wav_volsh is
-				when "01" => wav_wav <= wav_ram(0) & "00";
-				when "10" => wav_wav <= '0' & wav_ram(0) & '0';
-				when "11" => wav_wav <= "00" & wav_ram(0);
+--				when "01" => wav_wav <= wav_ram(0) & "00";
+--				when "10" => wav_wav <= '0' & wav_ram(0) & '0';
+--				when "11" => wav_wav <= "00" & wav_ram(0);
+				when "01" => wav_wav <= wav_ram(to_integer(wav_index)) & "00";
+				when "10" => wav_wav <= '0' & wav_ram(to_integer(wav_index)) & '0';
+				when "11" => wav_wav <= "00" & wav_ram(to_integer(wav_index));
 				when others => wav_wav <= (others => 'X');
 				end case;
 			else
