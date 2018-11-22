@@ -81,7 +81,8 @@ architecture SYN of gbc_snd is
 	signal sq2_wav			: std_logic_vector(5 downto 0);		-- Sq2 output waveform
 
 	signal wav_enable		: std_logic;											-- Wave enable
-	signal wav_slen		: std_logic_vector(7 downto 0);		-- Wave play length
+	signal wav_slen		: std_logic_vector(8 downto 0);		-- Wave play length
+	signal wav_lenchange : std_logic;
 	signal wav_volsh		: std_logic_vector(1 downto 0);		-- Wave volume shift
 	signal wav_freq		: std_logic_vector(10 downto 0);	-- Wave frequency
 	signal wav_trigger	: std_logic;											-- Wave trigger play note
@@ -250,8 +251,10 @@ begin
 			
 			sq2_volchange <= '0';
 			sq1_volchange <= '0';
+			
 			sq2_lenchange <= '0';
 			sq1_lenchange <= '0';
+			wav_lenchange <= '0';
 
 			if s1_write = '1' then
 				case s1_addr is
@@ -299,7 +302,9 @@ begin
 				when "011010" =>	-- NR30 FF1A E--- ---- DAC power
 					wav_enable <= s1_writedata(7);
 				when "011011" =>	-- NR31 FF1B LLLL LLLL Length load (256-L)
-					wav_slen <= s1_writedata;
+					-- wav_slen <= s1_writedata;
+					wav_slen <= std_logic_vector("100000000" - unsigned(s1_writedata));
+					wav_lenchange <= '1';
 				when "011100" =>	-- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
 					wav_volsh <= s1_writedata(6 downto 5);
 				when "011101" =>	-- NR33 FF1D FFFF FFFF Frequency LSB
@@ -902,21 +907,25 @@ begin
 					end if;
 				end if;
 			end if;
+			
+			-- Length counter
+			if en_len then
+				if wav_len > 0 and wav_lenchk = '1' then
+					wav_len := std_logic_vector(unsigned(wav_len) - 1);
+				end if;
+			end if;
 
 			-- Wave channel
 			if wav_playing = '1' then
-				-- Length counter
-				if en_len then
-					if wav_len(8) = '0' then
-						wav_len := std_logic_vector(unsigned(wav_len) + to_unsigned(1, wav_len'length));
-					end if;
-				end if;
-
 				-- Check for end of playing conditions
-				if (wav_lenchk = '1' and wav_len(8) = '1') then
+				if (wav_lenchk = '1' and wav_len = 0) or wav_enable = '0' then
 					wav_playing <= '0';
 					wav_wav <= "000000";
 				end if;
+			end if;
+			
+			if wav_lenchange = '1' then
+				wav_len := wav_slen;
 			end if;
 
 			-- Check sample trigger and start playing
@@ -924,7 +933,9 @@ begin
 				wav_fr2 <= wav_freq;
 				wav_fcnt := unsigned(wav_freq);
 				wav_playing <= '1';
-				wav_len := '0' & wav_slen;
+				if wav_len = 0 then
+					wav_len := "100000000"; -- set to max
+				end if;
 			end if;
 
 			if wav_enable = '1' and wav_volsh /= "00" then
