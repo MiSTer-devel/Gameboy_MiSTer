@@ -646,15 +646,16 @@ begin
 				end if;
 
 			end if;
+			
+			-- Length counter
+			if en_len then
+				if sq1_len > 0 and sq1_lenchk = '1' then
+					sq1_len := std_logic_vector(unsigned(sq1_len) - 1);
+				end if;
+			end if;
 
 			-- Square channel 1
 			if sq1_playing = '1' then
-				-- Length counter
-				if en_len then
-					if sq1_len > 0 then
-						sq1_len := std_logic_vector(unsigned(sq1_len) - 1);
-					end if;
-				end if;
 
 				-- Envelope counter
 				if en_env then
@@ -724,6 +725,9 @@ begin
 			
 			if sq1_trigger = '1' or sq1_volchange = '1' then
 				sq1_vol <= sq1_svol;
+				if sq1_svol = "00000" and sq1_envsgn = '0' then -- dac disabled
+					sq1_playing <= '0';
+				end if;
 			end if;
 			
 			if sq1_lenchange = '1' then
@@ -736,7 +740,9 @@ begin
 				sq1_fr2 <= sq1_freq;
 				sq1_fcnt := unsigned(sq1_freq);
 				noi_lfsr := (others => '1');
-				sq1_playing <= '1';
+				if not (sq1_svol = "00000" and sq1_envsgn = '0') then -- dac enabled
+					sq1_playing <= '1';
+				end if;
 				sq1_envcnt := "000";
 				sq1_swcnt := "000";	
 				sq1_phase := 0;
@@ -744,16 +750,17 @@ begin
 					sq1_len := "1000000";
 				end if;
 			end if;
+			
+			-- Length counter
+			if en_len then
+				if sq2_len > 0 and sq2_lenchk = '1' then
+					-- sq2_len := std_logic_vector(unsigned(sq2_len) + to_unsigned(1, sq2_len'length));
+					sq2_len := std_logic_vector(unsigned(sq2_len) - 1);
+				end if;
+			end if;
 
 			-- Square channel 2
 			if sq2_playing = '1' then
-				-- Length counter
-				if en_len then
-					if sq2_len > 0 then
-						-- sq2_len := std_logic_vector(unsigned(sq2_len) + to_unsigned(1, sq2_len'length));
-						sq2_len := std_logic_vector(unsigned(sq2_len) - 1);
-					end if;
-				end if;
 
 				-- Envelope counter
 				if en_env then
@@ -786,6 +793,9 @@ begin
 			
 			if sq2_volchange ='1' or sq2_trigger= '1' then
 				sq2_vol <= sq2_svol;
+				if sq2_svol = "00000" and sq2_envsgn = '0' then -- dac disabled
+					sq2_playing <= '0';
+				end if;
 			end if;
 			
 			if sq2_lenchange = '1' then
@@ -796,7 +806,9 @@ begin
 			if sq2_trigger = '1' then
 				sq2_fr2 <= sq2_freq;
 				sq2_fcnt := unsigned(sq2_freq);
-				sq2_playing <= '1';
+				if not (sq2_svol = "00000" and sq2_envsgn = '0') then -- dac enabled
+					sq2_playing <= '1';
+				end if;
 				sq2_envcnt := "000";
 				sq2_phase := 0;
 				if sq2_len = 0 then
