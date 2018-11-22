@@ -95,8 +95,10 @@ architecture SYN of gbc_snd is
 	signal wav_shift		: boolean;
 	signal wav_index		: unsigned(4 downto 0);
 
-	signal noi_slen		: std_logic_vector(5 downto 0);
+	signal noi_slen		: std_logic_vector(6 downto 0);
+	signal noi_lenchange : std_logic;
 	signal noi_svol		: std_logic_vector(3 downto 0);
+	signal noi_volchange : std_logic;
 	signal noi_envsgn		: std_logic;
 	signal noi_envper		: std_logic_vector(2 downto 0);
 	signal noi_freqsh		: std_logic_vector(3 downto 0);
@@ -251,10 +253,12 @@ begin
 			
 			sq2_volchange <= '0';
 			sq1_volchange <= '0';
+			noi_volchange <= '0';
 			
 			sq2_lenchange <= '0';
 			sq1_lenchange <= '0';
 			wav_lenchange <= '0';
+			noi_lenchange <= '0';
 
 			if s1_write = '1' then
 				case s1_addr is
@@ -316,9 +320,11 @@ begin
 
 													-- Noise
 				when "100000" =>	-- NR41 FF20 --LL LLLL Length load (64-L)
-					noi_slen <= s1_writedata(5 downto 0);
+					noi_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
+					noi_lenchange <= '1';
 				when "100001" =>	-- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
 					noi_svol <= s1_writedata(7 downto 4);
+					noi_volchange <= '1';
 					noi_envsgn <= s1_writedata(3);
 					noi_envper <= s1_writedata(2 downto 0);
 				when "100010" =>	-- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
@@ -651,7 +657,8 @@ begin
 				end if;
 
 			end if;
-			
+
+			-- Square channel 1			
 			-- Length counter
 			if en_len then
 				if sq1_len > 0 and sq1_lenchk = '1' then
@@ -659,7 +666,6 @@ begin
 				end if;
 			end if;
 
-			-- Square channel 1
 			if sq1_playing = '1' then
 
 				-- Envelope counter
@@ -755,7 +761,8 @@ begin
 					sq1_len := "1000000";
 				end if;
 			end if;
-			
+
+			-- Square channel 2
 			-- Length counter
 			if en_len then
 				if sq2_len > 0 and sq2_lenchk = '1' then
@@ -764,7 +771,6 @@ begin
 				end if;
 			end if;
 
-			-- Square channel 2
 			if sq2_playing = '1' then
 
 				-- Envelope counter
@@ -820,15 +826,17 @@ begin
 					sq2_len := "1000000";
 				end if;
 			end if;
-
+			
+			
 			-- Noise channel
-			if noi_playing = '1' then
-				-- Length counter
-				if en_len then
-					if noi_len(6) = '0' then
-						noi_len := std_logic_vector(unsigned(noi_len) + to_unsigned(1, noi_len'length));
-					end if;
+			-- Length counter
+			if en_len then
+				if noi_len > 0 and noi_lenchk = '1' then
+					noi_len := std_logic_vector(unsigned(noi_len) - 1);
 				end if;
+			end if;
+
+			if noi_playing = '1' then
 
 				-- Envelope counter
 				if en_env then
@@ -849,14 +857,24 @@ begin
 					end if;
 				end if;
 
-				-- Check for end of playing conditions
-				if noi_vol = X"0" 															-- Volume == 0              	
-					or (noi_lenchk = '1' and noi_len(6) = '1')		-- Play length timer overrun
+				-- Check for end of playing conditions            	
+				if noi_lenchk = '1' and noi_len = 0		-- Play length timer overrun
 				then
 					noi_playing <= '0';
 					noi_envcnt := "000";
 					--sq2_wav <= "000000";
 				end if;
+			end if;
+			
+			if noi_volchange ='1' or noi_trigger= '1' then
+				noi_vol <= noi_svol;
+				if noi_svol = "00000" and noi_envsgn = '0' then -- dac disabled
+					noi_playing <= '0';
+				end if;
+			end if;							
+			
+			if noi_lenchange = '1' then 
+				noi_len := noi_slen;
 			end if;
 
 			-- Check sample trigger and start playing
@@ -888,10 +906,14 @@ begin
 
 				noi_fr2 <= std_logic_vector(noi_freq);
 				noi_fcnt := noi_freq;
-				noi_playing <= '1';
-				noi_vol <= noi_svol;
 				noi_envcnt := "000";
-				noi_len := '0' & noi_slen;
+				if not (noi_svol = "00000" and noi_envsgn = '0') then -- dac enabled
+					noi_playing <= '1';
+				end if;
+				
+				if noi_len = 0 then
+					noi_len := "1000000"; -- set to max
+				end if;
 			end if;
 
 			if en_snd2 then
