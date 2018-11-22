@@ -47,7 +47,7 @@ architecture SYN of gbc_snd is
 	signal sq1_swdir		: std_logic;											-- Sq1 sweep direction
 	signal sq1_swshift	: std_logic_vector(2 downto 0);		-- Sq1 sweep frequency shift
 	signal sq1_duty		: std_logic_vector(1 downto 0);		-- Sq1 duty cycle
-	signal sq1_slen		: std_logic_vector(5 downto 0);		-- Sq1 play length
+	signal sq1_slen		: std_logic_vector(6 downto 0);		-- Sq1 play length
 	signal sq1_svol		: std_logic_vector(3 downto 0);		-- Sq1 initial volume
 
 	signal sq1_envsgn		: std_logic;											-- Sq1 envelope sign
@@ -59,14 +59,16 @@ architecture SYN of gbc_snd is
 	signal sq1_fr2			: std_logic_vector(10 downto 0);	-- Sq1 frequency (shadow copy)
 	signal sq1_vol			: std_logic_vector(3 downto 0);		-- Sq1 initial volume
 	signal sq1_volchange : std_logic;
+	signal sq1_lenchange : std_logic;
 	
 	signal sq1_playing	: std_logic;											-- Sq1 channel active
 	signal sq1_wav			: std_logic_vector(5 downto 0);		-- Sq1 output waveform
 
 	signal sq2_duty		: std_logic_vector(1 downto 0);		-- Sq2 duty cycle
-	signal sq2_slen		: std_logic_vector(5 downto 0);		-- Sq2 play length
+	signal sq2_slen		: std_logic_vector(6 downto 0);		-- Sq2 play length
 	signal sq2_svol		: std_logic_vector(3 downto 0);		-- Sq2 initial volume
 	signal sq2_volchange : std_logic;
+	signal sq2_lenchange : std_logic;
 	signal sq2_envsgn		: std_logic;											-- Sq2 envelope sign
 	signal sq2_envper		: std_logic_vector(2 downto 0);		-- Sq2 envelope period
 	signal sq2_freq		: std_logic_vector(10 downto 0);	-- Sq2 frequency
@@ -248,6 +250,8 @@ begin
 			
 			sq2_volchange <= '0';
 			sq1_volchange <= '0';
+			sq2_lenchange <= '0';
+			sq1_lenchange <= '0';
 
 			if s1_write = '1' then
 				case s1_addr is
@@ -258,7 +262,9 @@ begin
 					sq1_swshift <= s1_writedata(2 downto 0);
 				when "010001" =>	-- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
 					sq1_duty <= s1_writedata(7 downto 6);
-					sq1_slen <= s1_writedata(5 downto 0);
+					-- sq1_slen <= s1_writedata(5 downto 0);
+					sq1_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
+					sq1_lenchange <= '1';
 				when "010010" =>	-- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
 					sq1_svol <= s1_writedata(7 downto 4);
 					sq1_volchange <= '1';
@@ -274,7 +280,9 @@ begin
 													-- Square 2
 				when "010110" =>	-- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
 					sq2_duty <= s1_writedata(7 downto 6);
-					sq2_slen <= s1_writedata(5 downto 0);
+					-- sq2_slen <= s1_writedata(5 downto 0);
+					sq2_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
+					sq2_lenchange <= '1';
 				when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
 					sq2_svol <= s1_writedata(7 downto 4);
 					sq2_volchange <= '1';
@@ -413,7 +421,7 @@ begin
 				s1_readdata <= '1' & sq2_lenchk & "111111";
 	
 			when "100110" =>	-- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
-				s1_readdata <= snd_enable & "11100" & sq2_playing & sq1_playing;
+				s1_readdata <= snd_enable & "111" & noi_playing & wav_playing & sq2_playing & sq1_playing;
 	
 												-- Wave
 			when "011010" =>	-- NR30 FF1A E--- ---- DAC power
@@ -643,8 +651,8 @@ begin
 			if sq1_playing = '1' then
 				-- Length counter
 				if en_len then
-					if sq1_len(6) = '0' then
-						sq1_len := std_logic_vector(unsigned(sq1_len) + to_unsigned(1, sq1_len'length));
+					if sq1_len > 0 then
+						sq1_len := std_logic_vector(unsigned(sq1_len) - 1);
 					end if;
 				end if;
 
@@ -703,8 +711,8 @@ begin
 				end if;
 
 				-- Check for end of playing conditions
-				if sq1_vol = X"0" 																	-- Volume == 0
-					or (sq1_lenchk = '1' and sq1_len(6) = '1') 				-- Play length timer overrun
+				--if sq1_vol = X"0" 																	-- Volume == 0
+				if  (sq1_lenchk = '1' and sq1_len = 0) 				-- Play length timer overrun
 					or (sq1_swper /= "000" and sq1_swfr(11) = '1') 		-- Sweep frequency overrun
 				then
 					sq1_playing <= '0';
@@ -717,6 +725,11 @@ begin
 			if sq1_trigger = '1' or sq1_volchange = '1' then
 				sq1_vol <= sq1_svol;
 			end if;
+			
+			if sq1_lenchange = '1' then
+				sq1_len := sq1_slen;
+			end if;
+			
 
 			-- Check sample trigger and start playing
 			if sq1_trigger = '1' then
@@ -725,17 +738,20 @@ begin
 				noi_lfsr := (others => '1');
 				sq1_playing <= '1';
 				sq1_envcnt := "000";
-				sq1_swcnt := "000";
-				sq1_len := '0' & sq1_slen;
+				sq1_swcnt := "000";	
 				sq1_phase := 0;
+				if sq1_len = 0 then
+					sq1_len := "1000000";
+				end if;
 			end if;
 
 			-- Square channel 2
 			if sq2_playing = '1' then
 				-- Length counter
 				if en_len then
-					if sq2_len(6) = '0' then
-						sq2_len := std_logic_vector(unsigned(sq2_len) + to_unsigned(1, sq2_len'length));
+					if sq2_len > 0 then
+						-- sq2_len := std_logic_vector(unsigned(sq2_len) + to_unsigned(1, sq2_len'length));
+						sq2_len := std_logic_vector(unsigned(sq2_len) - 1);
 					end if;
 				end if;
 
@@ -759,8 +775,8 @@ begin
 				end if;
 
 				-- Check for end of playing conditions
-				if sq2_vol = X"0" 															-- Volume == 0              	
-					or (sq2_lenchk = '1' and sq2_len(6) = '1')		-- Play length timer overrun
+				-- if sq2_vol = X"0" 															-- Volume == 0              	
+				if sq2_lenchk = '1' and sq2_len = 0						 -- Play length timer overrun
 				then
 					sq2_playing <= '0';
 					sq2_envcnt := "000";
@@ -771,6 +787,10 @@ begin
 			if sq2_volchange ='1' or sq2_trigger= '1' then
 				sq2_vol <= sq2_svol;
 			end if;
+			
+			if sq2_lenchange = '1' then
+				sq2_len := sq2_slen;
+			end if;
 
 			-- Check sample trigger and start playing
 			if sq2_trigger = '1' then
@@ -778,8 +798,10 @@ begin
 				sq2_fcnt := unsigned(sq2_freq);
 				sq2_playing <= '1';
 				sq2_envcnt := "000";
-				sq2_len := '0' & sq2_slen;
 				sq2_phase := 0;
+				if sq2_len = 0 then
+					sq2_len := "1000000";
+				end if;
 			end if;
 
 			-- Noise channel
