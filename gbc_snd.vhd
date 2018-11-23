@@ -750,7 +750,6 @@ begin
 			if sq1_trigger = '1' then
 				sq1_fr2 <= sq1_freq;
 				sq1_fcnt := unsigned(sq1_freq);
-				noi_lfsr := (others => '1');
 				if not (sq1_svol = "00000" and sq1_envsgn = '0') then -- dac enabled
 					sq1_playing <= '1';
 				end if;
@@ -890,7 +889,7 @@ begin
 				when "110" => noi_divisor := to_unsigned(2048 - 96, noi_divisor'length);
 				when others => noi_divisor := to_unsigned(2048 - 112, noi_divisor'length);
 				end case;
-
+				noi_lfsr := (others => '1');
 --				case noi_freqsh is
 --				when "000" => noi_freq := unsigned(noi_divisor);
 --				when "001" => noi_freq := '0' & unsigned(noi_divisor(10 downto 1));
