@@ -75,14 +75,15 @@ wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
-					
+
+				
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 wire [7:0] cpu_di = 
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
 		sel_joy?joy_do:         // joystick register
-		sel_sb?8'h0:
-		sel_sc?8'h7E:
+		sel_sb?sb_r:
+		sel_sc?sc_r:
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
@@ -146,6 +147,28 @@ gbc_snd audio (
 );
 
 // --------------------------------------------------------------------
+// -----------------------serial port(dummy)---------------------------
+// --------------------------------------------------------------------
+
+reg [7:0] sb_r;
+reg [7:0] sc_r;
+reg serial_irq;
+always @(posedge clk) begin
+	serial_irq <= 0;
+	if(reset) begin
+		sb_r <= 8'h0;
+		sc_r <= 8'h7E;
+	end
+	else if (sel_sc && !cpu_wr_n) begin
+		if (cpu_do == 8'h81) begin
+			sb_r <= 8'hFF;
+			sc_r <= 8'h01;
+			serial_irq<=1;
+		end
+	end
+end	
+
+// --------------------------------------------------------------------
 // ------------------------------ inputs ------------------------------
 // --------------------------------------------------------------------
 
@@ -206,6 +229,9 @@ always @(negedge clk) begin //negedge to trigger interrupt earlier
 	
 	// timer_irq already is a 1 clock event
 	if(timer_irq) if_r[2] <= 1'b1;
+	
+	// serial irq already is a 1 clock event
+	if(serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
 	inputD <= joy_p4 | joy_p5; 
