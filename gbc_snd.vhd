@@ -92,8 +92,6 @@ architecture SYN of gbc_snd is
 	signal wav_playing	: std_logic;
 	signal wav_wav			: std_logic_vector(5 downto 0);		-- Wave output waveform
 	signal wav_ram			: wav_arr_t;											-- Wave table
-	signal wav_shift		: boolean;
-	signal wav_index		: unsigned(4 downto 0);
 
 	signal noi_slen		: std_logic_vector(6 downto 0);
 	signal noi_lenchange : std_logic;
@@ -184,8 +182,6 @@ begin
 
 	-- Registers
 	registers : process(clk, snd_enable, reset)
-		variable wav_shift_r	: boolean;
-		variable wav_temp		: wav_t;
 	begin
 
 		-- Registers
@@ -217,7 +213,7 @@ begin
 			wav_freq		<= (others => '0');
 			wav_trigger	<= '0';
 			wav_lenchk	<= '0';
-			wav_shift_r := false;
+
 
 			noi_slen		<= (others => '0');
 			noi_svol		<= (others => '0');
@@ -231,7 +227,6 @@ begin
 			
 			ch_map 		<= (others => '0');
 	      ch_vol		<= (others => '0');
-			wav_index	<= (others => '0');
 
 		elsif rising_edge(clk) then
 			if en_snd then
@@ -239,16 +234,6 @@ begin
 				sq2_trigger <= '0';
 				wav_trigger <= '0';
 				noi_trigger <= '0';
-			end if;
-
-			-- Rotate wave table on rising edge of wav_shift
-			if wav_shift and not wav_shift_r then
---				wav_temp := wav_ram(0);
---				for I in 0 to 30 loop
---					wav_ram(I) <= wav_ram(I+1);
---				end loop;
---				wav_ram(31) <= wav_temp;
-				wav_index <= wav_index + 1;
 			end if;
 			
 			sq2_volchange <= '0';
@@ -393,7 +378,7 @@ begin
 					null;
 				end case;
 			end if;
-			wav_shift_r := wav_shift;
+
 		end if;
 
 		if reset = '1' then
@@ -525,6 +510,9 @@ begin
 		
 		variable wav_fcnt		: unsigned(10 downto 0);
 		variable wav_len		: std_logic_vector(8 downto 0);
+		variable wav_shift_r	: boolean;
+		variable wav_shift	: boolean;
+		variable wav_index	: unsigned(4 downto 0);
 
 		variable noi_divisor	: unsigned(10 downto 0);	-- Noise frequency divisor
 		variable noi_freq		: unsigned(10 downto 0);	-- Noise frequency (calculated)
@@ -562,7 +550,9 @@ begin
 			wav_playing <= '0';
 			wav_fcnt		:= (others => '0');
 			wav_len		:= (others => '0');
-
+			wav_shift_r := false;
+			wav_index	:= (others => '0');
+			
 			noi_playing	<= '0';
 			noi_fr2		<= (others => '0');
 			noi_fcnt		:= (others => '0');
@@ -917,16 +907,27 @@ begin
 
 			if en_snd2 then
 				-- Wave frequency timer
-				wav_shift <= false;
+				wav_shift := false;
 				if wav_playing = '1' then
 					acc_fcnt := ('0'&wav_fcnt) + to_unsigned(1, acc_fcnt'length);
 					if acc_fcnt(acc_fcnt'high) = '1' then
-						wav_shift <= true;
+						wav_shift := true;
 						wav_fcnt := unsigned(wav_fr2);
 					else
 						wav_fcnt := acc_fcnt(wav_fcnt'range);
 					end if;
 				end if;
+			end if;
+			
+			if wav_trigger = '1' then 
+				wav_index := (others => '0');
+				wav_shift_r := false;
+			else
+				-- Rotate wave table on rising edge of wav_shift
+				if wav_shift and not wav_shift_r then
+					wav_index := wav_index + 1;
+				end if;
+				wav_shift_r := wav_shift;
 			end if;
 			
 			-- Length counter
