@@ -55,8 +55,6 @@ wire sel_video_oam = cpu_addr[15:8] == 8'hfe;
 wire sel_joy  = cpu_addr == 16'hff00;                // joystick controller
 wire sel_sb  = cpu_addr == 16'hff01;  			        // serial SB - Serial transfer data
 wire sel_sc  = cpu_addr == 16'hff02;  			        // SC - Serial Transfer Control (R/W)
-wire sel_nr50 = cpu_addr == 16'hff24;					  // Channel control / ON-OFF / Volume (R/W) //readonly no games use it
-wire sel_nr51 = cpu_addr == 16'hff25;					  // Selection of Sound output terminal (R/W) //readonly no games use it
 wire sel_rom  = !cpu_addr[15];                       // lower 32k are rom
 wire sel_cram = cpu_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire sel_vram = cpu_addr[15:13] == 3'b100;           // 8k video ram at $8000
@@ -77,19 +75,18 @@ wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
-					
+
+				
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 wire [7:0] cpu_di = 
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
 		sel_joy?joy_do:         // joystick register
-		sel_sb?8'h0:
-		sel_sc?8'h7E:
+		sel_sb?sb_r:
+		sel_sc?sc_r:
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
-		sel_nr50?8'h77:
-		sel_nr51?8'hF3:
 		sel_audio?audio_do:     // audio registers
 		sel_rom?rom_do:         // boot rom + cartridge rom
 		sel_cram?rom_do:        // cartridge ram
@@ -148,6 +145,28 @@ gbc_snd audio (
    .snd_left 		( audio_l  			),
 	.snd_right  	( audio_r  			)
 );
+
+// --------------------------------------------------------------------
+// -----------------------serial port(dummy)---------------------------
+// --------------------------------------------------------------------
+
+reg [7:0] sb_r;
+reg [7:0] sc_r;
+reg serial_irq;
+always @(posedge clk) begin
+	serial_irq <= 0;
+	if(reset) begin
+		sb_r <= 8'h0;
+		sc_r <= 8'h7E;
+	end
+	else if (sel_sc && !cpu_wr_n) begin
+		if (cpu_do == 8'h81) begin
+			sb_r <= 8'hFF;
+			sc_r <= 8'h01;
+			serial_irq<=1;
+		end
+	end
+end	
 
 // --------------------------------------------------------------------
 // ------------------------------ inputs ------------------------------
@@ -210,6 +229,9 @@ always @(negedge clk) begin //negedge to trigger interrupt earlier
 	
 	// timer_irq already is a 1 clock event
 	if(timer_irq) if_r[2] <= 1'b1;
+	
+	// serial irq already is a 1 clock event
+	if(serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
 	inputD <= joy_p4 | joy_p5; 
