@@ -168,7 +168,7 @@ always @(posedge clk) begin
 	
 	//TODO: investigate and fix timing of lyc=ly
 	// lyc=ly coincidence
-	if(stat[6] && (h_cnt == 250) && lyc_match) //h_cnt==0 too late, when early(say h_count=1 messes up radarmission)
+	if(stat[6] && (h_cnt == 1) && lyc_match) //h_cnt==0 too late, when early(say h_count=1 messes up radarmission)
 		irq <= 1'b1;
 		
 	// begin of oam phase
