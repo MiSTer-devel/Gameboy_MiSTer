@@ -556,7 +556,7 @@ begin
 		variable noi_divisor	: unsigned(10 downto 0);	-- Noise frequency divisor
 		variable noi_freq		: unsigned(10 downto 0);	-- Noise frequency (calculated)
 		variable noi_fcnt		: unsigned(10 downto 0);
-		variable noi_lfsr		: unsigned(15 downto 0);
+		variable noi_lfsr		: unsigned(14 downto 0);  -- 15 bits
 		variable noi_len		: std_logic_vector(6 downto 0);
 		variable noi_envcnt	: std_logic_vector(2 downto 0);		-- Noise envelope timer count
 		variable noi_out		: std_logic;
@@ -644,7 +644,7 @@ begin
 					if acc_fcnt(acc_fcnt'high) = '1' then
 						-- Noise LFSR
 						noi_xor := noi_lfsr(0) xor noi_lfsr(1);
-						noi_lfsr := noi_xor & noi_lfsr(15 downto 1);
+						noi_lfsr := noi_xor & noi_lfsr(14 downto 1);
 						
 						if noi_short = '1' then
 							noi_lfsr(6) :=  noi_xor;
