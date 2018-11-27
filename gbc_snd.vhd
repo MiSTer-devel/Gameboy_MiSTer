@@ -45,7 +45,8 @@ architecture SYN of gbc_snd is
 	signal snd_enable		: std_logic;
 
 	signal sq1_swper		: std_logic_vector(2 downto 0);		-- Sq1 sweep period
-	signal sq1_swdir		: std_logic;											-- Sq1 sweep direction
+	signal sq1_swdir		: std_logic;								-- Sq1 sweep direction
+	signal sq1_swdir_change : std_logic;							-- Sq1 sweep direction-change
 	signal sq1_swshift	: std_logic_vector(2 downto 0);		-- Sq1 sweep frequency shift
 	signal sq1_duty		: std_logic_vector(1 downto 0);		-- Sq1 duty cycle
 	signal sq1_slen		: std_logic_vector(6 downto 0);		-- Sq1 play length
@@ -257,6 +258,7 @@ begin
 			sq2_lenquirk  <= '0';
 			wav_lenquirk  <= '0';
 			noi_lenquirk  <= '0';
+			sq1_swdir_change <= '0';
 			
 			
 
@@ -265,8 +267,12 @@ begin
 		       								-- Square 1
 				when "010000" =>	-- NR10 FF10 -PPP NSSS Sweep period, negate, shift
 					sq1_swper <= s1_writedata(6 downto 4);
+					if  s1_writedata(3) = '0' then -- only neg to pos, 1 -> 0
+						sq1_swdir_change <= '1';
+					end if;
 					sq1_swdir <= s1_writedata(3);
 					sq1_swshift <= s1_writedata(2 downto 0);
+					-- if(sweepEnable && sweepNegate && !data.bit(3)) enable = false
 				when "010001" =>	-- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
 					sq1_duty <= s1_writedata(7 downto 6);
 					-- sq1_slen <= s1_writedata(5 downto 0);
@@ -531,6 +537,7 @@ begin
 		variable sq1_sweep_en: boolean;
 		variable sweep_calculate: boolean;
 		variable sweep_update: boolean;
+		variable sweep_negate: boolean;
 		
 		variable sq2_fcnt		: unsigned(10 downto 0);
 		variable sq2_phase	: integer range 0 to 7;
@@ -595,6 +602,7 @@ begin
 			sweep_calculate:= false;
 			sweep_update	:= false;
 			sq1_sweep_en 	:= false;
+			sweep_negate 	:= false;
 
 		elsif rising_edge(clk) then
 			if en_snd4 then
@@ -692,7 +700,7 @@ begin
 			end if;
 			
 			-- Sweep processing
-					
+								
 			-- sweep counter
 			if en_sweep then 
 				sq1_swcnt := std_logic_vector(unsigned(sq1_swcnt) - 1);
@@ -730,9 +738,11 @@ begin
 					end case;
 					if sq1_swdir = '1' then
 						sq1_swfr := ('0' & unsigned(sq1_fr2)) - sq1_swoffs;
+						sweep_negate := true;
 					else
 						sq1_swfr := ('0' & unsigned(sq1_fr2)) + sq1_swoffs;
-					end if;
+						sweep_negate := false;
+					end if; 
 					sweep_calculate:= false;
 				end if;
 				
@@ -770,9 +780,9 @@ begin
 				end if;
 
 				-- Check for end of playing conditions
-				--if sq1_vol = X"0" 																	-- Volume == 0
-				if  (sq1_lenchk = '1' and sq1_len = 0) 				-- Play length timer overrun
+				if  (sq1_lenchk = '1' and sq1_len = 0) 			-- Play length timer overrun
 					or (sq1_sweep_en and sq1_swfr(11) = '1') 		-- Sweep frequency overrun
+					or (sq1_sweep_en and sq1_swdir_change = '1' and sweep_negate) -- sweep direction change after trigger
 				then
 					sq1_playing <= '0';
 					sq1_envcnt := (others => '0');
@@ -809,6 +819,7 @@ begin
 				else
 					sq1_swcnt := '0' & sq1_swper; -- set to period
 				end if;
+				sweep_negate := false;
 				---- sweep quirks ---
 				
 				sq1_fcnt := unsigned(sq1_freq);
