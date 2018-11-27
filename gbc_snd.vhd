@@ -64,6 +64,7 @@ architecture SYN of gbc_snd is
 	signal sq1_volchange : std_logic;
 	signal sq1_lenchange : std_logic;
 	signal sq1_lenquirk  : std_logic;
+	signal sq1_freqchange : std_logic;
 	
 	signal sq1_playing	: std_logic;											-- Sq1 channel active
 	signal sq1_wav			: std_logic_vector(5 downto 0);		-- Sq1 output waveform
@@ -260,7 +261,9 @@ begin
 			noi_lenquirk  <= '0';
 			sq1_swdir_change <= '0';
 			
-			
+			if sq1_freqchange = '1' then
+				sq1_freq <= sq1_fr2;
+			end if;
 
 			if s1_write = '1' then
 				case s1_addr is
@@ -272,7 +275,6 @@ begin
 					end if;
 					sq1_swdir <= s1_writedata(3);
 					sq1_swshift <= s1_writedata(2 downto 0);
-					-- if(sweepEnable && sweepNegate && !data.bit(3)) enable = false
 				when "010001" =>	-- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
 					sq1_duty <= s1_writedata(7 downto 6);
 					-- sq1_slen <= s1_writedata(5 downto 0);
@@ -575,7 +577,7 @@ begin
 			sq1_swoffs	:= (others => '0');
 			sq1_swfr		:= (others => '0');
 			sq1_out		:= '0';
-			
+						
 			sq2_playing	<= '0';
 			sq2_fr2		<= (others => '0');
 			sq2_fcnt		:= (others => '0');
@@ -721,6 +723,8 @@ begin
 				end if;
 			end if;
 			
+			sq1_freqchange <= '0';
+			
 			if sq1_sweep_en then 
 		
 				-- Calculate next sweep frequency
@@ -751,6 +755,7 @@ begin
 					sweep_update := false;
 					if (sq1_swper /= "000" and sq1_swshift /= "000") then	
 						sq1_fr2 <= std_logic_vector(sq1_swfr(10 downto 0));
+						sq1_freqchange <= '1';
 						-- sq1_freq <= std_logic_vector(sq1_swfr(10 downto 0)); TODO: update reg
 						sweep_calculate:= true; -- when updating calculate 2nd time
 					end if;
