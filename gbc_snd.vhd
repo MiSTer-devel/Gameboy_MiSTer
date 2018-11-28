@@ -52,21 +52,21 @@ architecture SYN of gbc_snd is
 	signal sq1_slen		: std_logic_vector(6 downto 0);		-- Sq1 play length
 	signal sq1_svol		: std_logic_vector(3 downto 0);		-- Sq1 initial volume
 
-	signal sq1_envsgn		: std_logic;											-- Sq1 envelope sign
-	signal sq1_envper		: std_logic_vector(2 downto 0);		-- Sq1 envelope period
-	signal sq1_freq		: std_logic_vector(10 downto 0);	-- Sq1 frequency
-	signal sq1_trigger	: std_logic;											-- Sq1 trigger play note
-	signal sq1_lenchk		: std_logic;											-- Sq1 length check enable
-	signal sq1_len_en_change	: std_logic;											-- Sq1 length off -> on
+	signal sq1_envsgn		: std_logic;								-- Sq1 envelope sign
+	signal sq1_envper		: std_logic_vector(3 downto 0);		-- Sq1 envelope period
+	signal sq1_freq		: std_logic_vector(10 downto 0);		-- Sq1 frequency
+	signal sq1_trigger	: std_logic;								-- Sq1 trigger play note
+	signal sq1_lenchk		: std_logic;								-- Sq1 length check enable
+	signal sq1_len_en_change	: std_logic;						-- Sq1 length off -> on
 
-	signal sq1_fr2			: std_logic_vector(10 downto 0);	-- Sq1 frequency (shadow copy)
+	signal sq1_fr2			: std_logic_vector(10 downto 0);		-- Sq1 frequency (shadow copy)
 	signal sq1_vol			: std_logic_vector(3 downto 0);		-- Sq1 initial volume
 	signal sq1_volchange : std_logic;
 	signal sq1_lenchange : std_logic;
 	signal sq1_lenquirk  : std_logic;
 	signal sq1_freqchange : std_logic;
 	
-	signal sq1_playing	: std_logic;											-- Sq1 channel active
+	signal sq1_playing	: std_logic;								-- Sq1 channel active
 	signal sq1_wav			: std_logic_vector(5 downto 0);		-- Sq1 output waveform
 
 	signal sq2_duty		: std_logic_vector(1 downto 0);		-- Sq2 duty cycle
@@ -75,30 +75,30 @@ architecture SYN of gbc_snd is
 	signal sq2_volchange : std_logic;
 	signal sq2_lenchange : std_logic;
 	signal sq2_lenquirk  : std_logic;
-	signal sq2_envsgn		: std_logic;											-- Sq2 envelope sign
+	signal sq2_envsgn		: std_logic;								-- Sq2 envelope sign
 	signal sq2_envper		: std_logic_vector(2 downto 0);		-- Sq2 envelope period
-	signal sq2_freq		: std_logic_vector(10 downto 0);	-- Sq2 frequency
-	signal sq2_trigger	: std_logic;											-- Sq2 trigger play note
-	signal sq2_lenchk		: std_logic;											-- Sq2 length check enable
+	signal sq2_freq		: std_logic_vector(10 downto 0);		-- Sq2 frequency
+	signal sq2_trigger	: std_logic;								-- Sq2 trigger play note
+	signal sq2_lenchk		: std_logic;								-- Sq2 length check enable
 
-	signal sq2_fr2			: std_logic_vector(10 downto 0);	-- Sq2 frequency (shadow copy)
+	signal sq2_fr2			: std_logic_vector(10 downto 0);		-- Sq2 frequency (shadow copy)
 	signal sq2_vol			: std_logic_vector(3 downto 0);		-- Sq2 initial volume
-	signal sq2_playing	: std_logic;											-- Sq2 channel active
+	signal sq2_playing	: std_logic;								-- Sq2 channel active
 	signal sq2_wav			: std_logic_vector(5 downto 0);		-- Sq2 output waveform
 
-	signal wav_enable		: std_logic;											-- Wave enable
+	signal wav_enable		: std_logic;								-- Wave enable
 	signal wav_slen		: std_logic_vector(8 downto 0);		-- Wave play length
 	signal wav_lenchange : std_logic;
 	signal wav_lenquirk  : std_logic;
 	signal wav_volsh		: std_logic_vector(1 downto 0);		-- Wave volume shift
-	signal wav_freq		: std_logic_vector(10 downto 0);	-- Wave frequency
-	signal wav_trigger	: std_logic;											-- Wave trigger play note
-	signal wav_lenchk		: std_logic;											-- Wave length check enable
+	signal wav_freq		: std_logic_vector(10 downto 0);		-- Wave frequency
+	signal wav_trigger	: std_logic;								-- Wave trigger play note
+	signal wav_lenchk		: std_logic;								-- Wave length check enable
 
-	signal wav_fr2			: std_logic_vector(10 downto 0);	-- Wave frequency (shadow copy)
+	signal wav_fr2			: std_logic_vector(10 downto 0);		-- Wave frequency (shadow copy)
 	signal wav_playing	: std_logic;
 	signal wav_wav			: std_logic_vector(5 downto 0);		-- Wave output waveform
-	signal wav_ram			: wav_arr_t;											-- Wave table
+	signal wav_ram			: wav_arr_t;								-- Wave table
 
 	signal noi_slen		: std_logic_vector(6 downto 0);
 	signal noi_lenchange : std_logic;
@@ -113,9 +113,9 @@ architecture SYN of gbc_snd is
 	signal noi_trigger	: std_logic;
 	signal noi_lenchk		: std_logic;
 
-	signal noi_fr2			: std_logic_vector(10 downto 0);	-- Noise frequency (shadow copy)
+	signal noi_fr2			: std_logic_vector(10 downto 0);		-- Noise frequency (shadow copy)
 	signal noi_vol			: std_logic_vector(3 downto 0);		-- Noise initial volume
-	signal noi_playing	: std_logic;											-- Noise channel active
+	signal noi_playing	: std_logic;								-- Noise channel active
 	signal noi_wav			: std_logic_vector(5 downto 0);		-- Noise output waveform
 
 	signal ch_map			: std_logic_vector(7 downto 0);
