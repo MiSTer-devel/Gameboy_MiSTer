@@ -81,7 +81,6 @@ architecture SYN of gbc_snd is
 	signal sq2_trigger	: std_logic;								-- Sq2 trigger play note
 	signal sq2_lenchk		: std_logic;								-- Sq2 length check enable
 
-	-- signal sq2_fr2			: std_logic_vector(10 downto 0);		-- Sq2 frequency (shadow copy)
 	signal sq2_vol			: std_logic_vector(3 downto 0);		-- Sq2 initial volume
 	signal sq2_playing	: std_logic;								-- Sq2 channel active
 	signal sq2_wav			: std_logic_vector(5 downto 0);		-- Sq2 output waveform
@@ -95,7 +94,6 @@ architecture SYN of gbc_snd is
 	signal wav_trigger	: std_logic;								-- Wave trigger play note
 	signal wav_lenchk		: std_logic;								-- Wave length check enable
 
-	signal wav_fr2			: std_logic_vector(10 downto 0);		-- Wave frequency (shadow copy)
 	signal wav_playing	: std_logic;
 	signal wav_wav			: std_logic_vector(5 downto 0);		-- Wave output waveform
 	signal wav_ram			: wav_arr_t;								-- Wave table
@@ -1053,7 +1051,7 @@ begin
 					acc_fcnt := ('0'&wav_fcnt) + to_unsigned(1, acc_fcnt'length);
 					if acc_fcnt(acc_fcnt'high) = '1' then
 						wav_shift := true;
-						wav_fcnt := unsigned(wav_fr2);
+						wav_fcnt := unsigned(wav_freq);
 					else
 						wav_fcnt := acc_fcnt(wav_fcnt'range);
 					end if;
@@ -1093,7 +1091,6 @@ begin
 
 			-- Check sample trigger and start playing
 			if wav_trigger = '1' then
-				wav_fr2 <= wav_freq;
 				wav_fcnt := unsigned(wav_freq);
 				wav_playing <= '1';
 				if wav_len = 0 then -- trigger quirks 
