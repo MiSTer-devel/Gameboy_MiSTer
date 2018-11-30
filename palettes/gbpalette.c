@@ -30,7 +30,7 @@ int main (int argc, char **argv)
 	uint8_t palette[16];
 	memset(palette, 0, sizeof(palette));
 
-	if (argc < 1) {
+	if (argc < 2) {
 		printf("Usage: %s <filename>\n", argv[0]);
 		return 1;
 	}
