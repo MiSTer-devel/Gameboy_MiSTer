@@ -115,7 +115,7 @@ assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_USER  = ioctl_download;
-assign LED_DISK  = palette_download;
+assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
 assign VIDEO_ARX = status[3] ? 8'd16 : 8'd4;
@@ -130,7 +130,7 @@ localparam CONF_STR1 = {
 	"F,GB;",
 	"-;",
 	"O4,Inverted color,No,Yes;",
-	"O1,Palette,Grayscale,Custom;",
+	"O1,Palette,Grayscale,Custom;"
 };
 
 localparam CONF_STR2 = {
@@ -415,7 +415,7 @@ wire [8:0] mbc_bank =
 //	HuC3?HuC3_addr:              
 	{7'b0000000, cart_addr[14:13]};  // no MBC, 32k linear address
 
-reg [127:0] palette = 128'h8201547153165C639200000000000000;
+reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 
 always @(posedge clk_sys) begin
 	if(!pll_locked) begin
@@ -484,7 +484,7 @@ gb gb (
 );
 
 // the lcd to vga converter
-wire [5:0] video_r, video_g, video_b;
+wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_bl;
 
 lcd lcd (
@@ -496,10 +496,10 @@ lcd lcd (
 	 .inv    ( status[4]  ),
 
 	 // Palettes
-	 .pal1   (palette[127:110]),
-	 .pal2   (palette[109:92]),
-	 .pal3   (palette[91:74]),
-	 .pal4   (palette[73:56]),
+	 .pal1   (palette[127:104]),
+	 .pal2   (palette[103:80]),
+	 .pal3   (palette[79:56]),
+	 .pal4   (palette[55:32]),
 
 	 // serial interface
 	 .clkena ( lcd_clkena ),
@@ -516,9 +516,9 @@ lcd lcd (
 );
 
 assign VGA_SL = 0;
-assign VGA_R  = {video_r,video_r[5:4]};
-assign VGA_G  = {video_g,video_g[5:4]};
-assign VGA_B  = {video_b,video_b[5:4]};
+assign VGA_R  = video_r;
+assign VGA_G  = video_g;
+assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
 assign CLK_VIDEO = clk_sys;
 assign CE_PIXEL = ce_pix2;

@@ -10,10 +10,10 @@ module lcd (
 	input [1:0] mode,
 	
 	//palette
-	input [17:0] pal1,
-	input [17:0] pal2,
-	input [17:0] pal3,
-	input [17:0] pal4,
+	input [23:0] pal1,
+	input [23:0] pal2,
+	input [23:0] pal3,
+	input [23:0] pal4,
 
 	input tint,
 	input inv,
@@ -27,9 +27,9 @@ module lcd (
    output reg	hs,
    output reg 	vs,
    output reg 	blank,
-   output [5:0] r,
-   output [5:0] g,
-   output [5:0] b
+   output [7:0] r,
+   output [7:0] g,
+   output [7:0] b
 );
 
 // Mode 00:  h-blank
@@ -143,18 +143,17 @@ end
 wire [1:0] pixel = on? (pixel_reg ^ {inv,inv}) :2'b00;
 
 // gameboy "color" palette
-wire [5:0] pal_r = (pixel==0)?pal1[17:12]:(pixel==1)?pal2[17:12]:
-	(pixel==2)?pal3[17:12]:pal4[17:12];
-wire [5:0] pal_g = (pixel==0)?pal1[11:6] :(pixel==1)?pal2[11:6] :
-	(pixel==2)?pal3[11:6] :pal4[11:6] ;
-wire [5:0] pal_b = (pixel==0)?pal1[5:0]  :(pixel==1)?pal2[5:0]  :
-	(pixel==2)?pal3[5:0]  :pal4[5:0]  ;
+wire [7:0] pal_r = (pixel==0)?pal1[23:16]:(pixel==1)?pal2[23:16]:
+	(pixel==2)?pal3[23:16]:pal4[23:16];
+wire [7:0] pal_g = (pixel==0)?pal1[15:8] :(pixel==1)?pal2[15:8] :
+	(pixel==2)?pal3[15:8] :pal4[15:8] ;
+wire [7:0] pal_b = (pixel==0)?pal1[7:0]  :(pixel==1)?pal2[7:0]  :
+	(pixel==2)?pal3[7:0]  :pal4[7:0]  ;
 
 // greyscale
-wire [5:0] grey = (pixel==0)?6'd63:(pixel==1)?6'd42:(pixel==2)?6'd24:6'd0;
-
-assign r = blank?6'b000000:tint?pal_r:grey;
-assign g = blank?6'b000000:tint?pal_g:grey;
-assign b = blank?6'b000000:tint?pal_b:grey;
+wire [7:0] grey = (pixel==0)?8'd252:(pixel==1)?8'd168:(pixel==2)?8'd96:8'd0;
+assign r = blank?8'b00000000:tint?pal_r:grey;
+assign g = blank?8'b00000000:tint?pal_g:grey;
+assign b = blank?8'b00000000:tint?pal_b:grey;
 
 endmodule
