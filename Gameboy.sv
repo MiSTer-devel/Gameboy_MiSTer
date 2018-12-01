@@ -198,8 +198,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 
 ///////////////////////////////////////////////////
 
-wire cart_download = ioctl_download && (filetype == 8'h01);
-wire palette_download = ioctl_download && (filetype == 8'h04);
+wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h40);
+wire palette_download = ioctl_download && (filetype == 8'h04 || filetype == 8'h00);
 
 // TODO: ds for cart ram write
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
