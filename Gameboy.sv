@@ -124,17 +124,22 @@ assign VIDEO_ARY = status[3] ? 8'd9  : 8'd3;
 assign AUDIO_MIX = status[8:7];
 
 `include "build_id.v" 
-localparam CONF_STR = {
+localparam CONF_STR1 = {
 	"GAMEBOY;;",
 	"-;",
 	"F,GB;",
 	"-;",
-   "O1,LCD tint,White,Yellow;",
-   "O4,Inverted,No,Yes;",
+	"O4,Inverted color,No,Yes;",
+	"O1,Palette,Grayscale,Custom;"
+};
+
+localparam CONF_STR2 = {
+	",GBP;",
+	"-;",
 	"O3,Aspect ratio,4:3,16:9;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
-   "O2,Boot,Normal,Fast;",
+	"O2,Boot,Normal,Fast;",
 	"-;",
 	"R6,Reset;",
 	"J1,A,B,Select,Start;",
@@ -168,19 +173,21 @@ reg         ioctl_wait;
 
 wire [15:0] joystick_0, joystick_1;
 wire [15:0] joystick = joystick_0 | joystick_1;
+wire [7:0]  filetype;
 
-hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 
-	.conf_str(CONF_STR),
+	.conf_str({CONF_STR1,status[1]?"F":"+",CONF_STR2}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
 	.ioctl_wait(ioctl_wait),
+	.ioctl_index(filetype),
 
 	.buttons(buttons),
 	.status(status),
@@ -191,13 +198,16 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 ///////////////////////////////////////////////////
 
+wire cart_download = ioctl_download && (filetype == 8'h01);
+wire palette_download = ioctl_download && (filetype == 8'h04);
+
 // TODO: ds for cart ram write
-wire  [1:0] sdram_ds = ioctl_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
+wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
-wire [15:0] sdram_di = ioctl_download ? ioctl_dout : {cart_di, cart_di};
-wire [23:0] sdram_addr = ioctl_download? ioctl_addr[24:1]: {3'b000, mbc_bank, cart_addr[12:1]};
-wire sdram_oe = ~ioctl_download & cart_rd;
-wire sdram_we = ioctl_download ? dn_write : cart_ram_wr;
+wire [15:0] sdram_di = cart_download ? ioctl_dout : {cart_di, cart_di};
+wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {3'b000, mbc_bank, cart_addr[12:1]};
+wire sdram_oe = ~cart_download & cart_rd;
+wire sdram_we = cart_download? dn_write : cart_ram_wr;
 
 assign SDRAM_CKE = 1;
 
@@ -405,18 +415,23 @@ wire [8:0] mbc_bank =
 //	HuC3?HuC3_addr:              
 	{7'b0000000, cart_addr[14:13]};  // no MBC, 32k linear address
 
+reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
+
 always @(posedge clk_sys) begin
 	if(!pll_locked) begin
 		cart_mbc_type <= 8'h00;
 		cart_rom_size <= 8'h00;
 		cart_ram_size <= 8'h00;
 	end else begin
-		if(ioctl_download & ioctl_wr) begin
+		if(cart_download & ioctl_wr) begin
 			case(ioctl_addr)
 				'h146: cart_mbc_type <= ioctl_dout[15:8];
 				'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
 			endcase
-		end
+		end 
+	end
+	if (palette_download & ioctl_wr) begin
+			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
 end
 
@@ -439,7 +454,7 @@ wire lcd_on;
 
 assign AUDIO_S = 0;
 
-wire reset = (RESET | status[0] | status[6] | buttons[1] | ioctl_download);
+wire reset = (RESET | status[0] | status[6] | buttons[1] | cart_download);
 
 
 // the gameboy itself
@@ -469,7 +484,7 @@ gb gb (
 );
 
 // the lcd to vga converter
-wire [5:0] video_r, video_g, video_b;
+wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_bl;
 
 lcd lcd (
@@ -479,6 +494,12 @@ lcd lcd (
 
 	 .tint   ( status[1]  ),
 	 .inv    ( status[4]  ),
+
+	 // Palettes
+	 .pal1   (palette[127:104]),
+	 .pal2   (palette[103:80]),
+	 .pal3   (palette[79:56]),
+	 .pal4   (palette[55:32]),
 
 	 // serial interface
 	 .clkena ( lcd_clkena ),
@@ -495,9 +516,9 @@ lcd lcd (
 );
 
 assign VGA_SL = 0;
-assign VGA_R  = {video_r,video_r[5:4]};
-assign VGA_G  = {video_g,video_g[5:4]};
-assign VGA_B  = {video_b,video_b[5:4]};
+assign VGA_R  = video_r;
+assign VGA_G  = video_g;
+assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
 assign CLK_VIDEO = clk_sys;
 assign CE_PIXEL = ce_pix2;
