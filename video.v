@@ -51,6 +51,7 @@ module video (
 
 localparam STAGE2  = 9'd250;   // oam + disp + pause
 localparam OAM_LEN = 80;
+localparam OAM_LEN16 = OAM_LEN/16;
 
 wire sprite_pixel_active;
 wire [1:0] sprite_pixel_data;
@@ -58,7 +59,7 @@ wire sprite_pixel_cmap;
 wire sprite_pixel_prio;
 
 wire [7:0] oam_do;
-wire [3:0] sprite_index = h_cnt[7:4]-(OAM_LEN/16);   // memory io starts at h_cnt == 16
+wire [3:0] sprite_index = h_cnt[7:4] - OAM_LEN16[3:0];   // memory io starts at h_cnt == 16
 wire [10:0] sprite_addr;
 
 // "data strobe" for the two bytes each sprite line consists of

@@ -396,14 +396,14 @@ wire [6:0] rom_mask =                   	// 0 - 2 banks, 32k direct mapped
 
 wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
-wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
+//wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
-wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
+//wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
-wire tama5 = (cart_mbc_type == 253);
+//wire tama5 = (cart_mbc_type == 253);
 //wire tama6 = (cart_mbc_type == ???);
-wire HuC1 = (cart_mbc_type == 254);
-wire HuC3 = (cart_mbc_type == 255);
+//wire HuC1 = (cart_mbc_type == 254);
+//wire HuC3 = (cart_mbc_type == 255);
 
 wire [8:0] mbc_bank =
    mbc1?mbc1_addr:						// MBC1, 16k bank 0, 16k bank 1-127 + ram

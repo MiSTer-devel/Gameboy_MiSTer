@@ -186,7 +186,7 @@ architecture rtl of T80_MCode is
 
 begin
 
-	process (IR, ISet, MCycle, F, NMICycle, IntCycle)
+	process (IR, ISet, MCycle, F, NMICycle, IntCycle, XY_State)
 		variable DDD : std_logic_vector(2 downto 0);
 		variable SSS : std_logic_vector(2 downto 0);
 		variable DPair : std_logic_vector(1 downto 0);
