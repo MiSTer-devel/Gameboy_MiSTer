@@ -507,8 +507,8 @@ lcd lcd (
 	 .mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
 	 .on     ( lcd_on     ),
 	 
-  	 .hs     ( VGA_HS     ),
-	 .vs     ( VGA_VS     ),
+  	 .hs     ( video_hs   ),
+	 .vs     ( video_vs   ),
 	 .blank  ( video_bl   ),
 	 .r      ( video_r    ),
 	 .g      ( video_g    ),
@@ -521,18 +521,31 @@ assign VGA_G  = video_g;
 assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
 assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_pix2;
+assign CE_PIXEL = ce_pix & !line_cnt;
+assign VGA_HS = video_hs;
+assign VGA_VS = video_vs;
 
 wire clk_cpu = clk_sys & ce_cpu;
 
-reg ce_pix, ce_cpu, ce_pix2;
+reg ce_pix, ce_cpu;
 always @(negedge clk_sys) begin
 	reg [2:0] div = 0;
 
 	div <= div + 1'd1;
-	ce_pix2  <= !div[0];
 	ce_pix   <= !div[1:0];
 	ce_cpu   <= !div[2:0];
+end
+
+reg [1:0] line_cnt;
+always @(posedge clk_sys) begin
+	reg old_hs;
+	reg old_vs;
+
+	old_vs <= video_vs;
+	old_hs <= video_hs;
+
+	if(old_hs & ~video_hs) line_cnt <= line_cnt + 1'd1;
+	if(old_vs & ~video_vs) line_cnt <= 0;
 end
 
 endmodule
