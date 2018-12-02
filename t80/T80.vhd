@@ -856,14 +856,15 @@ begin
 		end if;
 	end process;
 
+	TmpAddr2 <= std_logic_vector(unsigned(signed(SP) + signed(Save_Mux)));
+
 	process (Save_Mux, RegBusB, RegBusA_r, ID16,
-			ExchangeDH, IncDec_16, MCycle, TState, Wait_n, LDHLSP)
+			ExchangeDH, IncDec_16, MCycle, TState, Wait_n, LDHLSP, SP, TmpAddr2)
 	begin
 		RegDIH <= Save_Mux;
 		RegDIL <= Save_Mux;
 		
 		if LDHLSP = '1' and MCycle = "010" and TState = 4 then
-			TmpAddr2 <= std_logic_vector(unsigned(signed(SP) + signed(Save_Mux)));
 			RegDIH <= TmpAddr2(15 downto 8);
 			RegDIL <= TmpAddr2(7 downto 0);
 		end if;

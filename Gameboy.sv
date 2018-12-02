@@ -225,8 +225,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 
 ///////////////////////////////////////////////////
 
-wire cart_download = ioctl_download && (filetype == 8'h01);
-wire palette_download = ioctl_download && (filetype == 8'h04);
+wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h40);
+wire palette_download = ioctl_download && (filetype == 8'h04 || filetype == 8'h00);
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
@@ -356,7 +356,7 @@ always @(posedge clk_sys) begin
 	end else if(ce_cpu) begin
 		
 		//write to ROM bank register
-		if(cart_wr && (cart_addr[15:13])) begin
+		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
 			if(~mbc5 && cart_di[4:0]==0)
 				mbc_rom_bank_reg <= 5'd1;
 			else
@@ -416,14 +416,14 @@ wire [6:0] rom_mask =                    // 0 - 2 banks, 32k direct mapped
 
 wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
-wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
+//wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
-wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
+//wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
-wire tama5 = (cart_mbc_type == 253);
+//wire tama5 = (cart_mbc_type == 253);
 //wire tama6 = (cart_mbc_type == ???);
-wire HuC1 = (cart_mbc_type == 254);
-wire HuC3 = (cart_mbc_type == 255);
+//wire HuC1 = (cart_mbc_type == 254);
+//wire HuC3 = (cart_mbc_type == 255);
 
 wire [8:0] mbc_bank =
 	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
@@ -454,21 +454,6 @@ always @(posedge clk_sys) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
 end
-
-
-// wire [7:0]  cart_do = 
-// 	~cart_ready ?
-// 		8'h00 :
-// 		((cart_addr[15:13] == 3'b101) && ~mbc_ram_enable)?
-// 			8'hFF: //return 0xff when reading from disabled ram
-// 			((cart_addr[15:9] == 7'b1010000) && mbc2)?
-// 				cart_addr[0]?
-// 					{4'hF,sdram_do[11:8]}:
-// 					{4'hF,sdram_do[3:0]}:  //mask 4 top bits from RAM when using MBC2
-// 				cart_addr[0]?
-// 					sdram_do[15:8]:
-// 					sdram_do[7:0];
-
 
 //TODO: e.g. output and read timer register values from mbc3 when selected 
 wire [7:0] cart_di;    // data from cpu to cart
@@ -546,8 +531,8 @@ lcd lcd (
 	 .mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
 	 .on     ( lcd_on     ),
 	 
-  	 .hs     ( VGA_HS     ),
-	 .vs     ( VGA_VS     ),
+  	 .hs     ( video_hs   ),
+	 .vs     ( video_vs   ),
 	 .blank  ( video_bl   ),
 	 .r      ( video_r    ),
 	 .g      ( video_g    ),
@@ -560,30 +545,30 @@ assign VGA_G  = video_g;
 assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
 assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_pix2;
+assign CE_PIXEL = ce_pix & !line_cnt;
+assign VGA_HS = video_hs;
+assign VGA_VS = video_vs;
 
 wire clk_cpu = clk_sys & ce_cpu;
 
-reg ce_pix, ce_cpu, ce_pix2;
+reg ce_pix, ce_cpu;
 always @(negedge clk_sys) begin
 	reg [2:0] div = 0;
 
 	div <= div + 1'd1;
-	ce_pix2  <= !div[0];
 	ce_pix   <= !div[1:0];
 	ce_cpu   <= !div[2:0];
 end
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
-wire [14:0] bk_addr = {sd_lba[6:0],sd_buff_addr};
+wire [14:0] bk_addr = {sd_lba[5:0],sd_buff_addr};
 wire bk_wr = sd_buff_wr & sd_ack;
 wire [15:0] bk_data = sd_buff_dout;
-wire [15:0] bk_q = sd_buff_din;
+wire [15:0] bk_q;
+assign sd_buff_din = bk_q;
 
-//		((cart_addr[15:9] == 7'b1010000) && mbc2) ? cart_addr[0] ? {4'hF,sdram_do[11:8]}:
-//		{4'hF,sdram_do[3:0]}://mask 4 top bits from RAM when using MBC2
-wire [7:0] cram_do = 
+wire [7:0] cram_do =
 	mbc_ram_enable ? 
 		((cart_addr[15:9] == 7'b1010000) && mbc2) ? 
 			{4'hF,cram_q[3:0]} : // 4 bit MBC2 Ram needs top half masked.
@@ -673,7 +658,7 @@ always @(posedge clk_sys) begin
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
-			if(&sd_lba[4:0]) begin
+			if(&sd_lba[5:0]) begin
 				bk_loading <= 0;
 				bk_state <= 0;
 			end else begin
@@ -683,6 +668,18 @@ always @(posedge clk_sys) begin
 			end
 		end
 	end
+end
+
+reg [1:0] line_cnt;
+always @(posedge clk_sys) begin
+	reg old_hs;
+	reg old_vs;
+
+	old_vs <= video_vs;
+	old_hs <= video_hs;
+
+	if(old_hs & ~video_hs) line_cnt <= line_cnt + 1'd1;
+	if(old_vs & ~video_vs) line_cnt <= 0;
 end
 
 endmodule
