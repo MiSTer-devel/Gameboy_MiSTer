@@ -127,14 +127,18 @@ assign AUDIO_MIX = status[8:7];
 localparam CONF_STR1 = {
 	"GAMEBOY;;",
 	"-;",
-	"F,GB;",
+	"FS,GBCGB,Load ROM;",
+	"OB,System,Gameboy;", //Stub to disambiguate loading hybrid .gbc games in original gb mode
 	"-;",
 	"O4,Inverted color,No,Yes;",
 	"O1,Palette,Grayscale,Custom;"
 };
 
 localparam CONF_STR2 = {
-	",GBP;",
+	",GBP,Load Palette;",
+	"-;",
+	"R9,Load Backup RAM;",
+	"RA,Save Backup RAM;",
 	"-;",
 	"O3,Aspect ratio,4:3,16:9;",
 	"O78,Stereo mix,none,25%,50%,100%;",
@@ -175,6 +179,18 @@ wire [15:0] joystick_0, joystick_1;
 wire [15:0] joystick = joystick_0 | joystick_1;
 wire [7:0]  filetype;
 
+reg  [31:0] sd_lba;
+reg         sd_rd = 0;
+reg         sd_wr = 0;
+wire        sd_ack;
+wire  [7:0] sd_buff_addr;
+wire [15:0] sd_buff_dout;
+wire [15:0] sd_buff_din;
+wire        sd_buff_wr;
+wire        img_mounted;
+wire        img_readonly;
+wire [63:0] img_size;
+
 hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -188,6 +204,18 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 	.ioctl_dout(ioctl_dout),
 	.ioctl_wait(ioctl_wait),
 	.ioctl_index(filetype),
+	
+	.sd_lba(sd_lba),
+	.sd_rd(sd_rd),
+	.sd_wr(sd_wr),
+	.sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din),
+	.sd_buff_wr(sd_buff_wr),
+	.img_mounted(img_mounted),
+	.img_readonly(img_readonly),
+	.img_size(img_size),
 
 	.buttons(buttons),
 	.status(status),
@@ -199,15 +227,14 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h40);
-wire palette_download = ioctl_download && (filetype == 8'h04 || filetype == 8'h00);
+wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h00);
 
-// TODO: ds for cart ram write
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
-wire [15:0] sdram_di = cart_download ? ioctl_dout : {cart_di, cart_di};
+wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
 wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {3'b000, mbc_bank, cart_addr[12:1]};
-wire sdram_oe = ~cart_download & cart_rd;
-wire sdram_we = cart_download? dn_write : cart_ram_wr;
+wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
+wire sdram_we = cart_download & dn_write;
 
 assign SDRAM_CKE = 1;
 
@@ -270,25 +297,21 @@ end
 wire [8:0] mbc1_addr = 
 	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
 	(cart_addr[15:14] == 2'b01)?{1'b0, mbc1_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-127
-	(cart_addr[15:13] == 3'b101)?{7'b1000000, mbc1_ram_bank}:         // 8k RAM Bank 0-3
 	9'd0;
 	
 wire [8:0] mbc2_addr = 
 	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
 	(cart_addr[15:14] == 2'b01)?{1'b0, mbc2_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-15
-   (cart_addr[15:9] == 7'b1010000)?{9'b100000000}:                   // 512x4bits RAM, built-in into the MBC2 chip (Read/Write)
 	9'd0;
 	
 wire [8:0] mbc3_addr = 
 	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{mbc3_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-127
-	(cart_addr[15:13] == 3'b101)?((mbc3_mode==1'b0)?{7'b1000000, mbc3_ram_bank}:9'd0):         // 8k RAM Bank 0-3
+	(cart_addr[15:14] == 2'b01)?{mbc3_rom_bank, cart_addr[13]}:       // 16k ROM Bank 1-127
 	9'd0;
 
 wire [8:0] mbc5_addr = 
 	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{mbc5_rom_bank, cart_addr[13]}: // 16k ROM Bank 0-127 for now , TODO: 0-480 after remapping sdram memory
-	(cart_addr[15:13] == 3'b101)?{7'b1000000, mbc5_ram_bank}:         // 8k RAM Bank 0-3
+	(cart_addr[15:14] == 2'b01)?{mbc5_rom_bank, cart_addr[13]}:       // 16k ROM Bank 0-127 for now , TODO: 0-480 after remapping sdram memory
 	9'd0;
 	
 // -------------------------- RAM banking ------------------------
@@ -311,9 +334,9 @@ wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc_ram_bank_reg, mbc_rom_bank
 
 // mask address lines to enable proper mirroring
 wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask;//128
-wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg & rom_mask;//16
-wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg & rom_mask;//128
-wire [6:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;//128 for now 
+wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg & rom_mask;  //16
+wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg & rom_mask;  //128
+wire [6:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;  //128 for now 
 
 
 // --------------------- CPU register interface ------------------
@@ -328,26 +351,28 @@ always @(posedge clk_sys) begin
 	if(reset) begin
 		mbc_rom_bank_reg <= 5'd1;
 		mbc_ram_bank_reg <= 2'd0;
-      mbc1_mode <= 1'b0;
+		mbc1_mode <= 1'b0;
 		mbc3_mode <= 1'b0;
 		mbc_ram_enable <= 1'b0;
 	end else if(ce_cpu) begin
 		
 		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
-			if(~mbc5 && cart_di[4:0]==0) mbc_rom_bank_reg <= 5'd1;
-			else   				  mbc_rom_bank_reg <= cart_di[6:0];
+			if(~mbc5 && cart_di[4:0]==0)
+				mbc_rom_bank_reg <= 5'd1;
+			else
+				mbc_rom_bank_reg <= cart_di[6:0];
 		end	
 		
 		//write to RAM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b010)) begin
 			if (mbc3) begin
-			  if (cart_di[3]==1)
+				if (cart_di[3]==1)
 					mbc3_mode <= 1'b1; //enable RTC
 				else begin
 					mbc3_mode <= 1'b0; //enable RAM
 					mbc_ram_bank_reg <= cart_di[1:0];
-		     end
+				end
 			end else
 				mbc_ram_bank_reg <= cart_di[1:0];
 		end
@@ -359,7 +384,6 @@ always @(posedge clk_sys) begin
 		//RAM enable/disable
 		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
 			mbc_ram_enable <= (cart_di[3:0] == 4'ha);
-
 	end
 end
 
@@ -370,29 +394,26 @@ reg [7:0] cart_mbc_type;
 reg [7:0] cart_rom_size;
 reg [7:0] cart_ram_size;
 
-// only write sdram if the write attept comes from the cart ram area
-wire cart_ram_wr = cart_wr && mbc_ram_enable && (cart_addr[15:13] == 3'b101);
-   
 // RAM size
-wire [1:0] ram_mask =              			// 0 - no ram
-	   (cart_ram_size == 1)?2'b00:  			// 1 - 2k, 1 bank
-	   (cart_ram_size == 2)?2'b00:  			// 2 - 8k, 1 bank
-	   2'b11;                       			// 3 - 32k, 4 banks
+wire [1:0] ram_mask =                // 0 - no ram
+	   (cart_ram_size == 1)?2'b00:   // 1 - 2k, 1 bank
+	   (cart_ram_size == 2)?2'b00:   // 2 - 8k, 1 bank
+	   2'b11;                        // 3 - 32k, 4 banks
 
 // ROM size
-wire [6:0] rom_mask =                   	// 0 - 2 banks, 32k direct mapped
-	   (cart_rom_size == 1)?7'b0000011:  	// 1 - 4 banks = 64k
-	   (cart_rom_size == 2)?7'b0000111:  	// 2 - 8 banks = 128k
-	   (cart_rom_size == 3)?7'b0001111:  	// 3 - 16 banks = 256k
-	   (cart_rom_size == 4)?7'b0011111:  	// 4 - 32 banks = 512k
-	   (cart_rom_size == 5)?7'b0111111:  	// 5 - 64 banks = 1M
-	   (cart_rom_size == 6)?7'b1111111:    // 6 - 128 banks = 2M		
+wire [6:0] rom_mask =                    // 0 - 2 banks, 32k direct mapped
+	   (cart_rom_size == 1)?7'b0000011:  // 1 - 4 banks = 64k
+	   (cart_rom_size == 2)?7'b0000111:  // 2 - 8 banks = 128k
+	   (cart_rom_size == 3)?7'b0001111:  // 3 - 16 banks = 256k
+	   (cart_rom_size == 4)?7'b0011111:  // 4 - 32 banks = 512k
+	   (cart_rom_size == 5)?7'b0111111:  // 5 - 64 banks = 1M
+	   (cart_rom_size == 6)?7'b1111111:  // 6 - 128 banks = 2M		
 //?		(cart_rom_size == 6)?7'b1111111:    // 7 - ??? banks = 4M
 //?		(cart_rom_size == 6)?7'b1111111:    // 8 - ??? banks = 8M
 		(cart_rom_size == 82)?7'b1000111:   //$52 - 72 banks = 1.1M
 		(cart_rom_size == 83)?7'b1001111:   //$53 - 80 banks = 1.2M
 //		(cart_rom_size == 84)?7'b1011111:
-                            7'b1011111;   //$54 - 96 banks = 1.5M
+                            7'b1011111;  // $54 - 96 banks = 1.5M
 
 wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
@@ -406,7 +427,7 @@ wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 
 //wire HuC3 = (cart_mbc_type == 255);
 
 wire [8:0] mbc_bank =
-   mbc1?mbc1_addr:						// MBC1, 16k bank 0, 16k bank 1-127 + ram
+	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
 	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
 	mbc3?mbc3_addr:
 	mbc5?mbc5_addr:
@@ -436,11 +457,15 @@ always @(posedge clk_sys) begin
 end
 
 //TODO: e.g. output and read timer register values from mbc3 when selected 
-wire [7:0]  cart_di;    // data from cpu to cart
-wire [7:0]  cart_do = ~cart_ready ? 8'h00 :
-                      ((cart_addr[15:13] == 3'b101) && ~mbc_ram_enable)?8'hFF: //return 0xff when reading from disabled ram
-							 ((cart_addr[15:9] == 7'b1010000) && mbc2)?cart_addr[0]?{4'hF,sdram_do[11:8]}:{4'hF,sdram_do[3:0]}:  //mask 4 top bits from RAM when using MBC2
-							 cart_addr[0]?sdram_do[15:8]:sdram_do[7:0];
+wire [7:0] cart_di;    // data from cpu to cart
+wire [7:0] cart_do =
+	~cart_ready ?
+		8'h00 :
+		cram_rd ? 
+			cram_do :
+			cart_addr[0] ?
+				sdram_do[15:8]:
+				sdram_do[7:0];
 
 
 wire [15:0] cart_addr;
@@ -454,7 +479,7 @@ wire lcd_on;
 
 assign AUDIO_S = 0;
 
-wire reset = (RESET | status[0] | status[6] | buttons[1] | cart_download);
+wire reset = (RESET | status[0] | status[6] | buttons[1] | cart_download | bk_loading);
 
 
 // the gameboy itself
@@ -534,6 +559,118 @@ always @(negedge clk_sys) begin
 	div <= div + 1'd1;
 	ce_pix   <= !div[1:0];
 	ce_cpu   <= !div[2:0];
+end
+
+/////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
+
+wire [14:0] bk_addr = {sd_lba[5:0],sd_buff_addr};
+wire bk_wr = sd_buff_wr & sd_ack;
+wire [15:0] bk_data = sd_buff_dout;
+wire [15:0] bk_q;
+assign sd_buff_din = bk_q;
+
+wire [7:0] cram_do =
+	mbc_ram_enable ? 
+		((cart_addr[15:9] == 7'b1010000) && mbc2) ? 
+			{4'hF,cram_q[3:0]} : // 4 bit MBC2 Ram needs top half masked.
+			mbc3_mode ?
+				8'h0:            // RTC mode 
+				cram_q :         // Return normal value
+		8'hFF;                   // Ram not enabled
+
+wire [7:0] cram_q = cram_addr[0] ? cram_q_h : cram_q_l;
+wire [7:0] cram_q_h;
+wire [7:0] cram_q_l;
+
+wire is_cram_addr = (cart_addr[15:13] == 3'b101);
+wire cram_rd = cart_rd & is_cram_addr;
+wire cram_wr = cart_wr & is_cram_addr;
+wire [14:0] cram_addr = 
+	mbc1 ?
+		{mbc1_ram_bank, cart_addr[12:0]}:
+		mbc3 ?
+			{mbc3_ram_bank, cart_addr[12:0]}:
+			mbc5 ?
+				{mbc5_ram_bank, cart_addr[12:0]}:
+				{2'b00, cart_addr[12:0]};
+
+// Up to 8kb * 4banks of Cart Ram
+
+dpram #(14) cram_l (
+	.clock_a (clk_cpu),
+	.address_a (cram_addr[14:1]),
+	.wren_a (cram_wr & ~cram_addr[0]),
+	.data_a (cart_di),
+	.q_a (cram_q_l),
+	
+	.clock_b (clk_sys),
+	.address_b (bk_addr[14:1]),
+	.wren_b (bk_wr & ~bk_addr[0]),
+	.data_b (bk_data[7:0]),
+	.q_b (bk_q[7:0])
+);
+
+dpram #(14) cram_h (
+	.clock_a (clk_cpu),
+	.address_a (cram_addr[14:1]),
+	.wren_a (cram_wr & cram_addr[0]),
+	.data_a (cart_di),
+	.q_a (cram_q_h),
+	
+	.clock_b (clk_sys),
+	.address_b (bk_addr[14:1]),
+	.wren_b (bk_wr & bk_addr[0]),
+	.data_b (bk_data[15:8]),
+	.q_b (bk_q[15:8])
+);
+
+wire downloading = cart_download;
+
+reg bk_ena = 0;
+always @(posedge clk_sys) begin
+	reg old_downloading = 0;
+	
+	old_downloading <= downloading;
+	if(~old_downloading & downloading) bk_ena <= 0;
+	
+	//Save file always mounted in the end of downloading state.
+	if(downloading && img_mounted && img_size && !img_readonly) bk_ena <= 1;
+end
+
+wire bk_load    = status[9];
+wire bk_save    = status[10];
+reg  bk_loading = 0;
+reg  bk_state   = 0;
+
+always @(posedge clk_sys) begin
+	reg old_load = 0, old_save = 0, old_ack;
+
+	old_load <= bk_load;
+	old_save <= bk_save;
+	old_ack  <= sd_ack;
+	
+	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
+	
+	if(!bk_state) begin
+		if(bk_ena & ((~old_load & bk_load) | (~old_save & bk_save))) begin
+			bk_state <= 1;
+			bk_loading <= bk_load;
+			sd_lba <= 32'd0;
+			sd_rd <=  bk_load;
+			sd_wr <= ~bk_load;
+		end
+	end else begin
+		if(old_ack & ~sd_ack) begin
+			if(&sd_lba[5:0]) begin
+				bk_loading <= 0;
+				bk_state <= 0;
+			end else begin
+				sd_lba <= sd_lba + 1'd1;
+				sd_rd  <=  bk_loading;
+				sd_wr  <= ~bk_loading;
+			end
+		end
+	end
 end
 
 reg [1:0] line_cnt;
