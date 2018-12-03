@@ -572,7 +572,9 @@ wire [7:0] cram_do =
 	mbc_ram_enable ? 
 		((cart_addr[15:9] == 7'b1010000) && mbc2) ? 
 			{4'hF,cram_q[3:0]} : // 4 bit MBC2 Ram needs top half masked.
-			cram_q :             // Return normal value
+			mbc3_mode ?
+				8'h0:            // RTC mode 
+				cram_q :         // Return normal value
 		8'hFF;                   // Ram not enabled
 
 wire [7:0] cram_q = cram_addr[0] ? cram_q_h : cram_q_l;
