@@ -127,7 +127,8 @@ assign AUDIO_MIX = status[8:7];
 localparam CONF_STR1 = {
 	"GAMEBOY;;",
 	"-;",
-	"FS,GBCGB,Load Gameboy;",
+	"FS,GBCGB,Load ROM;",
+	"OB,System,Gameboy;", //Stub to disambiguate loading hybrid .gbc games in original gb mode
 	"-;",
 	"O4,Inverted color,No,Yes;",
 	"O1,Palette,Grayscale,Custom;"
@@ -226,7 +227,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h40);
-wire palette_download = ioctl_download && (filetype == 8'h04 || filetype == 8'h00);
+wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h00);
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
