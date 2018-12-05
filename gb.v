@@ -76,14 +76,15 @@ wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
 
+wire sc_r = {sc_start,6'h3F,sc_shiftclock};
 				
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 wire [7:0] cpu_di = 
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
 		sel_joy?joy_do:         // joystick register
-		sel_sb?sb_r:
-		sel_sc?sc_r:
+		sel_sb?8'hFF:				// serial transfer data register
+		sel_sc?sc_r:				// serial transfer control register
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
@@ -150,23 +151,43 @@ gbc_snd audio (
 // -----------------------serial port(dummy)---------------------------
 // --------------------------------------------------------------------
 
-reg [7:0] sb_r;
-reg [7:0] sc_r;
+reg [3:0] serial_counter;
+reg sc_start,sc_shiftclock;
+
 reg serial_irq;
+reg [8:0] serial_clk_div; //8192Hz
+
 always @(posedge clk) begin
-	serial_irq <= 0;
-	if(reset) begin
-		sb_r <= 8'h0;
-		sc_r <= 8'h7E;
+	serial_irq <= 1'b0;
+   if(reset) begin
+		  sc_start <= 1'b0;
+		  sc_shiftclock <= 1'b0;
+	end else if (sel_sc && !cpu_wr_n) begin	 //cpu write
+		sc_start <= cpu_do[7];
+		sc_shiftclock <= cpu_do[0];
+		if (cpu_do[7]) begin 						//enable transfer
+			serial_clk_div <= 9'h3FF;
+			serial_counter <= 4'd8;
+		end 
+	end else if (sc_start && sc_shiftclock) begin // serial transfer and serial clock enabled
+		
+		serial_clk_div <= serial_clk_div - 9'd1;
+		
+		if (serial_clk_div == 9'd0  && serial_counter)
+				serial_counter <= serial_counter - 4'd1;
+		
+		if (!serial_counter) begin
+			serial_irq <= 1'b1; 	//trigger interrupt
+			sc_start <= 1'b0; 	//reset transfer state
+			serial_clk_div <= 9'h3FF;
+		   serial_counter <= 4'd8;
+		end	
+	
 	end
-	else if (sel_sc && !cpu_wr_n) begin
-		if (cpu_do == 8'h81) begin
-			sb_r <= 8'hFF;
-			sc_r <= 8'h01;
-			serial_irq<=1;
-		end
-	end
-end	
+	
+end
+
+			
 
 // --------------------------------------------------------------------
 // ------------------------------ inputs ------------------------------
@@ -204,7 +225,7 @@ wire [7:0] irq_vec =
 
 wire vs = (lcd_mode == 2'b01);
 reg vsD, vsD2;
-reg [3:0] inputD, inputD2;
+reg [7:0] inputD, inputD2;
 
 // irq is low when an enable irq is active
 wire irq_n = !(ie_r & if_r);
@@ -234,7 +255,7 @@ always @(negedge clk) begin //negedge to trigger interrupt earlier
 	if(serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
-	inputD <= joy_p4 | joy_p5; 
+	inputD <= {joy_p4, joy_p5};
 	inputD2 <= inputD;
 	if(~inputD & inputD2) if_r[4] <= 1'b1;
 
