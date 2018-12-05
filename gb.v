@@ -225,7 +225,7 @@ wire [7:0] irq_vec =
 
 wire vs = (lcd_mode == 2'b01);
 reg vsD, vsD2;
-reg [3:0] inputD, inputD2;
+reg [7:0] inputD, inputD2;
 
 // irq is low when an enable irq is active
 wire irq_n = !(ie_r & if_r);
@@ -255,7 +255,7 @@ always @(negedge clk) begin //negedge to trigger interrupt earlier
 	if(serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
-	inputD <= joy_p4 | joy_p5; 
+	inputD <= {joy_p4, joy_p5};
 	inputD2 <= inputD;
 	if(~inputD & inputD2) if_r[4] <= 1'b1;
 
