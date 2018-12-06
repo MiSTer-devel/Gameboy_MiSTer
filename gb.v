@@ -76,7 +76,7 @@ wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
 
-wire sc_r = {sc_start,6'h3F,sc_shiftclock};
+wire [7:0] sc_r = {sc_start,6'h3F,sc_shiftclock};
 				
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 wire [7:0] cpu_di = 

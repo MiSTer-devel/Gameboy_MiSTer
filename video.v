@@ -120,7 +120,7 @@ reg [7:0] scx;
 reg [7:0] scx_r;   // stable over line
 
 // ff44 line counter
-reg [7:0] ly;
+wire [7:0] ly = v_cnt;
 
 // ff45 line counter compare
 wire lyc_match = (ly == lyc);
@@ -463,12 +463,8 @@ always @(negedge clk or negedge lcdc_on) begin
 		//reset counters
 		h_cnt <= 9'd0;  
 		v_cnt <= 8'd0;
-		ly <= 8'd0;
 		
 	end else begin
-		// this ly change h_cnt is wrong!!!
-		if(h_cnt == 0)
-			ly <= (v_cnt >= 153)?(v_cnt-8'd153):(v_cnt+8'd1);
 	
 		if(h_cnt != 455) begin
 			h_cnt <= h_cnt + 9'd1;
