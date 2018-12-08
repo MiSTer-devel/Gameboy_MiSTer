@@ -118,8 +118,13 @@ assign LED_USER  = ioctl_download;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[3] ? 8'd16 : 8'd4;
-assign VIDEO_ARY = status[3] ? 8'd9  : 8'd3; 
+assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
+						 status[4:3] == 2'b01 ? 8'd10:
+						 8'd4;
+						 
+assign VIDEO_ARY = status[4:3] == 2'b10 ? 8'd9:
+						 status[4:3] == 2'b01 ? 8'd9:
+						 8'd3;
 
 assign AUDIO_MIX = status[8:7];
 
@@ -130,7 +135,7 @@ localparam CONF_STR1 = {
 	"FS,GBCGB,Load ROM;",
 	"OB,System,Gameboy;", //Stub to disambiguate loading hybrid .gbc games in original gb mode
 	"-;",
-	"O4,Inverted color,No,Yes;",
+	"OC,Inverted color,No,Yes;",
 	"O1,Palette,Grayscale,Custom;"
 };
 
@@ -140,7 +145,7 @@ localparam CONF_STR2 = {
 	"R9,Load Backup RAM;",
 	"RA,Save Backup RAM;",
 	"-;",
-	"O3,Aspect ratio,4:3,16:9;",
+	"O34,Aspect ratio,4:3,10:9,16:9;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
 	"O2,Boot,Normal,Fast;",
@@ -518,7 +523,7 @@ lcd lcd (
 	 .clk    ( clk_cpu    ),
 
 	 .tint   ( status[1]  ),
-	 .inv    ( status[4]  ),
+	 .inv    ( status[12]  ),
 
 	 // Palettes
 	 .pal1   (palette[127:104]),
