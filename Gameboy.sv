@@ -237,7 +237,7 @@ wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h0
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
 wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
-wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {3'b000, mbc_bank, cart_addr[12:1]};
+wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_bank, cart_addr[12:1]};
 wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
 wire sdram_we = cart_download & dn_write;
 
@@ -283,79 +283,76 @@ end
 ///////////////////////////////////////////////////
 
 
-// TODO: RAM bank
 // http://fms.komkon.org/GameBoy/Tech/Carts.html
 
 // 32MB SDRAM memory map using word addresses
 // 2 2 2 2 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 D
 // 3 2 1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0 S
 // -------------------------------------------------
-// 0 0 0 0 X X X X X X X X X X X X X X X X X X X X X up to 2MB used as ROM
-// 0 0 0 1 X X X X X X X X X X X X X X X X X X X X X up to 2MB used as RAM
+// 0 0 0 0 X X X X X X X X X X X X X X X X X X X X X up to 2MB used as ROM (MBC1-3), 8MB for MBC5 
 // 0 0 0 0 R R B B B B B C C C C C C C C C C C C C C MBC1 ROM (R=RAM bank in mode 0)
-// 0 0 0 1 0 0 0 0 0 0 R R C C C C C C C C C C C C C MBC1 RAM (R=RAM bank in mode 1)
 
 // ---------------------------------------------------------------
 // ----------------------------- MBC1 ----------------------------
 // ---------------------------------------------------------------
 
-wire [8:0] mbc1_addr = 
-	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{1'b0, mbc1_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-127
+wire [9:0] mbc1_addr = 
+	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
+	(cart_addr[15:14] == 2'b01)?{2'b00, mbc1_rom_bank, cart_addr[13]}: 	// 16k ROM Bank 1-127
 	9'd0;
 	
-wire [8:0] mbc2_addr = 
-	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{1'b0, mbc2_rom_bank, cart_addr[13]}: // 16k ROM Bank 1-15
+wire [9:0] mbc2_addr = 
+	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
+	(cart_addr[15:14] == 2'b01)?{2'b00, mbc2_rom_bank, cart_addr[13]}:	// 16k ROM Bank 1-15
 	9'd0;
 	
-wire [8:0] mbc3_addr = 
-	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{mbc3_rom_bank, cart_addr[13]}:       // 16k ROM Bank 1-127
+wire [9:0] mbc3_addr = 
+	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
+	(cart_addr[15:14] == 2'b01)?{2'b00,mbc3_rom_bank, cart_addr[13]}:  	// 16k ROM Bank 1-127
 	9'd0;
 
-wire [8:0] mbc5_addr = 
-	(cart_addr[15:14] == 2'b00)?{8'b000000000, cart_addr[13]}:        // 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{mbc5_rom_bank, cart_addr[13]}:       // 16k ROM Bank 0-127 for now , TODO: 0-480 after remapping sdram memory
+wire [9:0] mbc5_addr = 
+	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
+	(cart_addr[15:14] == 2'b01)?{mbc5_rom_bank, cart_addr[13]}:       	// 16k ROM Bank 0-480 (0h-1E0h)
 	9'd0;
 	
 // -------------------------- RAM banking ------------------------
 
 // in mode 0 (16/8 mode) the ram is not banked 
 // in mode 1 (4/32 mode) four ram banks are used
-wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc_ram_bank_reg:2'b00) & ram_mask;
-wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg & ram_mask;
-wire [1:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
+wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc_ram_bank_reg[1:0]:2'b00) & ram_mask[1:0];
+wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg[1:0] & ram_mask[1:0];
+wire [3:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
 
 // -------------------------- ROM banking ------------------------
    
 // in mode 0 (16/8 mode) the ram bank select signals are the upper rom address lines 
 // in mode 1 (4/32 mode) the upper two rom address lines are 2'b00
-wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc_ram_bank_reg, mbc_rom_bank_reg[4:0]};
+wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc_ram_bank_reg[1:0], mbc_rom_bank_reg[4:0]};
 
 // in mode 0 map memory at A000-BFFF
 // in mode 1 map rtc register at A000-BFFF
 //wire [6:0] mbc3_ram_bank_addr = { mbc3_mode?2'b00:mbc3_ram_bank_reg, mbc3_rom_bank_reg};
 
 // mask address lines to enable proper mirroring
-wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask;//128
-wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg & rom_mask;  //16
-wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg & rom_mask;  //128
-wire [6:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;  //128 for now 
+wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask[6:0];		 //128
+wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //16
+wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //128
+wire [8:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;  //480
 
 
 // --------------------- CPU register interface ------------------
 reg mbc_ram_enable;
 reg mbc1_mode;
 reg mbc3_mode;
-reg [6:0] mbc_rom_bank_reg; // for now reg [8:0] when remapping sdram for 8mb rom (mbc5)
-reg [1:0] mbc_ram_bank_reg; // for now reg [2:0] when remapping sdram for 8mb rom (mbc5)
+reg [8:0] mbc_rom_bank_reg;
+reg [3:0] mbc_ram_bank_reg; //0-15
 
 
 always @(posedge clk_sys) begin
 	if(reset) begin
 		mbc_rom_bank_reg <= 5'd1;
-		mbc_ram_bank_reg <= 2'd0;
+		mbc_ram_bank_reg <= 4'd0;
 		mbc1_mode <= 1'b0;
 		mbc3_mode <= 1'b0;
 		mbc_ram_enable <= 1'b0;
@@ -363,10 +360,15 @@ always @(posedge clk_sys) begin
 		
 		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
-			if(~mbc5 && cart_di[4:0]==0)
+			if(~mbc5 && cart_di[6:0]==0) //special case mbc1-3 rombank 0=1
 				mbc_rom_bank_reg <= 5'd1;
-			else
-				mbc_rom_bank_reg <= cart_di[6:0];
+			else if (mbc5) begin
+				if (cart_addr[13:12] == 2'b11) //3000-3FFF High bit
+					mbc_rom_bank_reg[8] <= cart_di[0];
+				else //2000-2FFF low 8 bits
+					mbc_rom_bank_reg[7:0] <= cart_di[7:0];
+			end else
+				mbc_rom_bank_reg <= {2'b00,cart_di[6:0]}; //mbc1-3
 		end	
 		
 		//write to RAM bank register
@@ -376,10 +378,13 @@ always @(posedge clk_sys) begin
 					mbc3_mode <= 1'b1; //enable RTC
 				else begin
 					mbc3_mode <= 1'b0; //enable RAM
-					mbc_ram_bank_reg <= cart_di[1:0];
+					mbc_ram_bank_reg <= {2'b00,cart_di[1:0]};
 				end
 			end else
-				mbc_ram_bank_reg <= cart_di[1:0];
+				if (mbc5)//can probably be simplified
+					mbc_ram_bank_reg <= cart_di[3:0];
+				else
+					mbc_ram_bank_reg <= {2'b00,cart_di[1:0]};
 		end
 
 		// MBC1 ROM/RAM Mode Select
@@ -400,25 +405,26 @@ reg [7:0] cart_rom_size;
 reg [7:0] cart_ram_size;
 
 // RAM size
-wire [1:0] ram_mask =                // 0 - no ram
-	   (cart_ram_size == 1)?2'b00:   // 1 - 2k, 1 bank
-	   (cart_ram_size == 2)?2'b00:   // 2 - 8k, 1 bank
-	   2'b11;                        // 3 - 32k, 4 banks
-
+wire [3:0] ram_mask =               	// 0 - no ram
+	   (cart_ram_size == 1)?4'b0000:   	// 1 - 2k, 1 bank
+	   (cart_ram_size == 2)?4'b0000:   	// 2 - 8k, 1 bank
+	   (cart_ram_size == 3)?4'b0011:		// 3 - 32k, 4 banks
+		4'b1111;   						   	// 4 - 128k 16 banks
+		
 // ROM size
-wire [6:0] rom_mask =                    // 0 - 2 banks, 32k direct mapped
-	   (cart_rom_size == 1)?7'b0000011:  // 1 - 4 banks = 64k
-	   (cart_rom_size == 2)?7'b0000111:  // 2 - 8 banks = 128k
-	   (cart_rom_size == 3)?7'b0001111:  // 3 - 16 banks = 256k
-	   (cart_rom_size == 4)?7'b0011111:  // 4 - 32 banks = 512k
-	   (cart_rom_size == 5)?7'b0111111:  // 5 - 64 banks = 1M
-	   (cart_rom_size == 6)?7'b1111111:  // 6 - 128 banks = 2M		
-//?		(cart_rom_size == 6)?7'b1111111:    // 7 - ??? banks = 4M
-//?		(cart_rom_size == 6)?7'b1111111:    // 8 - ??? banks = 8M
-		(cart_rom_size == 82)?7'b1000111:   //$52 - 72 banks = 1.1M
-		(cart_rom_size == 83)?7'b1001111:   //$53 - 80 banks = 1.2M
-//		(cart_rom_size == 84)?7'b1011111:
-                            7'b1011111;  // $54 - 96 banks = 1.5M
+wire [8:0] rom_mask =                    	 // 0 - 2 banks, 32k direct mapped
+	   (cart_rom_size == 1)? 9'b000000011:  // 1 - 4 banks = 64k
+	   (cart_rom_size == 2)? 9'b000000111:  // 2 - 8 banks = 128k
+	   (cart_rom_size == 3)? 9'b000001111:  // 3 - 16 banks = 256k
+	   (cart_rom_size == 4)? 9'b000011111:  // 4 - 32 banks = 512k
+	   (cart_rom_size == 5)? 9'b000111111:  // 5 - 64 banks = 1M
+	   (cart_rom_size == 6)? 9'b001111111:  // 6 - 128 banks = 2M		
+		(cart_rom_size == 7)? 9'b011111111:  // 7 - 256 banks = 4M
+		(cart_rom_size == 8)? 9'b111111111:  // 8 - 512 banks = 8M
+		(cart_rom_size == 82)?9'b001111111:  //$52 - 72 banks = 1.1M
+		(cart_rom_size == 83)?9'b001111111:  //$53 - 80 banks = 1.2M
+		(cart_rom_size == 84)?9'b001111111:
+                            9'b001111111;  //$54 - 96 banks = 1.5M
 
 wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
@@ -431,7 +437,7 @@ wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 
 //wire HuC1 = (cart_mbc_type == 254);
 //wire HuC3 = (cart_mbc_type == 255);
 
-wire [8:0] mbc_bank =
+wire [9:0] mbc_bank =
 	mbc1?mbc1_addr:                  // MBC1, 16k bank 0, 16k bank 1-127 + ram
 	mbc2?mbc2_addr:                  // MBC2, 16k bank 0, 16k bank 1-15 + ram
 	mbc3?mbc3_addr:
@@ -439,7 +445,7 @@ wire [8:0] mbc_bank =
 //	tama5?tama5_addr:
 //	HuC1?HuC1_addr:
 //	HuC3?HuC3_addr:              
-	{7'b0000000, cart_addr[14:13]};  // no MBC, 32k linear address
+	{8'd0, cart_addr[14:13]};  // no MBC, 32k linear address
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 
@@ -568,7 +574,7 @@ end
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
-wire [14:0] bk_addr = {sd_lba[5:0],sd_buff_addr};
+wire [16:0] bk_addr = {sd_lba[7:0],sd_buff_addr};
 wire bk_wr = sd_buff_wr & sd_ack;
 wire [15:0] bk_data = sd_buff_dout;
 wire [15:0] bk_q;
@@ -590,40 +596,36 @@ wire [7:0] cram_q_l;
 wire is_cram_addr = (cart_addr[15:13] == 3'b101);
 wire cram_rd = cart_rd & is_cram_addr;
 wire cram_wr = cart_wr & is_cram_addr;
-wire [14:0] cram_addr = 
-	mbc1 ?
-		{mbc1_ram_bank, cart_addr[12:0]}:
-		mbc3 ?
-			{mbc3_ram_bank, cart_addr[12:0]}:
-			mbc5 ?
-				{mbc5_ram_bank, cart_addr[12:0]}:
-				{2'b00, cart_addr[12:0]};
+wire [16:0] cram_addr = mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
+								mbc3? {2'b00,mbc3_ram_bank, cart_addr[12:0]}:
+								mbc5?	{mbc5_ram_bank, cart_addr[12:0]}:
+								{4'd0, cart_addr[12:0]};
 
-// Up to 8kb * 4banks of Cart Ram
+// Up to 8kb * 16banks of Cart Ram (128kb)
 
-dpram #(14) cram_l (
+dpram #(16) cram_l (
 	.clock_a (clk_cpu),
-	.address_a (cram_addr[14:1]),
+	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & ~cram_addr[0]),
 	.data_a (cart_di),
 	.q_a (cram_q_l),
 	
 	.clock_b (clk_sys),
-	.address_b (bk_addr[14:1]),
+	.address_b (bk_addr[16:1]),
 	.wren_b (bk_wr & ~bk_addr[0]),
 	.data_b (bk_data[7:0]),
 	.q_b (bk_q[7:0])
 );
 
-dpram #(14) cram_h (
+dpram #(16) cram_h (
 	.clock_a (clk_cpu),
-	.address_a (cram_addr[14:1]),
+	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & cram_addr[0]),
 	.data_a (cart_di),
 	.q_a (cram_q_h),
 	
 	.clock_b (clk_sys),
-	.address_b (bk_addr[14:1]),
+	.address_b (bk_addr[16:1]),
 	.wren_b (bk_wr & bk_addr[0]),
 	.data_b (bk_data[15:8]),
 	.q_b (bk_q[15:8])
@@ -647,6 +649,14 @@ wire bk_save    = status[10];
 reg  bk_loading = 0;
 reg  bk_state   = 0;
 
+// RAM size
+wire [7:0] ram_mask_file =  											// 0 - no ram
+		(mbc2)?8'h01:														// mbc2 512x4bits
+	   (cart_ram_size == 1)?8'h03:   								// 1 - 2k, 1 bank		 sd_lba[1:0]
+	   (cart_ram_size == 2)?8'h0F:   								// 2 - 8k, 1 bank		 sd_lba[3:0]
+	   (cart_ram_size == 3)?8'h3F:									// 3 - 32k, 4 banks	 sd_lba[5:0]
+		8'hFF;   						   								// 4 - 128k 16 banks  sd_lba[7:0] 1111
+
 always @(posedge clk_sys) begin
 	reg old_load = 0, old_save = 0, old_ack;
 
@@ -666,7 +676,8 @@ always @(posedge clk_sys) begin
 		end
 	end else begin
 		if(old_ack & ~sd_ack) begin
-			if(&sd_lba[5:0]) begin
+			
+			if(sd_lba[7:0]>=ram_mask_file) begin
 				bk_loading <= 0;
 				bk_state <= 0;
 			end else begin
