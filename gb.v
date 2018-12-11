@@ -338,19 +338,29 @@ video video (
 	.dma_data    ( dma_data      )
 );
 
-// total 8k vram from $8000 to $9fff
+// total 8k/16k (CGB) vram from $8000 to $9fff
 wire cpu_wr_vram = sel_vram && !cpu_wr_n;
 wire [7:0] vram_do;
 wire vram_wren = video_rd?1'b0:cpu_wr_vram;
 wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
 
-spram #(13) vram (
+reg vram_bank; //0-1 FF4F - VBK
+
+spram #(14) vram (
 	.clock      ( clk           ),
-	.address    ( vram_addr     ),
+	.address    ( {vram_bank,vram_addr}),
 	.wren       ( vram_wren     ),
 	.data       ( cpu_do        ),
 	.q          ( vram_do       )
 );
+
+//GBC VRAM banking
+always @(posedge clk) begin
+	if(reset)
+		vram_bank <= 1'd0;
+	else if((cpu_addr == 16'hff4f) && !cpu_wr_n && isGBC)
+		vram_bank <= cpu_do[0];
+end
 
 // --------------------------------------------------------------------
 // -------------------------- zero page ram ---------------------------
@@ -368,21 +378,41 @@ spram #(7) zpram (
 );
 
 // --------------------------------------------------------------------
-// ------------------------- 8k internal ram --------------------------
+// ------------------------ 8k/32k(GBC) internal ram  -----------------
 // --------------------------------------------------------------------
 
+reg  [2:0] iram_bank; //1-7 FF70 - SVBK
 wire iram_wren = (dma_rd&&dma_sel_iram)?1'b0:cpu_wr_iram;
-wire [12:0] iram_addr = (dma_rd&&dma_sel_iram)?dma_addr[12:0]:cpu_addr[12:0];
+
+wire [14:0] iram_addr = (dma_rd&&dma_sel_iram)?								  //dma transfer?
+									(dma_addr[12])?{iram_bank,dma_addr[11:0]}:  //bank 1-7
+									{2'd0,dma_addr[12:0]}:					        //bank 0
+								//cpu 
+								(cpu_addr[12])?{iram_bank,cpu_addr[11:0]}:	  //bank 1-7
+								{2'd0,cpu_addr[12:0]};						  		  //bank 0				
+								
 
 wire cpu_wr_iram = sel_iram && !cpu_wr_n;
 wire [7:0] iram_do;
-spram #(13) iram (
+spram #(15) iram (
 	.clock      ( clk            ),
-	.address    ( iram_addr[12:0]),
+	.address    ( {iram_bank,iram_addr[14:0]} ),
 	.wren       ( iram_wren      ),
 	.data       ( cpu_do         ),
 	.q          ( iram_do        )
 );
+
+//GBC WRAM banking
+always @(posedge clk) begin
+	if(reset)
+		iram_bank <= 3'd1;
+	else if((cpu_addr == 16'hff70) && !cpu_wr_n && isGBC) begin
+		if (cpu_do[2:0]==3'd0) // 0 -> 1;
+			iram_bank <= 3'd1;
+		else
+			iram_bank <= cpu_do[2:0];
+	end
+end
 
 // --------------------------------------------------------------------
 // ------------------------ internal boot rom -------------------------
