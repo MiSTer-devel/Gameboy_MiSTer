@@ -166,7 +166,7 @@ always @(posedge clk) begin
 		sc_start <= cpu_do[7];
 		sc_shiftclock <= cpu_do[0];
 		if (cpu_do[7]) begin 						//enable transfer
-			serial_clk_div <= 9'h3FF;
+			serial_clk_div <= 9'h1FF;
 			serial_counter <= 4'd8;
 		end 
 	end else if (sc_start && sc_shiftclock) begin // serial transfer and serial clock enabled
@@ -179,7 +179,7 @@ always @(posedge clk) begin
 		if (!serial_counter) begin
 			serial_irq <= 1'b1; 	//trigger interrupt
 			sc_start <= 1'b0; 	//reset transfer state
-			serial_clk_div <= 9'h3FF;
+			serial_clk_div <= 9'h1FF;
 		   serial_counter <= 4'd8;
 		end	
 	

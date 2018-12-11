@@ -32,34 +32,48 @@ module lcd (
    output [7:0] b
 );
 
+
+reg [14:0] vbuffer_inptr;
+reg vbuffer_write;
+
+reg [14:0] vbuffer_outptr;
+reg [14:0] vbuffer_lineptr;
+
+
+//image buffer 160x144x2bits for now , later 15bits for cgb
+dpram #(15,2) vbuffer (
+	.clock_a (clk),
+	.address_a (vbuffer_inptr),
+	.wren_a (clkena),
+	.data_a (data),
+	.q_a (),
+	
+	.clock_b (pclk),
+	.address_b (vbuffer_outptr),
+	.wren_b (1'b0), //only reads
+	.data_b (),
+	.q_b (pixel_reg)
+);
+
+always @(posedge clk) begin
+	if(!on || (mode==2'd01)) begin  //lcd disabled of vsync restart pointer
+	   vbuffer_inptr <= 15'h0;
+	end else begin
+		
+		// end of vsync
+		if(clkena) begin
+			vbuffer_inptr <= vbuffer_inptr + 15'd1;
+		end
+		
+	end;
+end
+
+	
 // Mode 00:  h-blank
 // Mode 01:  v-blank
 // Mode 10:  oam
-// Mode 11:  oam and vram
+// Mode 11:  oam and vram	
 
-// space for 2*160 pixel
-reg [7:0] shift_reg_wptr;
-reg p_toggle;
-reg [1:0] shift_reg [511:0];
-reg [1:0] last_mode_in;
-
-// shift register input
-always @(posedge clk) begin
-	last_mode_in <= mode;
-
-	// end of vsync
-	if(clkena) begin
-		shift_reg[{p_toggle, shift_reg_wptr}] <= data;
-		shift_reg_wptr <= shift_reg_wptr + 8'd1;
-	end
-	
-	// reset write pointer at end of hsync phase
-	if((mode != 2'b00) && (last_mode_in == 2'b00)) begin
-		shift_reg_wptr <= 8'd0;
-		p_toggle <= !p_toggle;
-	end
-end
-		
 // 
 parameter H   = 160;    // width of visible area
 parameter HFP = 16;     // unused time before hsync
@@ -80,7 +94,6 @@ reg[9:0] v_cnt;         // vertical pixel counter
 reg [1:0] last_mode_h;
 always@(posedge pclk) begin
 	if(pce) begin
-		last_mode_h <= mode;
 		
 		if(h_cnt==H+HFP+HS+HBP-1)   h_cnt <= 0;
 		else                        h_cnt <= h_cnt + 1'd1;
@@ -89,10 +102,6 @@ always@(posedge pclk) begin
 		if(h_cnt == H+HFP)    hs <= 1'b1;
 		if(h_cnt == H+HFP+HS) hs <= 1'b0;
 
-		// synchronize to input mode
-		// end of hblank
-		if((mode == 2'b10) && (last_mode_h == 2'b00))
-			h_cnt <= 0;
 	end
 end
 
@@ -108,14 +117,6 @@ always@(posedge pclk) begin
 			// generate positive vsync signal
 			if(v_cnt == V+VFP)    vs <= 1'b1;
 			if(v_cnt == V+VFP+VS) vs <= 1'b0;
-
-			last_mode_v <= mode;
-
-			// synchronize to input mode
-			// end of mode 01 (vblank)
-			// make and offset of - 4 for the 4 line delay of the scandoubler
-			if((mode != 2'b01) && (last_mode_v == 2'b01))
-				v_cnt <= 10'd616 - 10'd4;
 		end
 	end
 end
@@ -131,12 +132,41 @@ always@(posedge pclk) begin
 		// visible area?
 		if((v_cnt < V) && (h_cnt < H)) begin
 			blank <= 1'b0;
-			pixel_reg <= shift_reg[{!p_toggle, shift_reg_rptr}];
-			shift_reg_rptr <= shift_reg_rptr + 8'd1;
 		end else begin
 			blank <= 1'b1;
-			shift_reg_rptr <= 8'd0;
 		end
+	end
+end
+
+
+reg [7:0] currentpixel;
+reg [1:0] linecnt;
+always@(posedge pclk) begin
+	
+	if(pce) begin
+		if(h_cnt == H+HFP+HS+HBP-1) begin
+
+			//reset output at vsync
+			if(v_cnt == V+VFP) begin
+				vbuffer_outptr 	<= 15'd0; 
+				vbuffer_lineptr	<= 15'd0;
+				currentpixel		<=	8'd0;
+				linecnt <= 2'd3;
+			end
+		end else
+			// visible area?
+			if((v_cnt < V) && (h_cnt < H)) begin
+				vbuffer_outptr <= vbuffer_lineptr + currentpixel; 
+				if (currentpixel + 8'd1 == 160) begin
+					currentpixel <= 8'd0;
+					linecnt <= linecnt - 2'd1;
+					
+					//increment vbuffer_lineptr after 4 lines
+					if (!linecnt)
+						vbuffer_lineptr <= vbuffer_lineptr + 15'd160;
+				end else
+					currentpixel <= currentpixel + 8'd1;
+			end
 	end
 end
 
