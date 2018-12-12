@@ -22,6 +22,7 @@
 module video (
 	input  reset,
    input  clk,    // 4 Mhz cpu clock
+	input  clk_dma,
 	
 	// cpu register adn oam interface
 	input  cpu_sel_oam,
@@ -145,7 +146,7 @@ assign dma_rd = dma_active;
 reg dma_active;
 reg [7:0] dma;
 reg [9:0] dma_cnt;     // dma runs 4*160 clock cycles = 160us @ 4MHz
-always @(posedge clk) begin
+always @(posedge clk_dma) begin
 	if(reset)
 		dma_active <= 1'b0;
 	else begin
