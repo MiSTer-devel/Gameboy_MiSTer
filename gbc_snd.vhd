@@ -106,12 +106,12 @@ architecture SYN of gbc_snd is
 	signal noi_envsgn		: std_logic;
 	signal noi_envper		: std_logic_vector(2 downto 0);
 	signal noi_freqsh		: std_logic_vector(3 downto 0);
+	signal noi_freqchange: std_logic;
 	signal noi_short		: std_logic;
 	signal noi_div			: std_logic_vector(2 downto 0);
 	signal noi_trigger	: std_logic;
 	signal noi_lenchk		: std_logic;
 
-	signal noi_fr2			: std_logic_vector(10 downto 0);		-- Noise frequency (shadow copy)
 	signal noi_vol			: std_logic_vector(3 downto 0);		-- Noise initial volume
 	signal noi_playing	: std_logic;								-- Noise channel active
 	signal noi_wav			: std_logic_vector(5 downto 0);		-- Noise output waveform
@@ -248,6 +248,7 @@ begin
 			sq2_volchange <= '0';
 			sq1_volchange <= '0';
 			noi_volchange <= '0';
+			noi_freqchange<= '0';
 			
 			sq2_lenchange <= '0';
 			sq1_lenchange <= '0';
@@ -275,7 +276,6 @@ begin
 					sq1_swshift <= s1_writedata(2 downto 0);
 				when "010001" =>	-- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
 					sq1_duty <= s1_writedata(7 downto 6);
-					-- sq1_slen <= s1_writedata(5 downto 0);
 					sq1_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
 					sq1_lenchange <= '1';
 				when "010010" =>	-- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
@@ -296,7 +296,6 @@ begin
 													-- Square 2
 				when "010110" =>	-- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
 					sq2_duty <= s1_writedata(7 downto 6);
-					-- sq2_slen <= s1_writedata(5 downto 0);
 					sq2_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
 					sq2_lenchange <= '1';
 				when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
@@ -346,6 +345,7 @@ begin
 					noi_freqsh <= s1_writedata(7 downto 4);
 					noi_short <= s1_writedata(3);
 					noi_div <= s1_writedata(2 downto 0);
+					noi_freqchange <= '1';
 				when "100011" =>	-- NR44 FF23 TL-- ---- Trigger, Length enable
 					noi_trigger <= s1_writedata(7);
 					if noi_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
@@ -555,7 +555,7 @@ begin
 		variable wav_index	: unsigned(4 downto 0);
 
 		variable noi_divisor	: unsigned(10 downto 0);	-- Noise frequency divisor
-		variable noi_freq		: unsigned(10 downto 0);	-- Noise frequency (calculated)
+		variable noi_period	: unsigned(10 downto 0);	-- Noise period    (calculated)
 		variable noi_fcnt		: unsigned(10 downto 0);
 		variable noi_lfsr		: unsigned(14 downto 0);  -- 15 bits
 		variable noi_len		: std_logic_vector(6 downto 0);
@@ -580,7 +580,6 @@ begin
 			sq1_out		:= '0';
 						
 			sq2_playing	<= '0';
-		-- 	sq2_fr2		<= (others => '0');
 			sq2_fcnt		:= (others => '0');
 			sq2_phase	:= 0;
 			sq2_len		:= (others => '0');
@@ -595,7 +594,6 @@ begin
 			wav_index	:= (others => '0');
 			
 			noi_playing	<= '0';
-			noi_fr2		<= (others => '0');
 			noi_fcnt		:= (others => '0');
 			noi_lfsr		:= (others => '1');
 			noi_len		:= (others => '0');
@@ -608,8 +606,12 @@ begin
 			sweep_negate 	:= false;
 
 		elsif rising_edge(clk) then
+
+			
+			----------------------- Square channel 1	-----------------------------	
+
 			if en_snd4 then
-				-- Sq1 frequency timer
+				-- Sq1 frequency timer Frequency = 131072/(2048-x) Hz
 				if sq1_playing = '1' then
 					acc_fcnt := ('0'&sq1_fcnt) + to_unsigned(1, acc_fcnt'length);
 					if acc_fcnt(acc_fcnt'high) = '1' then
@@ -623,41 +625,7 @@ begin
 						sq1_fcnt := acc_fcnt(sq1_fcnt'range);
 					end if;
 				end if;
-
-				-- Sq2 frequency timer
-				if sq2_playing = '1' then
-					acc_fcnt := ('0'&sq2_fcnt) + to_unsigned(1, acc_fcnt'length);
-					if acc_fcnt(acc_fcnt'high) = '1' then
-						if sq2_phase < 7 then
-							sq2_phase := sq2_phase + 1;
-						else
-							sq2_phase := 0;
-						end if;
-						sq2_fcnt := unsigned(sq2_freq);
-					else
-						sq2_fcnt := acc_fcnt(sq2_fcnt'range);
-					end if;
-				end if;
-
-				-- Noi frequency timer
-				if noi_playing = '1' then
-					acc_fcnt := ('0'&noi_fcnt) + to_unsigned(1, acc_fcnt'length);
-					if acc_fcnt(acc_fcnt'high) = '1' then
-						-- Noise LFSR
-						noi_xor := noi_lfsr(0) xor noi_lfsr(1);
-						noi_lfsr := noi_xor & noi_lfsr(14 downto 1);
-						
-						if noi_short = '1' then
-							noi_lfsr(6) :=  noi_xor;
-						end if;
-						
-						noi_out := not noi_lfsr(0);
-						noi_fcnt := unsigned(noi_fr2);
-					else
-						noi_fcnt := acc_fcnt(noi_fcnt'range);
-					end if;
-				end if;
-
+				
 				case sq1_duty is
 				when "00" => sq1_out := duty_0(sq1_phase);
 				when "01" => sq1_out := duty_1(sq1_phase);
@@ -670,31 +638,9 @@ begin
 					sq1_wav <= sq1_vol & "00";
 				else
 					sq1_wav <= "000000";
-				end if;
-
-				case sq2_duty is
-				when "00" => sq2_out := duty_0(sq2_phase);
-				when "01" => sq2_out := duty_1(sq2_phase);
-				when "10" => sq2_out := duty_2(sq2_phase);
-				when "11" => sq2_out := duty_3(sq2_phase);
-				when others => null;
-				end case;
-
-				if sq2_out = '1' then
-					sq2_wav <= sq2_vol & "00";
-				else
-					sq2_wav <= "000000";
-				end if;
-
-				if noi_out = '1' then
-					noi_wav <= noi_vol & "00";
-				else
-					noi_wav <= "000000";
-				end if;
-
-			end if;
-
-			-- Square channel 1			
+				end if;					
+			end if;		
+		
 			-- Length counter
 			if en_len or sq1_lenquirk = '1' then
 				if sq1_len > 0 and sq1_lenchk = '1' then
@@ -757,7 +703,6 @@ begin
 					if (sq1_swper /= "000" and sq1_swshift /= "000") then	
 						sq1_fr2 <= std_logic_vector(sq1_swfr(10 downto 0));
 						sq1_freqchange <= '1';
-						-- sq1_freq <= std_logic_vector(sq1_swfr(10 downto 0)); TODO: update reg
 						sweep_calculate:= true; -- when updating calculate 2nd time
 					end if;
 				end if;
@@ -802,7 +747,6 @@ begin
 					sq1_swcnt := (others => '0');
 					sq1_swfr := (others => '0');
 					sq1_sweep_en 	:= false;
-					--sq1_wav <= "000000";
 				end if;
 			end if;
 			
@@ -858,7 +802,39 @@ begin
 
 			end if;
 
-			-- Square channel 2
+			----------------------- Square channel 2	-----------------------------	
+			
+			if en_snd4 then
+				-- Sq2 frequency timer  Frequency = 131072/(2048-x) Hz
+				if sq2_playing = '1' then
+					acc_fcnt := ('0'&sq2_fcnt) + to_unsigned(1, acc_fcnt'length);
+					if acc_fcnt(acc_fcnt'high) = '1' then
+						if sq2_phase < 7 then
+							sq2_phase := sq2_phase + 1;
+						else
+							sq2_phase := 0;
+						end if;
+						sq2_fcnt := unsigned(sq2_freq);
+					else
+						sq2_fcnt := acc_fcnt(sq2_fcnt'range);
+					end if;
+				end if;
+
+				case sq2_duty is
+				when "00" => sq2_out := duty_0(sq2_phase);
+				when "01" => sq2_out := duty_1(sq2_phase);
+				when "10" => sq2_out := duty_2(sq2_phase);
+				when "11" => sq2_out := duty_3(sq2_phase);
+				when others => null;
+				end case;
+
+				if sq2_out = '1' then
+					sq2_wav <= sq2_vol & "00";
+				else
+					sq2_wav <= "000000";
+				end if;
+			end if;
+			
 			-- Length counter
 			if en_len or sq2_lenquirk = '1' then
 				if sq2_len > 0 and sq2_lenchk = '1' then
@@ -899,7 +875,6 @@ begin
 				then
 					sq2_playing <= '0';
 					sq2_envcnt := "0000";
-					--sq2_wav <= "000000";
 				end if;
 			end if;
 			
@@ -942,7 +917,35 @@ begin
 			end if;
 			
 			
-			-- Noise channel
+			----------------------- Noise channel -----------------------------	
+			
+			-- Noi frequency timer Frequency = 524288 Hz / r / 2^(s+1) ;For r=0 assume r=0.5 instead  
+			if en_snd4 then
+				if noi_playing = '1' then
+					acc_fcnt := ('0'&noi_fcnt) - to_unsigned(1, acc_fcnt'length);
+					if acc_fcnt = 0 then
+						-- Noise LFSR
+						noi_xor := noi_lfsr(0) xor noi_lfsr(1);
+						noi_lfsr := noi_xor & noi_lfsr(14 downto 1);
+						
+						if noi_short = '1' then
+							noi_lfsr(6) :=  noi_xor;
+						end if;
+						
+						noi_out := not noi_lfsr(0);
+						noi_fcnt := noi_period;
+					else
+						noi_fcnt := acc_fcnt(noi_fcnt'range);
+					end if;
+				end if;
+				
+				if noi_out = '1' then
+					noi_wav <= noi_vol & "00";
+				else
+					noi_wav <= "000000";
+				end if;
+			end if;
+			
 			-- Length counter
 			if en_len or noi_lenquirk = '1' then
 				if noi_len > 0 and noi_lenchk = '1' then
@@ -996,36 +999,30 @@ begin
 			if noi_lenchange = '1' then 
 				noi_len := noi_slen;
 			end if;
-
-			-- Check sample trigger and start playing
-			if noi_trigger = '1' then
+			
+			if noi_trigger = '1' or noi_freqchange = '1' then
 				-- Calculate noise frequency
 				case noi_div is 
-				when "000" => noi_divisor := to_unsigned(2048 - 8, noi_divisor'length);
-				when "001" => noi_divisor := to_unsigned(2048 - 16, noi_divisor'length);
-				when "010" => noi_divisor := to_unsigned(2048 - 32, noi_divisor'length);
-				when "011" => noi_divisor := to_unsigned(2048 - 48, noi_divisor'length);
-				when "100" => noi_divisor := to_unsigned(2048 - 64, noi_divisor'length);
-				when "101" => noi_divisor := to_unsigned(2048 - 80, noi_divisor'length);
-				when "110" => noi_divisor := to_unsigned(2048 - 96, noi_divisor'length);
-				when others => noi_divisor := to_unsigned(2048 - 112, noi_divisor'length);
+				when "000" => noi_period := to_unsigned(2, noi_period'length);
+				when "001" => noi_period := to_unsigned(4, noi_period'length);
+				when "010" => noi_period := to_unsigned(8, noi_period'length);
+				when "011" => noi_period := to_unsigned(12, noi_period'length);
+				when "100" => noi_period := to_unsigned(16, noi_period'length);
+				when "101" => noi_period := to_unsigned(20, noi_period'length);
+				when "110" => noi_period := to_unsigned(24, noi_period'length);
+				when others => noi_period := to_unsigned(28, noi_divisor'length);
 				end case;
+				
+				noi_period := noi_period sll to_integer(unsigned(noi_freqsh));
+				noi_fcnt := noi_period;		
+				
+			end if;
+			
+			
+			-- Check sample trigger and start playing
+			if noi_trigger = '1' then
+				
 				noi_lfsr := (others => '1');
---				case noi_freqsh is
---				when "000" => noi_freq := unsigned(noi_divisor);
---				when "001" => noi_freq := '0' & unsigned(noi_divisor(10 downto 1));
---				when "010" => noi_freq := "00" & unsigned(noi_divisor(10 downto 2));
---				when "011" => noi_freq := "000" & unsigned(noi_divisor(10 downto 3));
---				when "100" => noi_freq := "0000" & unsigned(noi_divisor(10 downto 4));
---				when "101" => noi_freq := "00000" & unsigned(noi_divisor(10 downto 5));
---				when "110" => noi_freq := "000000" & unsigned(noi_divisor(10 downto 6));
---				when "111" => noi_freq := "0000000" & unsigned(noi_divisor(10 downto 7));
---				when others => noi_freq := unsigned(noi_divisor);
---				end case;
-				noi_freq := noi_divisor sll to_integer(unsigned(noi_freqsh));
-
-				noi_fr2 <= std_logic_vector(noi_freq);
-				noi_fcnt := noi_freq;
 				
 				-- reload envelope counter with period
 				if noi_envper = "000" then
@@ -1046,9 +1043,11 @@ begin
 					end if;
 				end if;
 			end if;
-
+			
+			----------------------------- Wave channel -----------------------------------	
+			
 			if en_snd2 then
-				-- Wave frequency timer
+				-- Wave frequency timer Frequency = 4194304/(64*(2048-x)) Hz = 65536/(2048-x) Hz
 				wav_shift := false;
 				if wav_playing = '1' then
 					acc_fcnt := ('0'&wav_fcnt) + to_unsigned(1, acc_fcnt'length);
@@ -1079,7 +1078,6 @@ begin
 				end if;
 			end if;
 
-			-- Wave channel
 			if wav_playing = '1' then
 				-- Check for end of playing conditions
 				if (wav_lenchk = '1' and wav_len = 0) or wav_enable = '0' then
