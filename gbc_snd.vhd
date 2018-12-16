@@ -53,7 +53,9 @@ architecture SYN of gbc_snd is
 	signal sq1_svol		: std_logic_vector(3 downto 0);		-- Sq1 initial volume
 
 	signal sq1_envsgn		: std_logic;								-- Sq1 envelope sign
+	signal sq1_envsgn_old: std_logic;								-- Sq1 old envelope sign (used in zombie mode)
 	signal sq1_envper		: std_logic_vector(2 downto 0);		-- Sq1 envelope period
+	signal sq1_envper_old: std_logic_vector(2 downto 0);		-- Sq1 old envelope period  (used in zombie mode)
 	signal sq1_freq		: std_logic_vector(10 downto 0);		-- Sq1 frequency
 	signal sq1_trigger	: std_logic;								-- Sq1 trigger play note
 	signal sq1_lenchk		: std_logic;								-- Sq1 length check enable
@@ -61,7 +63,7 @@ architecture SYN of gbc_snd is
 
 	signal sq1_fr2			: std_logic_vector(10 downto 0);		-- Sq1 frequency (shadow copy)
 	signal sq1_vol			: std_logic_vector(3 downto 0);		-- Sq1 initial volume
-	signal sq1_volchange : std_logic;
+	signal sq1_nr2change : std_logic;
 	signal sq1_lenchange : std_logic;
 	signal sq1_lenquirk  : std_logic;
 	signal sq1_freqchange : std_logic;
@@ -72,11 +74,13 @@ architecture SYN of gbc_snd is
 	signal sq2_duty		: std_logic_vector(1 downto 0);		-- Sq2 duty cycle
 	signal sq2_slen		: std_logic_vector(6 downto 0);		-- Sq2 play length
 	signal sq2_svol		: std_logic_vector(3 downto 0);		-- Sq2 initial volume
-	signal sq2_volchange : std_logic;
+	signal sq2_nr2change : std_logic;
 	signal sq2_lenchange : std_logic;
 	signal sq2_lenquirk  : std_logic;
 	signal sq2_envsgn		: std_logic;								-- Sq2 envelope sign
 	signal sq2_envper		: std_logic_vector(2 downto 0);		-- Sq2 envelope period
+	signal sq2_envsgn_old: std_logic;								-- Sq2 old envelope sign (used in zombie mode)
+	signal sq2_envper_old: std_logic_vector(2 downto 0);		-- Sq2 old envelope period  (used in zombie mode)
 	signal sq2_freq		: std_logic_vector(10 downto 0);		-- Sq2 frequency
 	signal sq2_trigger	: std_logic;								-- Sq2 trigger play note
 	signal sq2_lenchk		: std_logic;								-- Sq2 length check enable
@@ -102,9 +106,11 @@ architecture SYN of gbc_snd is
 	signal noi_lenchange : std_logic;
 	signal noi_lenquirk  : std_logic;
 	signal noi_svol		: std_logic_vector(3 downto 0);
-	signal noi_volchange : std_logic;
+	signal noi_nr2change : std_logic;
 	signal noi_envsgn		: std_logic;
 	signal noi_envper		: std_logic_vector(2 downto 0);
+	signal noi_envsgn_old: std_logic;								-- noi old envelope sign (used in zombie mode)
+	signal noi_envper_old: std_logic_vector(2 downto 0);		-- noi old envelope period  (used in zombie mode)
 	signal noi_freqsh		: std_logic_vector(3 downto 0);
 	signal noi_freqchange: std_logic;
 	signal noi_short		: std_logic;
@@ -245,9 +251,9 @@ begin
 				noi_trigger <= '0';
 			end if;
 			
-			sq2_volchange <= '0';
-			sq1_volchange <= '0';
-			noi_volchange <= '0';
+			sq2_nr2change <= '0';
+			sq1_nr2change <= '0';
+			noi_nr2change <= '0';
 			noi_freqchange<= '0';
 			
 			sq2_lenchange <= '0';
@@ -279,8 +285,12 @@ begin
 					sq1_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
 					sq1_lenchange <= '1';
 				when "010010" =>	-- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
+					-- zombie mode copy old values
+					sq1_envsgn_old <= sq1_envsgn;
+					sq1_envper_old <= sq1_envper;	
+					-- write to registers
+					sq1_nr2change <= '1';
 					sq1_svol <= s1_writedata(7 downto 4);
-					sq1_volchange <= '1';
 					sq1_envsgn <= s1_writedata(3);
 					sq1_envper <= s1_writedata(2 downto 0);
 				when "010011" =>	-- NR13 FF13 FFFF FFFF Frequency LSB
@@ -299,8 +309,12 @@ begin
 					sq2_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
 					sq2_lenchange <= '1';
 				when "010111" =>	-- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
+					-- zombie mode copy old values
+					sq2_envsgn_old <= sq2_envsgn;
+					sq2_envper_old <= sq2_envper;	
+					-- write to registers
 					sq2_svol <= s1_writedata(7 downto 4);
-					sq2_volchange <= '1';
+					sq2_nr2change <= '1';
 					sq2_envsgn <= s1_writedata(3);
 					sq2_envper <= s1_writedata(2 downto 0);
 				when "011000" =>	-- NR23 FF18 FFFF FFFF Frequency LSB
@@ -337,8 +351,12 @@ begin
 					noi_slen <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
 					noi_lenchange <= '1';
 				when "100001" =>	-- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
+					-- zombie mode copy old values
+					noi_envsgn_old <= noi_envsgn;
+					noi_envper_old <= noi_envper;	
+					-- write to registers
 					noi_svol <= s1_writedata(7 downto 4);
-					noi_volchange <= '1';
+					noi_nr2change <= '1';
 					noi_envsgn <= s1_writedata(3);
 					noi_envper <= s1_writedata(2 downto 0);
 				when "100010" =>	-- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
@@ -541,11 +559,13 @@ begin
 		variable sweep_calculate: boolean;
 		variable sweep_update: boolean;
 		variable sweep_negate: boolean;
+		variable sq1_envoff	: boolean; -- check if envelope is on (zombiemode)
 		
 		variable sq2_fcnt		: unsigned(10 downto 0);
 		variable sq2_phase	: integer range 0 to 7;
 		variable sq2_len		: std_logic_vector(6 downto 0);
 		variable sq2_envcnt	: std_logic_vector(3 downto 0);		-- Sq2 envelope timer count
+		variable sq2_envoff	: boolean; -- check if envelope is on (zombiemode)
 		variable sq2_out		: std_logic;
 		
 		variable wav_fcnt		: unsigned(10 downto 0);
@@ -560,8 +580,11 @@ begin
 		variable noi_lfsr		: unsigned(14 downto 0);  -- 15 bits
 		variable noi_len		: std_logic_vector(6 downto 0);
 		variable noi_envcnt	: std_logic_vector(3 downto 0);		-- Noise envelope timer count
+		variable noi_envoff	: boolean; -- check if envelope is on (zombiemode)
 		variable noi_out		: std_logic;
 		variable noi_xor		: std_logic;
+		
+		variable tmp_volume		: unsigned(7 downto 0); -- used in zombie mode
 
 		variable acc_fcnt		: unsigned(11 downto 0);
 	begin
@@ -578,6 +601,7 @@ begin
 			sq1_swoffs	:= (others => '0');
 			sq1_swfr		:= (others => '0');
 			sq1_out		:= '0';
+			
 						
 			sq2_playing	<= '0';
 			sq2_fcnt		:= (others => '0');
@@ -604,6 +628,11 @@ begin
 			sweep_update	:= false;
 			sq1_sweep_en 	:= false;
 			sweep_negate 	:= false;
+			
+			-- zombie mode check if env is still updating
+			sq2_envoff		:= false;
+			sq1_envoff		:= false;
+			noi_envoff		:= false;
 
 		elsif rising_edge(clk) then
 
@@ -720,10 +749,14 @@ begin
 							if sq1_envsgn = '1' then
 								if sq1_vol /= "1111" then  -- sq1_vol < 15
 									sq1_vol <= std_logic_vector(unsigned(sq1_vol) + 1);
+								else
+									sq1_envoff := true; -- envelope done
 								end if;
 							else
 								if sq1_vol /= "0000" then -- sq1_vol > 
 									sq1_vol <= std_logic_vector(unsigned(sq1_vol) - 1);
+								else
+									sq1_envoff := true; -- envelope done
 								end if;
 							end if;
 									
@@ -750,11 +783,30 @@ begin
 				end if;
 			end if;
 			
-			if sq1_trigger = '1' or sq1_volchange = '1' then
+			if sq1_trigger = '1' or sq1_nr2change = '1' then
+			
+				-- "zombie" mode
+				tmp_volume := "0000"&unsigned(sq1_vol);
+				if sq1_envper_old="000" and not sq1_envoff then
+					tmp_volume := "0000"&unsigned(sq1_vol) + 1;
+				else 
+					if sq1_envsgn_old = '0' then
+						tmp_volume := "0000"&unsigned(sq1_vol) + 2;
+					end if;
+				end if;	
+					
+				if (sq1_envsgn xor sq1_envsgn_old) = '1' then
+					tmp_volume := X"10" - tmp_volume;
+				end if;
+				
+				sq1_vol <= std_logic_vector(tmp_volume(3 downto 0));
+				
+				-- check if dac is enabled
 				if sq1_svol = "00000" and sq1_envsgn = '0' then -- dac disabled
 					sq1_playing <= '0';
 				end if;
 			end if;
+
 			
 			if sq1_lenchange = '1' then
 				sq1_len := sq1_slen;
@@ -789,6 +841,8 @@ begin
 				else
 					sq1_envcnt := '0' & sq1_envper; -- set to period
 				end if;
+				sq1_envoff := false;
+				
 							
 				sq1_phase := 0;
 				if sq1_len = 0 then -- trigger quirks
@@ -852,10 +906,14 @@ begin
 							if sq2_envsgn = '1' then
 								if sq2_vol /= "1111" then  -- sq2_vol < 15
 									sq2_vol <= std_logic_vector(unsigned(sq2_vol) + 1);
+								else
+									sq2_envoff := true;
 								end if;
 							else
 								if sq2_vol /= "0000" then -- sq2_vol > 0
 									sq2_vol <= std_logic_vector(unsigned(sq2_vol) - 1);
+								else
+									sq2_envoff := true;
 								end if;
 							end if;
 									
@@ -877,7 +935,25 @@ begin
 				end if;
 			end if;
 			
-			if sq2_volchange ='1' or sq2_trigger= '1' then
+			if sq2_nr2change ='1' or sq2_trigger= '1' then
+				
+				-- "zombie" mode
+				tmp_volume := "0000"&unsigned(sq2_vol);
+				if sq2_envper_old="000" and not sq2_envoff then
+					tmp_volume := "0000"&unsigned(sq2_vol) + 1;
+				else 
+					if sq2_envsgn_old = '0' then
+						tmp_volume := "0000"&unsigned(sq2_vol) + 2;
+					end if;
+				end if;	
+					
+				if (sq2_envsgn xor sq2_envsgn_old) = '1' then
+					tmp_volume := X"10" - tmp_volume;
+				end if;
+				
+				sq2_vol <= std_logic_vector(tmp_volume(3 downto 0));
+				
+				-- check if dac is enabled
 				if sq2_svol = "00000" and sq2_envsgn = '0' then -- dac disabled
 					sq2_playing <= '0';
 				end if;
@@ -904,6 +980,7 @@ begin
 				else
 					sq2_envcnt := '0' & sq2_envper; -- set to period
 				end if;
+				sq2_envoff := false;
 				
 				sq2_phase := 0;
 				if sq2_len = 0 then -- trigger quirks 
@@ -963,10 +1040,14 @@ begin
 							if noi_envsgn = '1' then
 								if noi_vol /= "1111" then  -- noi_vol < 15
 									noi_vol <= std_logic_vector(unsigned(noi_vol) + 1);
+								else
+									noi_envoff := true;
 								end if;
 							else
 								if noi_vol /= "0000" then -- noi_vol > 0
 									noi_vol <= std_logic_vector(unsigned(noi_vol) - 1);
+								else
+									noi_envoff := true;
 								end if;
 							end if;
 									
@@ -988,7 +1069,25 @@ begin
 				end if;
 			end if;
 			
-			if noi_volchange ='1' or noi_trigger= '1' then
+			if noi_nr2change ='1' or noi_trigger= '1' then
+				
+				-- "zombie" mode
+				tmp_volume := "0000"&unsigned(noi_vol);
+				if noi_envper_old="000" and not noi_envoff then
+					tmp_volume := "0000"&unsigned(noi_vol) + 1;
+				else 
+					if noi_envsgn_old = '0' then
+						tmp_volume := "0000"&unsigned(noi_vol) + 2;
+					end if;
+				end if;	
+					
+				if (noi_envsgn xor noi_envsgn_old) = '1' then
+					tmp_volume := X"10" - tmp_volume;
+				end if;
+				
+				noi_vol <= std_logic_vector(tmp_volume(3 downto 0));
+				
+				-- check if dac is enabled
 				if noi_svol = "00000" and noi_envsgn = '0' then -- dac disabled
 					noi_playing <= '0';
 				end if;
@@ -1030,6 +1129,7 @@ begin
 				else
 					noi_envcnt := '0' & noi_envper; -- set to period
 				end if;
+				noi_envoff := false;
 				
 				if not (noi_svol = "00000" and noi_envsgn = '0') then -- dac enabled
 					noi_playing <= '1';
