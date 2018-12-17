@@ -44,13 +44,7 @@ always @(posedge clk) begin
 	if(reset) begin
 		hdma_active <= 1'b0;
 		hdma_state <= wait_h;
-		hdma_enabled <= 1'b0;
-		//TODO: check default value after reset
-		hdma_source_h <= 8'hFF;
-		hdma_source_l <= 4'hF;
-		hdma_target_h <= 5'h1F;
-		hdma_target_l <= 4'hF;
-		
+		hdma_enabled <= 1'b0;	
 	end else begin
 		
 		// writing the hdma register engages the dma engine
@@ -126,6 +120,7 @@ end
 
 always @(posedge clk) begin
 	if(reset) begin
+	   //TODO: check default value after reset
 		hdma_source_h <= 8'hFF;
 		hdma_source_l <= 4'hF;
 		hdma_target_h <= 5'h1F;
