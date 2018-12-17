@@ -78,8 +78,8 @@ wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $800
 wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
 
 //HDMA can select from $0000 to $7ff0 or A000-DFF0
-wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
-wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
+//wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
+//wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
 wire hdma_sel_iram = hdma_source_addr[15:13] == 3'b110;     // 8k internal ram at $c000-$dff0
 
 
@@ -374,17 +374,19 @@ video video (
 // total 8k/16k (CGB) vram from $8000 to $9fff
 wire cpu_wr_vram = sel_vram && !cpu_wr_n;
 wire [7:0] vram_do;
-wire vram_wren = video_rd?1'b0:cpu_wr_vram;
-wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
+wire [7:0] vram_di = (hdma_rd&&isGBC)?hdma_data:cpu_do;
+ 
+wire vram_wren = video_rd?1'b0:((hdma_rd&&isGBC)||cpu_wr_vram);
+wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:cpu_addr[12:0];
 
 reg vram_bank; //0-1 FF4F - VBK
 
 spram #(14) vram (
-	.clock      ( clk           ),
-	.address    ( {vram_bank,vram_addr}),
-	.wren       ( vram_wren     ),
-	.data       ( cpu_do        ),
-	.q          ( vram_do       )
+	.clock      ( clk                   ),
+	.address    ( {vram_bank,vram_addr} ),
+	.wren       ( vram_wren             ),
+	.data       ( vram_di               ),
+	.q          ( vram_do               )
 );
 
 //GBC VRAM banking
