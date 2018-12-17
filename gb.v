@@ -117,6 +117,7 @@ wire cpu_m1_n;
 wire cpu_mreq_n;
 
 wire cpu_clken = isGBC ? !hdma_rd:1'b1;  //when hdma is enabled stop CPU (GBC)
+wire cpu_stop;
 	
 GBse cpu (
 	.RESET_n    ( !reset        ),
@@ -136,7 +137,8 @@ GBse cpu (
    .BUSAK_n    (               ),
    .A          ( cpu_addr      ),
    .DI         ( cpu_di        ),
-   .DO         ( cpu_do        )
+   .DO         ( cpu_do        ),
+	.STOP       ( cpu_stop      )
 );
 
 // --------------------------------------------------------------------
@@ -151,8 +153,13 @@ always @(posedge clk2x) begin
 			cpu_speed <= 1'b0;
 	end else if (sel_key1 && !cpu_wr_n && isGBC)begin
 		prepare_switch <= cpu_do[0];
-		//TODO: wait for stop to toggle speed
 	end
+	
+	if (isGBC && prepare_switch && cpu_stop) begin
+		cpu_speed <= !cpu_speed;
+		prepare_switch <= 1'b0;
+	end
+	
 end
 
 // --------------------------------------------------------------------
