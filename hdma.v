@@ -25,7 +25,7 @@ reg [4:0] hdma_target_h;	   // ff53 only lowest 5 bits used
 reg [3:0] hdma_target_l;	   // ff54 only top 4 bits used
 reg hdma_mode; 					// ff55 bit 7  - 1=General Purpose DMA 0=H-Blank DMA
 reg hdma_enabled;					// ff55 !bit 7 when read
-reg [6:0] hdma_length;			// ff55 bit 6:0 - dma transfer length (hdma_length+1)*16 bytes
+reg [7:0] hdma_length;			// ff55 bit 6:0 - dma transfer length (hdma_length+1)*16 bytes
 reg hdma_active;
 
 // it takes about 8us to transfer a block of 16 bytes. -> 500ns per byte -> 2Mhz
@@ -62,7 +62,7 @@ always @(posedge clk) begin
 			end else begin															  //normal trigger
 				hdma_enabled <= 1'b1;
 				hdma_mode <= din[7];
-				hdma_length <= din[6:0] + 7'd1;  
+				hdma_length <= {1'b0,din[6:0]} + 8'd1;  
 				hdma_cnt <= 13'd0; 
 				hdma_16byte_cnt <= 5'h1f;
 				if (din[7] == 1) hdma_state <= wait_h;
@@ -81,6 +81,7 @@ always @(posedge clk) begin
 				end else begin
 					hdma_active <= 1'b0;
 					hdma_enabled <= 1'b0;
+					hdma_length <= 8'h80; //7f+1
 				end
 			end else begin        			                       //mode 1 HDMA transfer 1 block (16bytes) in each H-Blank only
 				case (hdma_state)
@@ -93,8 +94,10 @@ always @(posedge clk) begin
 							     end
 				   
 					blocksent: begin
-									 if (hdma_length == 0)  //check if finished
-										hdma_enabled <= 1'b0;										
+									 if (hdma_length == 0) begin //check if finished
+										hdma_enabled <= 1'b0;
+										hdma_length <= 8'h80; //7f+1
+                            end
 									 if (lcd_mode == 2'b11) // wait for mode 3, mode before h-blank
 										hdma_state <= wait_h;	
 								  end
@@ -112,6 +115,7 @@ always @(posedge clk) begin
 									end else begin
 										hdma_active <= 1'b0;
 										hdma_enabled <= 1'b0;
+										hdma_length <= 8'h80; //7f+1
 									end
 								 end
 				endcase 	
@@ -137,13 +141,15 @@ always @(posedge clk) begin
 	end
 end
 
+wire [7:0] length_m1 = hdma_length - 8'd1;
 
 assign dout =  sel_reg?
 					(addr==4'd1)?hdma_source_h:
 					(addr==4'd2)?{hdma_source_l,4'd0}:
 					(addr==4'd3)?{3'b100,hdma_target_h}:
 					(addr==4'd4)?{hdma_target_l,4'd0}:
-					(addr==4'd5 && hdma_enabled)?{1'b0,hdma_length}:
+					(addr==4'd5)?hdma_enabled?{1'b0,length_m1[6:0]}:
+					{1'b1,length_m1[6:0]}:
 					8'hFF:
 				8'hFF;
 
@@ -312,7 +318,7 @@ module hdma_tb;
       $display("canceling");
 		sel_reg <= 1'b1;
 		addr <= 4'd5; // trigger HDMA with length 
-		din <= 8'h00;  // 30h bytes
+		din <= 8'h00;  // stop
 		wr <= 1'd1;
 		
 		#period
