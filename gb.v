@@ -78,9 +78,9 @@ wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $800
 wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
 
 //HDMA can select from $0000 to $7ff0 or A000-DFF0
-wire hdma_sel_rom = !hdma_addr[15];                      // lower 32k are rom
-wire hdma_sel_cram = hdma_addr[15:13] == 3'b101;         // 8k cart ram at $a000
-wire hdma_sel_iram = hdma_addr[15:13] == 3'b110;       	// 8k internal ram at $c000-$dff0
+wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
+wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
+wire hdma_sel_iram = hdma_source_addr[15:13] == 3'b110;     // 8k internal ram at $c000-$dff0
 
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
@@ -338,10 +338,9 @@ wire video_irq;
 wire [7:0] video_do;
 wire [12:0] video_addr;
 wire [15:0] dma_addr;
-wire [15:0] hdma_addr;
-wire video_rd, dma_rd, hdma_rd;
+wire video_rd, dma_rd;
 wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?vram_do:cart_do;
-wire [7:0] hdma_data = hdma_sel_iram?iram_do:cart_do;
+
 
 video video (
 	.reset	    ( reset         ),
@@ -400,94 +399,31 @@ end
 // -------------------------- HDMA engine(GBC) ------------------------
 // --------------------------------------------------------------------
 
-//ff51-ff55 HDMA1-5 (GBC)
-reg [7:0] hdma_source_h;		// ff51
-reg [3:0] hdma_source_l;		// ff52 only top 4 bits used
-reg [4:0] hdma_target_h;	   // ff53 only lowest 5 bits used
-reg [3:0] hdma_target_l;	   // ff54 only top 4 bits used
-reg hdma_mode; 					// ff55 bit 7  - 1=General Purpose DMA 0=H-Blank DMA
-reg hdma_enabled;					// ff55 !bit 7 when read
-reg [6:0] hdma_length;			// ff55 bit 6:0 - dma transfer length (hdma_length+1)*16 bytes
+wire [15:0] hdma_source_addr;
+wire [15:0] hdma_target_addr;
+wire [7:0] hdma_do;
+wire hdma_rd;
+wire [7:0] hdma_data = hdma_sel_iram?iram_do:cart_do;
 
-assign hdma_rd = hdma_active;
-assign hdma_addr = { hdma_source_h,hdma_source_l,4'd0} + hdma_cnt[12:1];
-
-reg hdma_active;
-
-// it takes about 8us to transfer a block of 16 bytes. -> 500ns per byte -> 2Mhz
-// 32 cycles in Normal Speed Mode, and 64 'fast' cycles in Double Speed Mode
-reg [12:0] hdma_cnt; 
-reg [4:0]  hdma_16byte_cnt; //16bytes*2
-
-
-always @(posedge clk) begin
-	if(reset)
-		hdma_active <= 1'b0;
-	else begin
-		// writing the hdma register engages the dma engine
-		if(isGBC && !cpu_wr_n && (cpu_addr == 16'hff55)) begin
-			hdma_enabled <= 1'b1;
-			hdma_mode <= cpu_do[7];
-			hdma_length <= cpu_do[6:0];  
-			hdma_cnt <= 12'd0;
-			hdma_16byte_cnt <= 5'h1f;
-		   //TODO: disable HDMA in mode 1 
-			
-		end else if(hdma_mode==0) begin 						//mode 0 GDMA do the transfer in one go
+hdma hdma(
+	.reset	          ( reset         ),
+	.clk		          ( clk           ),
 	
-			if(hdma_cnt != (((hdma_length+1)*16)-1)*2) begin
-				hdma_active <= 1'b1;
-				hdma_cnt <= hdma_cnt + 1'd1;
-				hdma_16byte_cnt <= hdma_16byte_cnt - 1'd1;
-				if (!hdma_16byte_cnt)
-						hdma_length <= hdma_length - 1'd1;
-				
-			end else begin
-				hdma_active <= 1'b0;
-				hdma_enabled <= 1'b0;
-			end
-			
-		end else begin                                  //mode 1 HDMA transfer 1 block (16bytes) in each H-Blank only
-			
-			if(hdma_cnt != (((hdma_length+1)*16)-1)*2 && (lcd_mode==0) && hdma_enabled) begin  //also check if hdma is enabled and in h-blank
-				//TODO: have to rethink this, maybe state machine
-				hdma_active <= 1'b0;
-				hdma_enabled <= 1'b0;
-			end
-			
-		end
-
-	end
-end
-
-
-always @(posedge clk) begin
-	if(reset) begin
-		hdma_source_h <= 8'hFF;
-		hdma_source_l <= 4'hF;
-		hdma_target_h <= 5'h1F;
-		hdma_target_l <= 4'hF;	
-	end else if(sel_hdma && !cpu_wr_n && isGBC) begin
-		
-		case (cpu_addr[3:0])
-			4'd1: hdma_source_h <= cpu_do;
-			4'd2: hdma_source_l <= cpu_do[7:4];
-			4'd3: hdma_target_h <= cpu_do[4:0];
-			4'd4: hdma_target_l <= cpu_do[7:4];
-		endcase
-	end
-end
-
-
-wire [7:0] hdma_do = isGBC&&sel_hdma?
-								(cpu_addr[3:0]==4'd1)?hdma_source_h:
-								(cpu_addr[3:0]==4'd2)?{hdma_source_l,4'd0}:
-								(cpu_addr[3:0]==4'd3)?{3'd0,hdma_target_h}:
-								(cpu_addr[3:0]==4'd4)?{hdma_target_l,,4'd0}:
-								(cpu_addr[3:0]==4'd5 && hdma_enabled)?{1'b0,hdma_length}:
-								8'hFF:
-							8'hFF;
-
+	// cpu register interface
+	.sel_reg 	       ( sel_hdma      ),
+	.addr			       ( cpu_addr[3:0] ),
+	.wr			       ( !cpu_wr_n 	  ),
+	.dout			       ( hdma_do       ),
+	.din               ( cpu_do        ),
+	
+	.lcd_mode          ( lcd_mode      ),
+	
+	// dma connection
+	.hdma_rd           ( hdma_rd          ),
+	.hdma_source_addr  ( hdma_source_addr ),
+	.hdma_target_addr  ( hdma_target_addr ) 
+	
+);
 
 // --------------------------------------------------------------------
 // -------------------------- zero page ram ---------------------------
