@@ -48,7 +48,7 @@ always @(posedge clk) begin
 	end else begin
 		
 		// writing the hdma register engages the dma engine
-		if(wr && (addr == 4'h5)) begin
+		if(wr && (addr == 4'h5) && sel_reg) begin
 			if (hdma_mode == 1 && hdma_enabled && !din[7]) begin  //terminate an active H-Blank transfer by writing zero to Bit 7 of FF55
 				hdma_state <= wait_h;
 				hdma_active <= 1'b0;
