@@ -325,7 +325,7 @@ wire timer_irq;
 wire [7:0] timer_do;
 timer timer (
 	.reset	    ( reset         ),
-	.clk		    ( clk           ),
+	.clk		    ( clk_cpu       ), //2x in fast mode
 
 	.irq         ( timer_irq     ),
 		
