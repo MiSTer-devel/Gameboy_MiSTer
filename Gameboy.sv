@@ -403,6 +403,7 @@ end
 reg [7:0] cart_mbc_type;
 reg [7:0] cart_rom_size;
 reg [7:0] cart_ram_size;
+reg [7:0] cart_cgb_flag;
 
 // RAM size
 wire [3:0] ram_mask =               	// 0 - no ram
@@ -457,6 +458,7 @@ always @(posedge clk_sys) begin
 	end else begin
 		if(cart_download & ioctl_wr) begin
 			case(ioctl_addr)
+			   'h142: cart_cgb_flag <= ioctl_dout[15:8];
 				'h146: cart_mbc_type <= ioctl_dout[15:8];
 				'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
 			endcase
