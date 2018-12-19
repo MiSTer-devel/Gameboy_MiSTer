@@ -23,6 +23,7 @@ module video (
 	input  reset,
    input  clk,    // 4 Mhz cpu clock
 	input  clk_dma,
+	input  isGBC,
 	
 	// cpu register adn oam interface
 	input  cpu_sel_oam,
@@ -136,6 +137,22 @@ reg [7:0] wy_r;   // stable over entire image
 reg [7:0] wx;
 reg [7:0] wx_r;   // stable over line
 
+
+//ff68-ff6A GBC
+//FF68 - BCPS/BGPI  - Background Palette Index
+reg [5:0] bgpi; //Bit 0-5   Index (00-3F)
+reg bgpi_ai;    //Bit 7     Auto Increment  (0=Disabled, 1=Increment after Writing)
+
+//FF69 - BCPD/BGPD - Background Palette Data
+reg[7:0] bgpd [63:0]; //64 bytes
+
+//FF6A - OCPS/OBPI - Sprite Palette Index
+reg [5:0] obpi; //Bit 0-5   Index (00-3F)
+reg obpi_ai;    //Bit 7     Auto Increment  (0=Disabled, 1=Increment after Writing)
+
+//FF6B - OCPD/OBPD - Sprite Palette Data
+reg[7:0] obpd [63:0]; //64 bytes
+
 // --------------------------------------------------------------------
 // ----------------------------- DMA engine ---------------------------
 // --------------------------------------------------------------------
@@ -151,7 +168,7 @@ always @(posedge clk_dma) begin
 		dma_active <= 1'b0;
 	else begin
 		// writing the dma register engages the dma engine
-		if(cpu_sel_reg && cpu_wr && (cpu_addr[3:0] == 4'h6)) begin
+		if(cpu_sel_reg && cpu_wr && (cpu_addr == 8'h46)) begin
 			dma_active <= 1'b1;
 			dma_cnt <= 10'd0;
 		end else if(dma_cnt != 160*4-1)
@@ -170,7 +187,7 @@ always @(posedge clk) begin
 	
 	//TODO: investigate and fix timing of lyc=ly
 	// lyc=ly coincidence
-	if(stat[6] && (h_cnt == 1) && lyc_match) //h_cnt==0 too late, when early(say h_count=1 messes up radarmission)
+	if(stat[6] && (h_cnt == 1) && lyc_match)
 		irq <= 1'b1;
 		
 	// begin of oam phase
@@ -189,7 +206,7 @@ end
 // --------------------------------------------------------------------
 // --------------------- CPU register interface -----------------------
 // --------------------------------------------------------------------
-
+integer ii=0;
 always @(posedge clk) begin
 	if(reset) begin
 		lcdc <= 8'h00;  // screen must be off since dmg rom writes to vram
@@ -201,21 +218,53 @@ always @(posedge clk) begin
 		bgp <= 8'hfc;
 		obp0 <= 8'hff;
 		obp1 <= 8'hff;
+		
+		bgpi <= 6'h0;
+		obpi <= 6'h0;
+		bgpi_ai <= 1'b0;
+		obpi_ai <= 1'b0;
+				
+		for (ii=0;ii<64;ii=ii+1)begin
+			bgpd[ii] <= 8'h00;
+			obpd[ii] <= 8'h00;
+		end
+		
 	end else begin
 		if(cpu_sel_reg && cpu_wr) begin
-			case(cpu_addr[3:0]) 
-				4'h0:	lcdc <= cpu_di;
-				4'h1:	stat <= cpu_di;
-				4'h2:	scy <= cpu_di;
-				4'h3:	scx <= cpu_di;
+			case(cpu_addr) 
+				8'h40:	lcdc <= cpu_di;
+				8'h41:	stat <= cpu_di;
+				8'h42:	scy <= cpu_di;
+				8'h43:	scx <= cpu_di;
 				// a write to 4 is supposed to reset the v_cnt
-				4'h5:	lyc <= cpu_di;
-				4'h6:	dma <= cpu_di;
-				4'h7:	bgp <= cpu_di;
-				4'h8:	obp0 <= cpu_di;
-				4'h9:	obp1 <= cpu_di;
-				4'ha:	wy <= cpu_di;
-				4'hb:	wx <= cpu_di;
+				8'h45:	lyc <= cpu_di;
+				8'h46:	dma <= cpu_di;
+				8'h47:	bgp <= cpu_di;
+				8'h48:	obp0 <= cpu_di;
+				8'h49:	obp1 <= cpu_di;
+				8'h4a:	wy <= cpu_di;
+				8'h4b:	wx <= cpu_di;
+				
+				//gbc
+				8'h68: begin
+							bgpi <= cpu_di[5:0];
+							bgpi_ai <= cpu_di[7];
+						 end
+				8'h69: begin
+							bgpd[bgpi] <= cpu_di;
+							if (bgpi_ai)
+							  bgpi <= bgpi + 6'h1;
+						 end
+				8'h6A: begin
+							obpi <= cpu_di[5:0];
+							obpi_ai <= cpu_di[7];
+						 end
+				8'h6B: begin
+							obpd[obpi] <= cpu_di;
+							if (obpi_ai)
+							  obpi <= obpi + 6'h1;
+						 end
+
 			endcase
 		end
 	end
@@ -223,18 +272,24 @@ end
 
 assign cpu_do = 
 	cpu_sel_oam?oam_do:
-	(cpu_addr[3:0] == 4'h0)?lcdc:
-	(cpu_addr[3:0] == 4'h1)?{1'b1,stat[6:3], lyc_match, mode}:
-	(cpu_addr[3:0] == 4'h2)?scy:
-	(cpu_addr[3:0] == 4'h3)?scx:
-	(cpu_addr[3:0] == 4'h4)?ly:
-	(cpu_addr[3:0] == 4'h5)?lyc:
-	(cpu_addr[3:0] == 4'h6)?dma:
-	(cpu_addr[3:0] == 4'h7)?bgp:
-	(cpu_addr[3:0] == 4'h8)?obp0:
-	(cpu_addr[3:0] == 4'h9)?obp1:
-	(cpu_addr[3:0] == 4'ha)?wy:
-	(cpu_addr[3:0] == 4'hb)?wx:
+	(cpu_addr == 8'h40)?lcdc:
+	(cpu_addr == 8'h41)?{1'b1,stat[6:3], lyc_match, mode}:
+	(cpu_addr == 8'h42)?scy:
+	(cpu_addr == 8'h43)?scx:
+	(cpu_addr == 8'h44)?ly:
+	(cpu_addr == 8'h45)?lyc:
+	(cpu_addr == 8'h46)?dma:
+	(cpu_addr == 8'h47)?bgp:
+	(cpu_addr == 8'h48)?obp0:
+	(cpu_addr == 8'h49)?obp1:
+	(cpu_addr == 8'h4a)?wy:
+	(cpu_addr == 8'h4b)?wx:
+	isGBC?
+		(cpu_addr == 8'h68)?{bgpi_ai,1'd0,bgpi}:
+		(cpu_addr == 8'h69)?bgpd[bgpi]:
+		(cpu_addr == 8'h6a)?{obpi_ai,1'd0,obpi}:
+		(cpu_addr == 8'h6b)?obpd[obpi]:
+		8'hff:
 	8'hff;
 	
 // --------------------------------------------------------------------
