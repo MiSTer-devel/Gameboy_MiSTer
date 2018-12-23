@@ -447,6 +447,8 @@ wire [9:0] mbc_bank =
 //	HuC1?HuC1_addr:
 //	HuC3?HuC3_addr:              
 	{8'd0, cart_addr[14:13]};  // no MBC, 32k linear address
+	
+wire isGBC_game = (cart_cgb_flag == 8'h80 || cart_cgb_flag == 8'hC0);
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 
@@ -493,7 +495,7 @@ wire lcd_on;
 assign AUDIO_S = 0;
 
 wire reset = (RESET | status[0] | status[6] | buttons[1] | cart_download | bk_loading);
-
+wire speed;
 
 // the gameboy itself
 gb gb (
@@ -502,6 +504,8 @@ gb gb (
 
 	.fast_boot   ( status[2]  ),
 	.joystick    ( joystick   ),
+	.isGBC       ( status[11] ),
+	.isGBC_game  ( isGBC_game ),
 
 	// interface to the "external" game cartridge
 	.cart_addr   ( cart_addr  ),
@@ -518,7 +522,8 @@ gb gb (
 	.lcd_clkena  ( lcd_clkena ),
 	.lcd_data    ( lcd_data   ),
 	.lcd_mode    ( lcd_mode   ),
-	.lcd_on      ( lcd_on     )
+	.lcd_on      ( lcd_on     ),
+	.speed       ( speed      )
 );
 
 // the lcd to vga converter
@@ -529,6 +534,7 @@ lcd lcd (
 	 .pclk   ( clk_sys    ),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
+	 .isGBC  ( /*status[11]*/ ),
 
 	 .tint   ( status[1]  ),
 	 .inv    ( status[12]  ),
@@ -563,6 +569,7 @@ assign CE_PIXEL = ce_pix & !line_cnt;
 assign VGA_HS = video_hs;
 assign VGA_VS = video_vs;
 
+wire ce_cpu2x = ce_pix;
 wire clk_cpu = clk_sys & ce_cpu;
 
 reg ce_pix, ce_cpu;

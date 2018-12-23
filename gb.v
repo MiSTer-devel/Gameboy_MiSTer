@@ -26,7 +26,9 @@ module gb (
 
 	input fast_boot,
 	input [7:0] joystick,
-	
+	input isGBC,
+	input isGBC_game,
+
 	// cartridge interface
 	// can adress up to 1MB ROM
 	output [15:0] cart_addr,
@@ -41,9 +43,11 @@ module gb (
 	
 	// lcd interface
 	output lcd_clkena,
-	output [1:0] lcd_data,
+	output [14:0] lcd_data,
 	output [1:0] lcd_mode,
-	output lcd_on
+	output lcd_on,
+	
+	output speed   //GBC
 );
 
 // include cpu
@@ -51,7 +55,7 @@ wire [15:0] cpu_addr;
 wire [7:0] cpu_do;
 
 wire sel_timer = (cpu_addr[15:4] == 12'hff0) && (cpu_addr[3:2] == 2'b01);
-wire sel_video_reg = (cpu_addr[15:4] == 12'hff4);    //video and oam dma
+wire sel_video_reg = (cpu_addr[15:4] == 12'hff4) || (isGBC && (cpu_addr[15:2] == 14'h3fda));    //video and oam dma (+ ff68-ff6B when gbc)
 wire sel_video_oam = cpu_addr[15:8] == 8'hfe;
 wire sel_joy  = cpu_addr == 16'hff00;                // joystick controller
 wire sel_sb  = cpu_addr == 16'hff01;  			        // serial SB - Serial transfer data
@@ -98,10 +102,10 @@ wire [7:0] cpu_di =
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
 		sel_video_oam?video_do: // video object attribute memory
-		sel_audio?audio_do:     // audio registers
-		sel_rom?rom_do:         // boot rom + cartridge rom
-		sel_cram?rom_do:        // cartridge ram
-		sel_vram?vram_do:       // vram
+		sel_audio?audio_do:                                // audio registers
+		sel_rom?rom_do:                                    // boot rom + cartridge rom
+		sel_cram?rom_do:                                   // cartridge ram
+		sel_vram?(isGBC&&vram_bank)?vram1_do:vram_do:       // vram (GBC bank 0+1)
 		sel_zpram?zpram_do:     // zero page ram
 		sel_iram?iram_do:       // internal ram
 		sel_ie?{3'b000, ie_r}:  // interrupt enable register
@@ -144,13 +148,15 @@ GBse cpu (
 // --------------------------------------------------------------------
 // --------------------- Speed Toggle KEY1 (GBC)-----------------------
 // --------------------------------------------------------------------
-wire clk_cpu = cpu_speed?clk2x:clk;
+//wire clk_cpu = cpu_speed?clk2x:clk;
+wire clk_cpu = clk;
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
 
 always @(posedge clk2x) begin
    if(reset) begin
 			cpu_speed <= 1'b0;
+			prepare_switch <= 1'b0;
 	end else if (sel_key1 && !cpu_wr_n && isGBC)begin
 		prepare_switch <= cpu_do[0];
 	end
@@ -194,7 +200,7 @@ reg sc_start,sc_shiftclock;
 reg serial_irq;
 reg [8:0] serial_clk_div; //8192Hz
 
-always @(posedge clk) begin
+always @(posedge clk_cpu) begin
 	serial_irq <= 1'b0;
    if(reset) begin
 		  sc_start <= 1'b0;
@@ -234,7 +240,7 @@ wire [3:0] joy_p4 = ~{ joystick[2], joystick[3], joystick[1], joystick[0] } | {4
 wire [3:0] joy_p5 = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4{p54[1]}};
 reg  [1:0] p54;
 
-always @(posedge clk) begin
+always @(posedge clk_cpu) begin
 	if(reset) p54 <= 2'b00;
 	else if(sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
@@ -269,7 +275,7 @@ wire irq_n = !(ie_r & if_r);
 
 reg [4:0] if_r;
 reg [4:0] ie_r; // writing  $ffff sets the irq enable mask
-always @(negedge clk) begin //negedge to trigger interrupt earlier
+always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 	reg old_ack = 0;
 	
 	if(reset) begin
@@ -346,7 +352,7 @@ wire [7:0] video_do;
 wire [12:0] video_addr;
 wire [15:0] dma_addr;
 wire video_rd, dma_rd;
-wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?vram_do:cart_do;
+wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?(isGBC&&vram_bank)?vram1_do:vram_do:cart_do;
 
 
 video video (
@@ -380,20 +386,35 @@ video video (
 
 // total 8k/16k (CGB) vram from $8000 to $9fff
 wire cpu_wr_vram = sel_vram && !cpu_wr_n;
-wire [7:0] vram_do;
-wire [7:0] vram_di = (hdma_rd&&isGBC)?hdma_data:cpu_do;
- 
-wire vram_wren = video_rd?1'b0:((hdma_rd&&isGBC)||cpu_wr_vram);
-wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:cpu_addr[12:0];
 
 reg vram_bank; //0-1 FF4F - VBK
 
-spram #(14) vram (
+wire [7:0] vram_do,vram1_do;
+wire [7:0] vram_di = (hdma_rd&&isGBC)?hdma_data:cpu_do;
+
+ 
+wire vram_wren = video_rd?1'b0:!vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
+wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
+
+wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:cpu_addr[12:0];
+
+
+
+spram #(13) vram0 (
 	.clock      ( clk                   ),
-	.address    ( {vram_bank,vram_addr} ),
+	.address    ( vram_addr             ),
 	.wren       ( vram_wren             ),
 	.data       ( vram_di               ),
 	.q          ( vram_do               )
+);
+
+//separate 8k for vbank1 for gbc because of BG reads
+spram #(13) vram1 (
+	.clock      ( clk                   ),
+	.address    ( vram_addr             ),
+	.wren       ( vram1_wren            ),
+	.data       ( vram_di               ),
+	.q          ( vram1_do              )
 );
 
 //GBC VRAM banking
