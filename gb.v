@@ -152,6 +152,7 @@ GBse cpu (
 wire clk_cpu = clk;
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
+assign speed = cpu_speed;
 
 always @(posedge clk2x) begin
    if(reset) begin
@@ -359,6 +360,8 @@ video video (
 	.reset	    ( reset         ),
 	.clk		    ( clk           ),
 	.clk_dma     ( clk_cpu       ),   //can be 2x in cgb double speed mode
+	.isGBC       ( isGBC         ),
+	
 
 	.irq         ( video_irq     ),
 
@@ -377,6 +380,9 @@ video video (
 	.vram_rd     ( video_rd      ),
 	.vram_addr   ( video_addr    ),
 	.vram_data   ( vram_do       ),
+	
+	// vram connection bank1 (GBC)
+	.vram1_data  ( vram1_do      ),
 	
 	.dma_rd      ( dma_rd        ),
 	.dma_addr    ( dma_addr      ),
@@ -397,7 +403,6 @@ wire vram_wren = video_rd?1'b0:!vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 
 wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:cpu_addr[12:0];
-
 
 
 spram #(13) vram0 (

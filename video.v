@@ -36,7 +36,7 @@ module video (
 	// output to lcd
 	output lcd_on,
 	output lcd_clkena,
-	output [1:0] lcd_data,
+	output [14:0] lcd_data,
 	output reg irq,
 	
 	// vram connection
@@ -44,6 +44,9 @@ module video (
 	output vram_rd,
 	output [12:0] vram_addr,
 	input [7:0] vram_data,
+	
+	// vram connection bank1 (GBC)
+	input [7:0] vram1_data,
 
 	// dma connection
 	output dma_rd,
@@ -299,27 +302,36 @@ assign cpu_do =
 assign lcd_data = stage2_data;
 assign lcd_clkena = stage2_clkena;
 
-reg [1:0] stage2_data;
+reg [14:0] stage2_data;
 reg stage2_clkena;
 
 reg [1:0] stage2_buffer [159:0];
+reg [2:0] stage2_bgp_buffer [19:0]; //GBC only keep record of palette used for tile
 reg [7:0] stage2_wptr;
 reg [7:0] stage2_rptr;
 
+reg [4:0] bg_palette_rptr; //GBC
+reg [2:0] bg_palette_rcnt;
+
+
+wire [5:0] palette_index = (stage2_bgp_buffer[bg_palette_rptr] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
+
+
 // apply bg palette
-wire [1:0] stage2_bg_pix = (!lcdc_bg_ena && !window_ena)?2'b11:  // background off?
-	(stage2_buffer[stage2_rptr] == 2'b00)?bgp[1:0]:
-	(stage2_buffer[stage2_rptr] == 2'b01)?bgp[3:2]:
-	(stage2_buffer[stage2_rptr] == 2'b10)?bgp[5:4]:
-	bgp[7:6];
+wire [14:0] stage2_bg_pix = (!lcdc_bg_ena && !window_ena)?15'h7FFF:  // background off?
+	isGBC?{bgpd[palette_index+1][6:0],bgpd[palette_index]}: //gbc
+	(stage2_buffer[stage2_rptr] == 2'b00)?{13'd0,bgp[1:0]}:
+	(stage2_buffer[stage2_rptr] == 2'b01)?{13'd0,bgp[3:2]}:
+	(stage2_buffer[stage2_rptr] == 2'b10)?{13'd0,bgp[5:4]}:
+	{13'd0,bgp[7:6]};
 
 // apply sprite palette
 wire [7:0] obp = sprite_pixel_cmap?obp1:obp0;
-wire [1:0] sprite_pix = 
-	(sprite_pixel_data == 2'b00)?obp[1:0]:
-	(sprite_pixel_data == 2'b01)?obp[3:2]:
-	(sprite_pixel_data == 2'b10)?obp[5:4]:
-	obp[7:6];
+wire [14:0] sprite_pix = 
+							 (sprite_pixel_data == 2'b00)?{13'd0,obp[1:0]}:
+							 (sprite_pixel_data == 2'b01)?{13'd0,obp[3:2]}:
+							 (sprite_pixel_data == 2'b10)?{13'd0,obp[5:4]}:
+							 {13'd0,obp[7:6]};
 
 // a sprite pixel is visible if
 // - sprites are enabled
@@ -335,6 +347,8 @@ always @(posedge clk) begin
 	if(h_cnt == 455) begin
 		stage2_wptr <= 8'h00;
 		stage2_rptr <= 8'h00;
+      bg_palette_rptr <= 5'd0; //GBC
+		bg_palette_rcnt <= 3'b111;
 	end
 
 	if(stage1_clkena) begin
@@ -349,6 +363,10 @@ always @(posedge clk) begin
 		else							 stage2_data <= stage2_bg_pix;
 		
 		stage2_rptr <= stage2_rptr + 8'd1;
+		
+		bg_palette_rcnt <= bg_palette_rcnt - 3'd1;
+		if (bg_palette_rcnt==0)
+			bg_palette_rptr <= bg_palette_rptr + 5'd1;
 	end
 end
 
@@ -363,8 +381,11 @@ reg [7:0] tile_shift_0;
 reg [7:0] tile_shift_1;
 
 reg [7:0] bg_tile;
+reg [7:0] bg_tile_attr; //GBC
 reg [7:0] bg_tile_data0;
 reg [7:0] bg_tile_data1;
+
+reg [4:0] bg_palette_wptr; //GBC
 
 wire stage1_clkena = !vblank && hdvalid;
 wire [1:0] stage1_data = { tile_shift_1[7], tile_shift_0[7] };
@@ -372,11 +393,26 @@ wire [1:0] stage1_data = { tile_shift_1[7], tile_shift_0[7] };
 // read data half a clock cycle after ram has been selected
 always @(posedge clk) begin
 
+	if (reset || (h_cnt == 455))
+		bg_palette_wptr <= 5'd0;
+		
 	// every memory access is two pixel cycles
 	if(h_cnt[0]) begin
 		if(bg_tile_map_rd) bg_tile <= vram_data;
-		if(bg_tile_data0_rd) bg_tile_data0 <= vram_data;
-		if(bg_tile_data1_rd) bg_tile_data1 <= vram_data;
+		
+		if (isGBC) begin
+			if(bg_tile_map_rd) begin
+		      bg_tile_attr <= vram1_data;                             //get tile attr from vram bank1
+			   stage2_bgp_buffer[bg_palette_wptr] <= vram1_data[2:0];   //keep a copy of the palette used
+			   bg_palette_wptr <= bg_palette_wptr + 5'd1;	
+			end
+			if(bg_tile_data0_rd) bg_tile_data0 <= bg_tile_attr[3]?vram1_data:vram_data;
+		   if(bg_tile_data1_rd) bg_tile_data1 <= bg_tile_attr[3]?vram1_data:vram_data; 
+		end else begin
+			if(bg_tile_data0_rd) bg_tile_data0 <= vram_data;
+		   if(bg_tile_data1_rd) bg_tile_data1 <= vram_data;	
+		end
+		
 		// sprite data is evaluated inside the sprite engine
 	end
 	

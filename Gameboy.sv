@@ -488,7 +488,7 @@ wire cart_rd;
 wire cart_wr;
 
 wire lcd_clkena;
-wire [1:0] lcd_data;
+wire [14:0] lcd_data;
 wire [1:0] lcd_mode;
 wire lcd_on;
 
@@ -534,7 +534,7 @@ lcd lcd (
 	 .pclk   ( clk_sys    ),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
-	 .isGBC  ( /*status[11]*/ ),
+	 .isGBC  ( status[11] ),
 
 	 .tint   ( status[1]  ),
 	 .inv    ( status[12]  ),
