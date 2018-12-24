@@ -67,6 +67,10 @@ wire [7:0] oam_do;
 wire [3:0] sprite_index = h_cnt[7:4] - OAM_LEN16[3:0];   // memory io starts at h_cnt == 16
 wire [10:0] sprite_addr;
 
+//gbc
+wire [2:0] sprite_pixel_cmap_gbc;
+wire sprite_tile_vbank;
+
 // "data strobe" for the two bytes each sprite line consists of
 wire [1:0] sprite_dvalid = {
 	(h_cnt[3:0] == 4'hf) && !vblank && !hblank,
@@ -89,6 +93,11 @@ sprites sprites (
 	.addr     ( sprite_addr  ),
 	.dvalid   ( sprite_dvalid),
 	.data     ( vram_data    ),
+	.data1    ( vram1_data   ),
+	
+	//gbc
+	.pixel_cmap_gbc ( sprite_pixel_cmap_gbc ),
+	.tile_vbank     ( sprite_tile_vbank     ),
 	
 	.oam_wr   ( oam_wr       ),
 	.oam_addr ( oam_addr     ),
@@ -325,13 +334,18 @@ wire [14:0] stage2_bg_pix = (!lcdc_bg_ena && !window_ena)?15'h7FFF:  // backgrou
 	(stage2_buffer[stage2_rptr] == 2'b10)?{13'd0,bgp[5:4]}:
 	{13'd0,bgp[7:6]};
 
+	
+	
 // apply sprite palette
+
+wire [5:0] sprite_palette_index = (sprite_pixel_cmap_gbc << 3) + (sprite_pixel_data<<1); //gbc
+
 wire [7:0] obp = sprite_pixel_cmap?obp1:obp0;
-wire [14:0] sprite_pix = 
-							 (sprite_pixel_data == 2'b00)?isGBC?15'h1f:{13'd0,obp[1:0]}:
-							 (sprite_pixel_data == 2'b01)?isGBC?15'h3e0:{13'd0,obp[3:2]}:
-							 (sprite_pixel_data == 2'b10)?isGBC?15'h7C00:{13'd0,obp[5:4]}:
-							 isGBC?15'h0:{13'd0,obp[7:6]};
+wire [14:0] sprite_pix = isGBC?{obpd[sprite_palette_index+1][6:0],obpd[sprite_palette_index]}: //gbc
+							 (sprite_pixel_data == 2'b00)?{13'd0,obp[1:0]}:
+							 (sprite_pixel_data == 2'b01)?{13'd0,obp[3:2]}:
+							 (sprite_pixel_data == 2'b10)?{13'd0,obp[5:4]}:
+							 {13'd0,obp[7:6]};
 
 // a sprite pixel is visible if
 // - sprites are enabled
@@ -421,6 +435,8 @@ always @(posedge clk) begin
 		
 		// sprite data is evaluated inside the sprite engine
 	end
+	
+	//TODO: bg_tile_attr Bit 7    BG-to-OAM Priority         (0=Use OAM priority bit, 1=BG Priority)
 	
 	// shift bg/window pixels out 
 	if(bg_tile_obj_rd && h_cnt[0]) begin

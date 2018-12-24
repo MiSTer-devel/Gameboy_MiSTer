@@ -32,11 +32,16 @@ module sprite (
 	output [10:0] addr,
    input [1:0] ds,
 	input [7:0] data,
+	input [7:0] data_1,
 
 	output pixel_active,
 	output pixel_cmap,
 	output pixel_prio,
 	output [1:0] pixel_data,
+	
+	//gbc
+	output [2:0] pixel_cmap_gbc,
+	output tile_vbank,
 	
 	input oam_wr,
 	input [1:0] oam_addr,
@@ -53,8 +58,8 @@ reg [7:0] data0;
 reg [7:0] data1;
 
 always @(posedge clk) begin
-	if(ds[0]) data0 <= data;
-	if(ds[1]) data1 <= data;
+	if(ds[0]) data0 <= flags[3]?data_1:data;
+	if(ds[1]) data1 <= flags[3]?data_1:data;
 end
 
 wire [7:0] height = size16?8'd16:8'd8;
@@ -81,6 +86,9 @@ assign addr = size16?addr16:addr8;
 
 assign pixel_cmap = flags[4];
 assign pixel_prio = flags[7];
+
+assign pixel_cmap_gbc = flags[2:0];
+assign tile_vbank = flags[3];
 
 reg [7:0] y_pos;
 reg [7:0] x_pos;
