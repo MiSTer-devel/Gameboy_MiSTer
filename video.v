@@ -391,10 +391,10 @@ reg [7:0] bg_tile_data1;
 reg [4:0] bg_palette_wptr; //GBC
 
 wire stage1_clkena = !vblank && hdvalid;
-wire [1:0] stage1_data = (isGBC&&bg_tile_attr_1[5])?{ tile_shift_1_x[0], tile_shift_0_x[0] }:{ tile_shift_1[7], tile_shift_0[7] }; 
+wire [1:0] stage1_data = (isGBC&&bg_tile_attr_old[5])?{ tile_shift_1_x[0], tile_shift_0_x[0] }:{ tile_shift_1[7], tile_shift_0[7] }; 
 
-wire [7:0] vram_gbc_data = bg_tile_attr_2[3]?vram1_data:vram_data; //gbc check tile bank
-reg [7:0] bg_tile_attr_1,bg_tile_attr_2; //GBC
+wire [7:0] vram_gbc_data = bg_tile_attr_new[3]?vram1_data:vram_data; //gbc check tile bank
+reg [7:0] bg_tile_attr_old,bg_tile_attr_new; //GBC
 
 // read data half a clock cycle after ram has been selected
 always @(posedge clk) begin
@@ -408,7 +408,7 @@ always @(posedge clk) begin
 		
 		if (isGBC) begin
 			if(bg_tile_map_rd) begin		
-				bg_tile_attr_2 <= vram1_data; //get tile attr from vram bank1
+				bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
 			   stage2_bgp_buffer[bg_palette_wptr] <= vram1_data[2:0];   //keep a copy of the palette used
 			   bg_palette_wptr <= bg_palette_wptr + 5'd1;	
 			end
@@ -424,7 +424,7 @@ always @(posedge clk) begin
 	
 	// shift bg/window pixels out 
 	if(bg_tile_obj_rd && h_cnt[0]) begin
-	   bg_tile_attr_1 <= bg_tile_attr_2;
+	   bg_tile_attr_old <= bg_tile_attr_new;
 		tile_shift_0 <= bg_tile_data0;
 		tile_shift_1 <= bg_tile_data1;
 		tile_shift_0_x <= bg_tile_data0;
@@ -445,10 +445,12 @@ wire bg_tile_a12 = !lcdc_tile_data_sel?(~bg_tile[7]):1'b0;
 
 wire tile_map_sel = window_ena?lcdc_win_tile_map_sel:lcdc_bg_tile_map_sel;
 
+wire [2:0] tile_line_gbc = bg_tile_attr_new[6]? (3'b111 - tile_line): tile_line; //GBC: check if flipped y
+
 assign vram_addr =
 	bg_tile_map_rd?{2'b11, tile_map_sel, bg_tile_map_addr}:
-	bg_tile_data0_rd?{bg_tile_a12, bg_tile, tile_line, 1'b0}:
-	bg_tile_data1_rd?{bg_tile_a12, bg_tile, tile_line, 1'b1}:
+	bg_tile_data0_rd?{bg_tile_a12, bg_tile, isGBC?tile_line_gbc:tile_line, 1'b0}:
+	bg_tile_data1_rd?{bg_tile_a12, bg_tile, isGBC?tile_line_gbc:tile_line, 1'b1}:
 	{1'b0, sprite_addr, h_cnt[3]};
 
 reg [9:0] bg_tile_map_addr;
