@@ -175,20 +175,32 @@ wire [14:0] pixel = on?isGBC?pixel_reg:
 							  {13'd0,(pixel_reg[1:0] ^ {inv,inv})}: //invert gb only
 							  15'd0;
 
+							  
+wire [4:0] r5 = pixel_reg[4:0];
+wire [4:0] g5 = pixel_reg[9:5];
+wire [4:0] b5 = pixel_reg[14:10];
+
+wire [8:0] r10 = (r5 * 13) + (g5 * 2) +b5;
+wire [8:0] g10 = (g5 * 3) + b5;
+wire [8:0] b10 = (r5 * 3) + (g5 * 2) + (b5 * 11);
+
 // gameboy "color" palette
-wire [7:0] pal_r = isGBC?{pixel_reg[4:0],3'd0}:
+wire [7:0] pal_r = //isGBC?{pixel_reg[4:0],3'd0}:
+                   isGBC?r10[8:1]:
                    (pixel==0)?pal1[23:16]:
 						 (pixel==1)?pal2[23:16]:
 						 (pixel==2)?pal3[23:16]:
 						 pal4[23:16];
 
-wire [7:0] pal_g = isGBC?{pixel_reg[9:5],3'd0}:
+wire [7:0] pal_g = //isGBC?{pixel_reg[9:5],3'd0}:
+                   isGBC?{g10[6:0],1'b0}:
                    (pixel==0)?pal1[15:8]:
                    (pixel==1)?pal2[15:8]:
 						 (pixel==2)?pal3[15:8]:
 						 pal4[15:8];
 						 
-wire [7:0] pal_b = isGBC?{pixel_reg[14:10],3'd0}:
+wire [7:0] pal_b = //isGBC?{pixel_reg[14:10],3'd0}:
+                    isGBC?b10[8:1]:
 						 (pixel==0)?pal1[7:0]:
                    (pixel==1)?pal2[7:0]:
 						 (pixel==2)?pal3[7:0]:
