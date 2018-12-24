@@ -328,10 +328,10 @@ wire [14:0] stage2_bg_pix = (!lcdc_bg_ena && !window_ena)?15'h7FFF:  // backgrou
 // apply sprite palette
 wire [7:0] obp = sprite_pixel_cmap?obp1:obp0;
 wire [14:0] sprite_pix = 
-							 (sprite_pixel_data == 2'b00)?{13'd0,obp[1:0]}:
-							 (sprite_pixel_data == 2'b01)?{13'd0,obp[3:2]}:
-							 (sprite_pixel_data == 2'b10)?{13'd0,obp[5:4]}:
-							 {13'd0,obp[7:6]};
+							 (sprite_pixel_data == 2'b00)?isGBC?15'h1f:{13'd0,obp[1:0]}:
+							 (sprite_pixel_data == 2'b01)?isGBC?15'h3e0:{13'd0,obp[3:2]}:
+							 (sprite_pixel_data == 2'b10)?isGBC?15'h7C00:{13'd0,obp[5:4]}:
+							 isGBC?15'h0:{13'd0,obp[7:6]};
 
 // a sprite pixel is visible if
 // - sprites are enabled
@@ -380,15 +380,21 @@ reg window_ena;
 reg [7:0] tile_shift_0;
 reg [7:0] tile_shift_1;
 
+reg [7:0] tile_shift_0_x;
+reg [7:0] tile_shift_1_x;
+
+
 reg [7:0] bg_tile;
-reg [7:0] bg_tile_attr; //GBC
 reg [7:0] bg_tile_data0;
 reg [7:0] bg_tile_data1;
 
 reg [4:0] bg_palette_wptr; //GBC
 
 wire stage1_clkena = !vblank && hdvalid;
-wire [1:0] stage1_data = { tile_shift_1[7], tile_shift_0[7] };
+wire [1:0] stage1_data = (isGBC&&bg_tile_attr_1[5])?{ tile_shift_1_x[0], tile_shift_0_x[0] }:{ tile_shift_1[7], tile_shift_0[7] }; 
+
+wire [7:0] vram_gbc_data = bg_tile_attr_2[3]?vram1_data:vram_data; //gbc check tile bank
+reg [7:0] bg_tile_attr_1,bg_tile_attr_2; //GBC
 
 // read data half a clock cycle after ram has been selected
 always @(posedge clk) begin
@@ -401,13 +407,13 @@ always @(posedge clk) begin
 		if(bg_tile_map_rd) bg_tile <= vram_data;
 		
 		if (isGBC) begin
-			if(bg_tile_map_rd) begin
-		      bg_tile_attr <= vram1_data;                             //get tile attr from vram bank1
+			if(bg_tile_map_rd) begin		
+				bg_tile_attr_2 <= vram1_data; //get tile attr from vram bank1
 			   stage2_bgp_buffer[bg_palette_wptr] <= vram1_data[2:0];   //keep a copy of the palette used
 			   bg_palette_wptr <= bg_palette_wptr + 5'd1;	
 			end
-			if(bg_tile_data0_rd) bg_tile_data0 <= bg_tile_attr[3]?vram1_data:vram_data;
-		   if(bg_tile_data1_rd) bg_tile_data1 <= bg_tile_attr[3]?vram1_data:vram_data; 
+			if(bg_tile_data0_rd) bg_tile_data0 <= vram_gbc_data;
+		   if(bg_tile_data1_rd) bg_tile_data1 <= vram_gbc_data; 
 		end else begin
 			if(bg_tile_data0_rd) bg_tile_data0 <= vram_data;
 		   if(bg_tile_data1_rd) bg_tile_data1 <= vram_data;	
@@ -418,11 +424,17 @@ always @(posedge clk) begin
 	
 	// shift bg/window pixels out 
 	if(bg_tile_obj_rd && h_cnt[0]) begin
+	   bg_tile_attr_1 <= bg_tile_attr_2;
 		tile_shift_0 <= bg_tile_data0;
 		tile_shift_1 <= bg_tile_data1;
+		tile_shift_0_x <= bg_tile_data0;
+		tile_shift_1_x <= bg_tile_data1;
 	end else begin 
 		tile_shift_0 <= { tile_shift_0[6:0], 1'b0 };
 		tile_shift_1 <= { tile_shift_1[6:0], 1'b0 };
+		//GBC x-flip
+		tile_shift_0_x <= { 1'b0,tile_shift_0_x[7:1]}; 
+		tile_shift_1_x <= { 1'b0,tile_shift_1_x[7:1]};
 	end
 end
 
