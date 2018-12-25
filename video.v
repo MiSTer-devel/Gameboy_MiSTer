@@ -315,12 +315,13 @@ reg [14:0] stage2_data;
 reg stage2_clkena;
 
 reg [1:0] stage2_buffer [159:0];
-reg [2:0] stage2_bgp_buffer [19:0]; //GBC only keep record of palette used for tile
+reg [2:0] stage2_bgp_buffer_pix [159:0]; //GBC keep record of palette used for tile
+
 reg [7:0] stage2_wptr;
 reg [7:0] stage2_rptr;
 
 
-wire [5:0] palette_index = (stage2_bgp_buffer[stage2_rptr[7:3]] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
+wire [5:0] palette_index = (stage2_bgp_buffer_pix[stage2_rptr] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
 
 
 // apply bg palette
@@ -362,6 +363,7 @@ always @(posedge clk) begin
 
 	if(stage1_clkena) begin
 		stage2_buffer[stage2_wptr] <= stage1_data;
+		stage2_bgp_buffer_pix[stage2_wptr] <= bg_tile_attr_old[2:0];
 		stage2_wptr <= stage2_wptr + 8'd1;
 	end
 	
@@ -412,11 +414,7 @@ always @(posedge clk) begin
 		if(bg_tile_map_rd) bg_tile <= vram_data;
 		
 		if (isGBC) begin
-			if(bg_tile_map_rd) begin		
-				bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
-			   stage2_bgp_buffer[bg_palette_wptr] <= vram1_data[2:0];   //keep a copy of the palette used
-			   bg_palette_wptr <= bg_palette_wptr + 5'd1;	
-			end
+			if(bg_tile_map_rd) bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
 			if(bg_tile_data0_rd) bg_tile_data0 <= vram_gbc_data;
 		   if(bg_tile_data1_rd) bg_tile_data1 <= vram_gbc_data; 
 		end else begin
@@ -436,7 +434,7 @@ always @(posedge clk) begin
 		tile_shift_1 <= bg_tile_data1;
 		tile_shift_0_x <= bg_tile_data0;
 		tile_shift_1_x <= bg_tile_data1;
-	end else begin 
+	end else begin
 		tile_shift_0 <= { tile_shift_0[6:0], 1'b0 };
 		tile_shift_1 <= { tile_shift_1[6:0], 1'b0 };
 		//GBC x-flip
