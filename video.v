@@ -319,11 +319,8 @@ reg [2:0] stage2_bgp_buffer [19:0]; //GBC only keep record of palette used for t
 reg [7:0] stage2_wptr;
 reg [7:0] stage2_rptr;
 
-reg [4:0] bg_palette_rptr; //GBC
-reg [2:0] bg_palette_rcnt;
 
-
-wire [5:0] palette_index = (stage2_bgp_buffer[bg_palette_rptr] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
+wire [5:0] palette_index = (stage2_bgp_buffer[stage2_rptr[7:3]] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
 
 
 // apply bg palette
@@ -361,8 +358,6 @@ always @(posedge clk) begin
 	if(h_cnt == 455) begin
 		stage2_wptr <= 8'h00;
 		stage2_rptr <= 8'h00;
-      bg_palette_rptr <= 5'd0; //GBC
-		bg_palette_rcnt <= 3'b111;
 	end
 
 	if(stage1_clkena) begin
@@ -376,11 +371,7 @@ always @(posedge clk) begin
 		if(sprite_pixel_visible) stage2_data <= sprite_pix;
 		else							 stage2_data <= stage2_bg_pix;
 		
-		stage2_rptr <= stage2_rptr + 8'd1;
-		
-		bg_palette_rcnt <= bg_palette_rcnt - 3'd1;
-		if (bg_palette_rcnt==0)
-			bg_palette_rptr <= bg_palette_rptr + 5'd1;
+		stage2_rptr <= stage2_rptr + 8'd1;		
 	end
 end
 
