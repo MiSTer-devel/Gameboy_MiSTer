@@ -157,7 +157,8 @@ GBse cpu (
 wire clk_cpu = clk;
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
-assign speed = cpu_speed;
+assign speed = 1'b0;
+//cpu_speed;
 
 always @(posedge clk2x) begin
    if(reset) begin
@@ -184,6 +185,7 @@ wire [7:0] audio_do;
 
 gbc_snd audio (
 	.clk				( clk 				),
+	.reg_clk			( clk_cpu         ),
 	.reset			( reset				),
 
 	.s1_read  		( audio_rd  		),
@@ -364,7 +366,7 @@ wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?(isGBC&&vram_bank)?vram1
 video video (
 	.reset	    ( reset         ),
 	.clk		    ( clk           ),
-	.clk_dma     ( clk_cpu       ),   //can be 2x in cgb double speed mode
+	.clk_reg     ( clk_cpu       ),   //can be 2x in cgb double speed mode
 	.isGBC       ( isGBC         ),
 	
 
@@ -413,7 +415,7 @@ wire [12:0] vram_addr = video_rd?video_addr:(hdma_rd&&isGBC)?hdma_target_addr[12
 
 
 spram #(13) vram0 (
-	.clock      ( clk                   ),
+	.clock      ( clk_cpu               ),
 	.address    ( vram_addr             ),
 	.wren       ( vram_wren             ),
 	.data       ( vram_di               ),
@@ -422,7 +424,7 @@ spram #(13) vram0 (
 
 //separate 8k for vbank1 for gbc because of BG reads
 spram #(13) vram1 (
-	.clock      ( clk                   ),
+	.clock      ( clk_cpu               ),
 	.address    ( vram_addr             ),
 	.wren       ( vram1_wren            ),
 	.data       ( vram_di               ),
@@ -430,7 +432,7 @@ spram #(13) vram1 (
 );
 
 //GBC VRAM banking
-always @(posedge clk) begin
+always @(posedge clk_cpu) begin
 	if(reset)
 		vram_bank <= 1'd0;
 	else if((cpu_addr == 16'hff4f) && !cpu_wr_n && isGBC)
@@ -449,6 +451,7 @@ wire hdma_rd;
 hdma hdma(
 	.reset	          ( reset         ),
 	.clk		          ( clk           ),
+	.clk_reg           ( clk_cpu       ),
 	
 	// cpu register interface
 	.sel_reg 	       ( sel_hdma      ),
@@ -474,7 +477,7 @@ hdma hdma(
 wire cpu_wr_zpram = sel_zpram && !cpu_wr_n;
 wire [7:0] zpram_do;
 spram #(7) zpram (
-	.clock      ( clk            ),
+	.clock      ( clk_cpu        ),
 	.address    ( cpu_addr[6:0]  ),
 	.wren       ( cpu_wr_zpram   ),
 	.data       ( cpu_do         ),
@@ -502,7 +505,7 @@ wire [14:0] iram_addr = (isGBC&&hdma_rd&&hdma_sel_iram)?               //hdma tr
 wire cpu_wr_iram = sel_iram && !cpu_wr_n;
 wire [7:0] iram_do;
 spram #(15) iram (
-	.clock      ( clk            ),
+	.clock      ( clk_cpu        ),
 	.address    ( {iram_bank,iram_addr[14:0]} ),
 	.wren       ( iram_wren      ),
 	.data       ( cpu_do         ),
@@ -510,7 +513,7 @@ spram #(15) iram (
 );
 
 //GBC WRAM banking
-always @(posedge clk) begin
+always @(posedge clk_cpu) begin
 	if(reset)
 		iram_bank <= 3'd1;
 	else if((cpu_addr == 16'hff70) && !cpu_wr_n && isGBC) begin

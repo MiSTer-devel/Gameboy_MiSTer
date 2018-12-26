@@ -22,7 +22,7 @@
 module video (
 	input  reset,
    input  clk,    // 4 Mhz cpu clock
-	input  clk_dma,
+	input  clk_reg,
 	input  isGBC,
 	
 	// cpu register adn oam interface
@@ -78,6 +78,7 @@ wire [1:0] sprite_dvalid = {
 
 sprites sprites (
 	.clk      ( clk          ),
+	.clk_reg  ( clk_reg      ),
 	.size16   ( lcdc_spr_siz ),
 	
 	.v_cnt    ( v_cnt        ),
@@ -175,7 +176,7 @@ assign dma_rd = dma_active;
 reg dma_active;
 reg [7:0] dma;
 reg [9:0] dma_cnt;     // dma runs 4*160 clock cycles = 160us @ 4MHz
-always @(posedge clk_dma) begin
+always @(posedge clk_reg) begin
 	if(reset)
 		dma_active <= 1'b0;
 	else begin
@@ -194,7 +195,7 @@ end
 // ------------------------------- IRQs -------------------------------
 // --------------------------------------------------------------------
 
-always @(posedge clk) begin
+always @(posedge clk_reg) begin  //TODO: have to check if this is correct
 	irq <= 1'b0;
 	
 	//TODO: investigate and fix timing of lyc=ly
@@ -219,7 +220,7 @@ end
 // --------------------- CPU register interface -----------------------
 // --------------------------------------------------------------------
 integer ii=0;
-always @(posedge clk) begin
+always @(posedge clk_reg) begin
 	if(reset) begin
 		lcdc <= 8'h00;  // screen must be off since dmg rom writes to vram
 		scy <= 8'h00;

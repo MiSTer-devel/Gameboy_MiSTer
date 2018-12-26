@@ -1,6 +1,7 @@
 module hdma(
 	input  reset,
    input  clk,    // 4 Mhz cpu clock
+	input  clk_reg,
 	
 	// cpu register interface
 	input        sel_reg,
@@ -118,7 +119,7 @@ always @(posedge clk) begin
 	end
 end
 
-always @(posedge clk) begin
+always @(posedge clk_reg) begin
 	if(reset) begin
 	   //TODO: check default value after reset
 		hdma_source_h <= 8'hFF;
@@ -179,6 +180,7 @@ module hdma_tb;
 	hdma hdma(
 		.reset	          ( reset         ),
 		.clk		          ( clk           ),
+		.clk_reg           ( clk           ),
 		
 		// cpu register interface
 		.sel_reg 	       ( sel_reg       ),

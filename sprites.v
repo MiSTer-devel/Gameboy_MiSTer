@@ -21,6 +21,7 @@
 
 module sprites (
 	input clk,
+	input clk_reg,
 	input size16,
 
 	// pixel position input which the current pixel is generated for
@@ -95,7 +96,7 @@ for(i=0;i<SPRITES;i=i+1) begin : spr
 	assign sprite_idx_array[i] = sprite_idx[6*i+5:6*i];
 
 	sprite sprite (
-		.clk      ( clk     ),
+		.clk      ( clk_reg ),
 		.size16   ( size16  ),
 
 		.v_cnt    ( v_cnt   ),

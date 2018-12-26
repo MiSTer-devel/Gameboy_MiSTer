@@ -256,7 +256,7 @@ sdram sdram (
 
     // system interface
    .clk            ( clk_sys                   ),
-   .sync           ( ce_cpu                    ),
+   .sync           ( speed?ce_cpu2x:ce_cpu     ),
    .init           ( ~pll_locked               ),
 
    // cpu interface
@@ -273,7 +273,7 @@ reg dn_write;
 always @(posedge clk_sys) begin
 	if(ioctl_wr) ioctl_wait <= 1;
 
-	if(ce_cpu) begin
+	if(speed?ce_cpu2x:ce_cpu) begin
 		dn_write <= ioctl_wait;
 		if(dn_write) {ioctl_wait, dn_write} <= 0;
 		if(dn_write) cart_ready <= 1;
@@ -356,7 +356,7 @@ always @(posedge clk_sys) begin
 		mbc1_mode <= 1'b0;
 		mbc3_mode <= 1'b0;
 		mbc_ram_enable <= 1'b0;
-	end else if(ce_cpu) begin
+	end else if(speed?ce_cpu2x:ce_cpu) begin
 		
 		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
@@ -392,7 +392,7 @@ always @(posedge clk_sys) begin
 				mbc1_mode <= cart_di[0];
 		
 		//RAM enable/disable
-		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
+		if(speed?ce_cpu2x:ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
 			mbc_ram_enable <= (cart_di[3:0] == 4'ha);
 	end
 end
@@ -613,7 +613,7 @@ wire [16:0] cram_addr = mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 // Up to 8kb * 16banks of Cart Ram (128kb)
 
 dpram #(16) cram_l (
-	.clock_a (clk_cpu),
+	.clock_a (speed?clk_cpu2x:clk_cpu),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & ~cram_addr[0]),
 	.data_a (cart_di),
@@ -627,7 +627,7 @@ dpram #(16) cram_l (
 );
 
 dpram #(16) cram_h (
-	.clock_a (clk_cpu),
+	.clock_a (speed?clk_cpu2x:clk_cpu),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & cram_addr[0]),
 	.data_a (cart_di),
