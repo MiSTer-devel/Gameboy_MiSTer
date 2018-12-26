@@ -71,15 +71,18 @@ wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram a
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
 					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001));
 					
-wire sel_hdma = (cpu_addr[15:4]==12'hff5) && 
-					((cpu_addr[3:0]!=4'd0)&&(cpu_addr[3:0]< 4'd6)); //HDMA FF51-FF55 
-wire sel_key1 = cpu_addr == 16'hff4d;  			      // KEY1 - CGB Mode Only - Prepare Speed Switch
-					
 //DMA can select from $0000 to $F100					
 wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
 wire dma_sel_cram = dma_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $8000
 wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
+
+//CGB
+wire sel_vram_bank = (cpu_addr==16'hff4f);
+wire sel_iram_bank = (cpu_addr==16'hff70);				
+wire sel_hdma = (cpu_addr[15:4]==12'hff5) && 
+					((cpu_addr[3:0]!=4'd0)&&(cpu_addr[3:0]< 4'd6)); //HDMA FF51-FF55 
+wire sel_key1 = cpu_addr == 16'hff4d;  			      // KEY1 - CGB Mode Only - Prepare Speed Switch
 
 //HDMA can select from $0000 to $7ff0 or A000-DFF0
 //wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
@@ -96,6 +99,11 @@ wire [7:0] sc_r = {sc_start,6'h3F,sc_shiftclock};
 wire [7:0] cpu_di = 
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
+		sel_if?{3'b111, if_r}:  // interrupt flag register
+	   isGBC&&sel_iram_bank?{5'h1f,iram_bank}:
+	   isGBC&&sel_vram_bank?{7'h7f,vram_bank}:
+	   isGBC&&sel_hdma?{hdma_do}:  //hdma GBC
+	   isGBC&&sel_key1?{cpu_speed,6'd0,prepare_switch}: //key1 cpu speed register(GBC)
 		sel_joy?joy_do:         // joystick register
 		sel_sb?8'hFF:				// serial transfer data register
 		sel_sc?sc_r:				// serial transfer control register
@@ -109,9 +117,6 @@ wire [7:0] cpu_di =
 		sel_zpram?zpram_do:     // zero page ram
 		sel_iram?iram_do:       // internal ram
 		sel_ie?{3'b000, ie_r}:  // interrupt enable register
-		sel_if?{3'b111, if_r}:  // interrupt flag register
-		sel_hdma&&isGBC?{hdma_do}:  //hdma GBC
-		sel_key1&&isGBC?{cpu_speed,6'd0,prepare_switch}: //key1 cpu speed register(GBC)
 		8'hff;
 
 wire cpu_wr_n;
@@ -396,13 +401,15 @@ wire cpu_wr_vram = sel_vram && !cpu_wr_n;
 reg vram_bank; //0-1 FF4F - VBK
 
 wire [7:0] vram_do,vram1_do;
-wire [7:0] vram_di = (hdma_rd&&isGBC)?hdma_data:cpu_do;
+wire [7:0] vram_di = (hdma_rd&&isGBC)?
+								hdma_sel_iram?iram_do:cart_do:
+							cpu_do;
 
  
 wire vram_wren = video_rd?1'b0:!vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 
-wire [12:0] vram_addr = video_rd?video_addr:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:cpu_addr[12:0];
+wire [12:0] vram_addr = video_rd?video_addr:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
 
 
 spram #(13) vram0 (
@@ -438,7 +445,6 @@ wire [15:0] hdma_source_addr;
 wire [15:0] hdma_target_addr;
 wire [7:0] hdma_do;
 wire hdma_rd;
-wire [7:0] hdma_data = hdma_sel_iram?iram_do:cart_do;
 
 hdma hdma(
 	.reset	          ( reset         ),
@@ -480,14 +486,17 @@ spram #(7) zpram (
 // --------------------------------------------------------------------
 
 reg  [2:0] iram_bank; //1-7 FF70 - SVBK
-wire iram_wren = (dma_rd&&dma_sel_iram)?1'b0:cpu_wr_iram;
+wire iram_wren = (dma_rd&&dma_sel_iram)||(isGBC&&hdma_rd&&hdma_sel_iram)?1'b0:cpu_wr_iram;
 
-wire [14:0] iram_addr = (dma_rd&&dma_sel_iram)?								  //dma transfer?
+wire [14:0] iram_addr = (isGBC&&hdma_rd&&hdma_sel_iram)?               //hdma transfer?
+									(hdma_source_addr[12])?{iram_bank,hdma_source_addr[11:0]}:  //bank 1-7 D000-DFFF
+									{3'd0,hdma_source_addr[11:0]}:					               //bank 0									
+								(dma_rd&&dma_sel_iram)?								  //dma transfer?
 									(dma_addr[12])?{iram_bank,dma_addr[11:0]}:  //bank 1-7
-									{2'd0,dma_addr[12:0]}:					        //bank 0
+									{3'd0,dma_addr[11:0]}:					        //bank 0
 								//cpu 
 								(cpu_addr[12])?{iram_bank,cpu_addr[11:0]}:	  //bank 1-7
-								{2'd0,cpu_addr[12:0]};						  		  //bank 0				
+								{3'd0,cpu_addr[11:0]};						  		  //bank 0				
 								
 
 wire cpu_wr_iram = sel_iram && !cpu_wr_n;
@@ -526,20 +535,45 @@ always @(posedge clk) begin
 end
 			
 // combine boot rom data with cartridge data
-wire [7:0] rom_do = ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?boot_rom_do:cart_do;
+
+wire [7:0] rom_do = isGBC? //GameBoy Color?
+                        (((cpu_addr[14:8] == 7'h00) || (hdma_rd&& hdma_source_addr[14:8] == 7'h00))&& boot_rom_enabled)?boot_rom_gbc1_do:    //0-FF bootrom 1st part
+                        ((cpu_addr[14:9] == 6'h00) || (hdma_rd&& hdma_source_addr[14:9] == 6'h00))? cart_do:                                 //100-1FF Cart Header
+                        (((cpu_addr[14:12] == 3'h0) || (hdma_rd&& hdma_source_addr[14:12] == 3'h0)) && boot_rom_enabled)?boot_rom_gbc2_do:   //200-8FF bootrom 2nd part
+                        cart_do:                                                            //rest of card
+                    ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?boot_rom_do:cart_do;    //GB
+
 
 wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
 
 assign cart_di = cpu_do;
-assign cart_addr = (dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
-assign cart_rd = (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
-assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n;
+assign cart_addr = (isGBC&&hdma_rd&&!hdma_sel_iram)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
+assign cart_rd = (isGBC&&hdma_rd&&!hdma_sel_iram) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
+assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n && !hdma_rd;
+
+wire [7:0]  boot_room1_adress = hdma_rd?hdma_source_addr[7:0]:cpu_addr[7:0];
+wire [11:0] boot_room2_adress = hdma_rd?(hdma_source_addr[11:0]- 11'h200):(cpu_addr[11:0] - 11'h200);
 
 wire [7:0] boot_rom_do;
 boot_rom boot_rom (
 	.addr    ( cpu_addr[7:0] ),
 	.clk     ( clk           ),
 	.data    ( boot_rom_do   )
+);
+
+wire [7:0] boot_rom_gbc1_do;
+wire [7:0] boot_rom_gbc2_do;
+
+boot_rom_gbc1 boot_rom_gbc1 (
+	.addr    ( boot_room1_adress),
+	.clk     ( clk              ),
+	.data    ( boot_rom_gbc1_do )
+);
+
+boot_rom_gbc2 boot_rom_gbc2 (
+	.addr    ( boot_room2_adress[10:0] ),
+	.clk     ( clk              ),
+	.data    ( boot_rom_gbc2_do )
 );
 
 
