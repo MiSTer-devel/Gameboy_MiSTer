@@ -133,7 +133,7 @@ localparam CONF_STR1 = {
 	"GAMEBOY;;",
 	"-;",
 	"FS,GBCGB,Load ROM;",
-	"OB,System,Gameboy;", //Stub to disambiguate loading hybrid .gbc games in original gb mode
+	"OB,System,Gameboy,Gameboy Color;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
 	"O1,Palette,Grayscale,Custom;"
@@ -502,6 +502,7 @@ wire speed;
 gb gb (
 	.reset	    ( reset      ),
 	.clk         ( clk_cpu    ),   // the whole gameboy runs on 4mhnz
+	.clk2x       ( clk_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 
 	.fast_boot   ( status[2]  ),
 	.joystick    ( joystick   ),
@@ -576,6 +577,7 @@ assign VGA_VS = video_vs;
 
 wire ce_cpu2x = ce_pix;
 wire clk_cpu = clk_sys & ce_cpu;
+wire clk_cpu2x = clk_sys & ce_pix;
 
 reg ce_pix, ce_cpu;
 always @(negedge clk_sys) begin

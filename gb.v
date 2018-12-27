@@ -532,13 +532,14 @@ end
 // ------------------------ internal boot rom -------------------------
 // --------------------------------------------------------------------
 
-// writing 01 to $ff50 disables the internal rom
+// writing 01(GB) or 11(GBC) to $ff50 disables the internal rom
 reg boot_rom_enabled;
 always @(posedge clk) begin
 	if(reset)
 		boot_rom_enabled <= 1'b1;
-	else if((cpu_addr == 16'hff50) && !cpu_wr_n && cpu_do[0])
-		boot_rom_enabled <= 1'b0;
+	else if((cpu_addr == 16'hff50) && !cpu_wr_n)
+          if ((isGBC && cpu_do[7:0]==8'h11) || (!isGBC && cpu_do[0]))
+		          boot_rom_enabled <= 1'b0;
 end
 			
 // combine boot rom data with cartridge data
