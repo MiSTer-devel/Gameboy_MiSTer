@@ -231,8 +231,9 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 
 ///////////////////////////////////////////////////
 
-wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h40);
+wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h80);
 wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h00);
+wire bios_download = ioctl_download && (filetype == 8'h40);
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
@@ -513,6 +514,10 @@ gb gb (
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
+	
+	//gbc bios interface
+	.gbc_bios_addr   ( bios_addr  ),
+	.gbc_bios_do     ( bios_do    ),
 
 	// audio
 	.audio_l 	 ( AUDIO_L	  ),
@@ -580,6 +585,27 @@ always @(negedge clk_sys) begin
 	ce_pix   <= !div[1:0];
 	ce_cpu   <= !div[2:0];
 end
+
+
+///////////////////////////// GBC BIOS /////////////////////////////////
+
+wire [7:0] bios_do;
+wire [11:0] bios_addr;
+
+dpram_dif #(12,8,11,16) boot_rom_gbc (
+	.clock (clk_sys),
+	
+	.address_a (bios_addr),
+	.wren_a (),
+	.data_a (),
+	.q_a (bios_do),
+	
+	.address_b (ioctl_addr[11:1]),
+	.wren_b (ioctl_wr && bios_download),
+	.data_b (ioctl_dout),
+	.q_b ()
+);
+
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 

@@ -36,7 +36,11 @@ module gb (
 	output cart_wr,
 	input [7:0] cart_do,
 	output [7:0] cart_di,
-
+	
+	//gbc bios interface
+	output [11:0] gbc_bios_addr,
+	input [7:0] gbc_bios_do,
+	
 	// audio
 	output [15:0] audio_l,
 	output [15:0] audio_r,
@@ -540,9 +544,9 @@ end
 // combine boot rom data with cartridge data
 
 wire [7:0] rom_do = isGBC? //GameBoy Color?
-                        (((cpu_addr[14:8] == 7'h00) || (hdma_rd&& hdma_source_addr[14:8] == 7'h00))&& boot_rom_enabled)?boot_rom_gbc1_do:    //0-FF bootrom 1st part
+                        (((cpu_addr[14:8] == 7'h00) || (hdma_rd&& hdma_source_addr[14:8] == 7'h00))&& boot_rom_enabled)?gbc_bios_do:         //0-FF bootrom 1st part
                         ((cpu_addr[14:9] == 6'h00) || (hdma_rd&& hdma_source_addr[14:9] == 6'h00))? cart_do:                                 //100-1FF Cart Header
-                        (((cpu_addr[14:12] == 3'h0) || (hdma_rd&& hdma_source_addr[14:12] == 3'h0)) && boot_rom_enabled)?boot_rom_gbc2_do:   //200-8FF bootrom 2nd part
+                        (((cpu_addr[14:12] == 3'h0) || (hdma_rd&& hdma_source_addr[14:12] == 3'h0)) && boot_rom_enabled)?gbc_bios_do:        //200-8FF bootrom 2nd part
                         cart_do:                                                            //rest of card
                     ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?boot_rom_do:cart_do;    //GB
 
@@ -554,8 +558,7 @@ assign cart_addr = (isGBC&&hdma_rd&&!hdma_sel_iram)?hdma_source_addr:(dma_rd&&is
 assign cart_rd = (isGBC&&hdma_rd&&!hdma_sel_iram) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n && !hdma_rd;
 
-wire [7:0]  boot_room1_adress = hdma_rd?hdma_source_addr[7:0]:cpu_addr[7:0];
-wire [11:0] boot_room2_adress = hdma_rd?(hdma_source_addr[11:0]- 11'h200):(cpu_addr[11:0] - 11'h200);
+assign gbc_bios_addr = hdma_rd?hdma_source_addr[11:0]:cpu_addr[11:0];
 
 wire [7:0] boot_rom_do;
 boot_rom boot_rom (
@@ -563,21 +566,5 @@ boot_rom boot_rom (
 	.clk     ( clk           ),
 	.data    ( boot_rom_do   )
 );
-
-wire [7:0] boot_rom_gbc1_do;
-wire [7:0] boot_rom_gbc2_do;
-
-boot_rom_gbc1 boot_rom_gbc1 (
-	.addr    ( boot_room1_adress),
-	.clk     ( clk              ),
-	.data    ( boot_rom_gbc1_do )
-);
-
-boot_rom_gbc2 boot_rom_gbc2 (
-	.addr    ( boot_room2_adress[10:0] ),
-	.clk     ( clk              ),
-	.data    ( boot_rom_gbc2_do )
-);
-
 
 endmodule
