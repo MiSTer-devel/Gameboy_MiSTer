@@ -396,7 +396,6 @@ reg [7:0] bg_tile;
 reg [7:0] bg_tile_data0;
 reg [7:0] bg_tile_data1;
 
-reg [4:0] bg_palette_wptr; //GBC
 
 wire stage1_clkena = !vblank && hdvalid;
 wire [1:0] stage1_data = (isGBC&&bg_tile_attr_old[5])?{ tile_shift_1_x[0], tile_shift_0_x[0] }:{ tile_shift_1[7], tile_shift_0[7] }; 
@@ -406,10 +405,7 @@ reg [7:0] bg_tile_attr_old,bg_tile_attr_new; //GBC
 
 // read data half a clock cycle after ram has been selected
 always @(posedge clk) begin
-
-	if (reset || (h_cnt == 455))
-		bg_palette_wptr <= 5'd0;
-		
+	
 	// every memory access is two pixel cycles
 	if(h_cnt[0]) begin
 		if(bg_tile_map_rd) bg_tile <= vram_data;

@@ -180,9 +180,9 @@ wire [4:0] r5 = pixel_reg[4:0];
 wire [4:0] g5 = pixel_reg[9:5];
 wire [4:0] b5 = pixel_reg[14:10];
 
-wire [8:0] r10 = (r5 * 13) + (g5 * 2) +b5;
-wire [8:0] g10 = (g5 * 3) + b5;
-wire [8:0] b10 = (r5 * 3) + (g5 * 2) + (b5 * 11);
+wire [31:0] r10 = (r5 * 13) + (g5 * 2) +b5;
+wire [31:0] g10 = (g5 * 3) + b5;
+wire [31:0] b10 = (r5 * 3) + (g5 * 2) + (b5 * 11);
 
 // gameboy "color" palette
 wire [7:0] pal_r = //isGBC?{pixel_reg[4:0],3'd0}:
