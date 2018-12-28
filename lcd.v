@@ -6,8 +6,9 @@
 module lcd (
 	input   clk,
 	input   clkena,
-	input [1:0] data,
+	input [14:0] data,
 	input [1:0] mode,
+	input isGBC,
 	
 	//palette
 	input [23:0] pal1,
@@ -41,7 +42,7 @@ reg [14:0] vbuffer_lineptr;
 
 
 //image buffer 160x144x2bits for now , later 15bits for cgb
-dpram #(15,2) vbuffer (
+dpram #(15,15) vbuffer (
 	.clock_a (clk),
 	.address_a (vbuffer_inptr),
 	.wren_a (clkena),
@@ -124,8 +125,7 @@ end
 // -------------------------------------------------------------------------------
 // ------------------------------- pixel generator -------------------------------
 // -------------------------------------------------------------------------------
-reg [1:0] pixel_reg;
-reg [7:0] shift_reg_rptr;
+reg [14:0] pixel_reg;
 
 always@(posedge pclk) begin
 	if(pce) begin
@@ -170,20 +170,46 @@ always@(posedge pclk) begin
 	end
 end
 
-wire [1:0] pixel = on? (pixel_reg ^ {inv,inv}) :2'b00;
+
+wire [14:0] pixel = on?isGBC?pixel_reg:
+							  {13'd0,(pixel_reg[1:0] ^ {inv,inv})}: //invert gb only
+							  15'd0;
+
+							  
+wire [4:0] r5 = pixel_reg[4:0];
+wire [4:0] g5 = pixel_reg[9:5];
+wire [4:0] b5 = pixel_reg[14:10];
+
+wire [31:0] r10 = (r5 * 13) + (g5 * 2) +b5;
+wire [31:0] g10 = (g5 * 3) + b5;
+wire [31:0] b10 = (r5 * 3) + (g5 * 2) + (b5 * 11);
 
 // gameboy "color" palette
-wire [7:0] pal_r = (pixel==0)?pal1[23:16]:(pixel==1)?pal2[23:16]:
-	(pixel==2)?pal3[23:16]:pal4[23:16];
-wire [7:0] pal_g = (pixel==0)?pal1[15:8] :(pixel==1)?pal2[15:8] :
-	(pixel==2)?pal3[15:8] :pal4[15:8] ;
-wire [7:0] pal_b = (pixel==0)?pal1[7:0]  :(pixel==1)?pal2[7:0]  :
-	(pixel==2)?pal3[7:0]  :pal4[7:0]  ;
+wire [7:0] pal_r = //isGBC?{pixel_reg[4:0],3'd0}:
+                   isGBC?r10[8:1]:
+                   (pixel==0)?pal1[23:16]:
+						 (pixel==1)?pal2[23:16]:
+						 (pixel==2)?pal3[23:16]:
+						 pal4[23:16];
+
+wire [7:0] pal_g = //isGBC?{pixel_reg[9:5],3'd0}:
+                   isGBC?{g10[6:0],1'b0}:
+                   (pixel==0)?pal1[15:8]:
+                   (pixel==1)?pal2[15:8]:
+						 (pixel==2)?pal3[15:8]:
+						 pal4[15:8];
+						 
+wire [7:0] pal_b = //isGBC?{pixel_reg[14:10],3'd0}:
+                    isGBC?b10[8:1]:
+						 (pixel==0)?pal1[7:0]:
+                   (pixel==1)?pal2[7:0]:
+						 (pixel==2)?pal3[7:0]:
+						 pal4[7:0];
 
 // greyscale
 wire [7:0] grey = (pixel==0)?8'd252:(pixel==1)?8'd168:(pixel==2)?8'd96:8'd0;
-assign r = blank?8'b00000000:tint?pal_r:grey;
-assign g = blank?8'b00000000:tint?pal_g:grey;
-assign b = blank?8'b00000000:tint?pal_b:grey;
+assign r = blank?8'b00000000:tint||isGBC?pal_r:grey;
+assign g = blank?8'b00000000:tint||isGBC?pal_g:grey;
+assign b = blank?8'b00000000:tint||isGBC?pal_b:grey;
 
 endmodule

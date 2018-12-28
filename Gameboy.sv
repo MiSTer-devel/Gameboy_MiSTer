@@ -133,7 +133,7 @@ localparam CONF_STR1 = {
 	"GAMEBOY;;",
 	"-;",
 	"FS,GBCGB,Load ROM;",
-	"OB,System,Gameboy;", //Stub to disambiguate loading hybrid .gbc games in original gb mode
+	"OB,System,Gameboy,Gameboy Color;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
 	"O1,Palette,Grayscale,Custom;"
@@ -231,8 +231,9 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) h
 
 ///////////////////////////////////////////////////
 
-wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h40);
+wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h80);
 wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h00);
+wire bios_download = ioctl_download && (filetype == 8'h40);
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
@@ -256,7 +257,7 @@ sdram sdram (
 
     // system interface
    .clk            ( clk_sys                   ),
-   .sync           ( ce_cpu                    ),
+   .sync           ( speed?ce_cpu2x:ce_cpu     ),
    .init           ( ~pll_locked               ),
 
    // cpu interface
@@ -273,7 +274,7 @@ reg dn_write;
 always @(posedge clk_sys) begin
 	if(ioctl_wr) ioctl_wait <= 1;
 
-	if(ce_cpu) begin
+	if(speed?ce_cpu2x:ce_cpu) begin
 		dn_write <= ioctl_wait;
 		if(dn_write) {ioctl_wait, dn_write} <= 0;
 		if(dn_write) cart_ready <= 1;
@@ -356,7 +357,7 @@ always @(posedge clk_sys) begin
 		mbc1_mode <= 1'b0;
 		mbc3_mode <= 1'b0;
 		mbc_ram_enable <= 1'b0;
-	end else if(ce_cpu) begin
+	end else if(speed?ce_cpu2x:ce_cpu) begin
 		
 		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
@@ -392,7 +393,7 @@ always @(posedge clk_sys) begin
 				mbc1_mode <= cart_di[0];
 		
 		//RAM enable/disable
-		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
+		if(speed?ce_cpu2x:ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
 			mbc_ram_enable <= (cart_di[3:0] == 4'ha);
 	end
 end
@@ -403,6 +404,7 @@ end
 reg [7:0] cart_mbc_type;
 reg [7:0] cart_rom_size;
 reg [7:0] cart_ram_size;
+reg [7:0] cart_cgb_flag;
 
 // RAM size
 wire [3:0] ram_mask =               	// 0 - no ram
@@ -446,6 +448,8 @@ wire [9:0] mbc_bank =
 //	HuC1?HuC1_addr:
 //	HuC3?HuC3_addr:              
 	{8'd0, cart_addr[14:13]};  // no MBC, 32k linear address
+	
+wire isGBC_game = (cart_cgb_flag == 8'h80 || cart_cgb_flag == 8'hC0);
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 
@@ -457,6 +461,7 @@ always @(posedge clk_sys) begin
 	end else begin
 		if(cart_download & ioctl_wr) begin
 			case(ioctl_addr)
+			   'h142: cart_cgb_flag <= ioctl_dout[15:8];
 				'h146: cart_mbc_type <= ioctl_dout[15:8];
 				'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
 			endcase
@@ -484,22 +489,25 @@ wire cart_rd;
 wire cart_wr;
 
 wire lcd_clkena;
-wire [1:0] lcd_data;
+wire [14:0] lcd_data;
 wire [1:0] lcd_mode;
 wire lcd_on;
 
 assign AUDIO_S = 0;
 
 wire reset = (RESET | status[0] | status[6] | buttons[1] | cart_download | bk_loading);
-
+wire speed;
 
 // the gameboy itself
 gb gb (
 	.reset	    ( reset      ),
 	.clk         ( clk_cpu    ),   // the whole gameboy runs on 4mhnz
+	.clk2x       ( clk_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 
 	.fast_boot   ( status[2]  ),
 	.joystick    ( joystick   ),
+	.isGBC       ( status[11] ),
+	.isGBC_game  ( isGBC_game ),
 
 	// interface to the "external" game cartridge
 	.cart_addr   ( cart_addr  ),
@@ -507,6 +515,10 @@ gb gb (
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
+	
+	//gbc bios interface
+	.gbc_bios_addr   ( bios_addr  ),
+	.gbc_bios_do     ( bios_do    ),
 
 	// audio
 	.audio_l 	 ( AUDIO_L	  ),
@@ -516,7 +528,8 @@ gb gb (
 	.lcd_clkena  ( lcd_clkena ),
 	.lcd_data    ( lcd_data   ),
 	.lcd_mode    ( lcd_mode   ),
-	.lcd_on      ( lcd_on     )
+	.lcd_on      ( lcd_on     ),
+	.speed       ( speed      )
 );
 
 // the lcd to vga converter
@@ -527,6 +540,7 @@ lcd lcd (
 	 .pclk   ( clk_sys    ),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
+	 .isGBC  ( status[11] ),
 
 	 .tint   ( status[1]  ),
 	 .inv    ( status[12]  ),
@@ -561,7 +575,9 @@ assign CE_PIXEL = ce_pix & !line_cnt;
 assign VGA_HS = video_hs;
 assign VGA_VS = video_vs;
 
+wire ce_cpu2x = ce_pix;
 wire clk_cpu = clk_sys & ce_cpu;
+wire clk_cpu2x = clk_sys & ce_pix;
 
 reg ce_pix, ce_cpu;
 always @(negedge clk_sys) begin
@@ -571,6 +587,27 @@ always @(negedge clk_sys) begin
 	ce_pix   <= !div[1:0];
 	ce_cpu   <= !div[2:0];
 end
+
+
+///////////////////////////// GBC BIOS /////////////////////////////////
+
+wire [7:0] bios_do;
+wire [11:0] bios_addr;
+
+dpram_dif #(12,8,11,16) boot_rom_gbc (
+	.clock (clk_sys),
+	
+	.address_a (bios_addr),
+	.wren_a (),
+	.data_a (),
+	.q_a (bios_do),
+	
+	.address_b (ioctl_addr[11:1]),
+	.wren_b (ioctl_wr && bios_download),
+	.data_b (ioctl_dout),
+	.q_b ()
+);
+
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
@@ -604,7 +641,7 @@ wire [16:0] cram_addr = mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 // Up to 8kb * 16banks of Cart Ram (128kb)
 
 dpram #(16) cram_l (
-	.clock_a (clk_cpu),
+	.clock_a (speed?clk_cpu2x:clk_cpu),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & ~cram_addr[0]),
 	.data_a (cart_di),
@@ -618,7 +655,7 @@ dpram #(16) cram_l (
 );
 
 dpram #(16) cram_h (
-	.clock_a (clk_cpu),
+	.clock_a (speed?clk_cpu2x:clk_cpu),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & cram_addr[0]),
 	.data_a (cart_di),
