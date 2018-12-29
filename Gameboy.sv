@@ -648,8 +648,8 @@ dpram #(16) cram_l (
 	.q_a (cram_q_l),
 	
 	.clock_b (clk_sys),
-	.address_b (bk_addr[16:1]),
-	.wren_b (bk_wr & ~bk_addr[0]),
+	.address_b (bk_addr[15:0]),
+	.wren_b (bk_wr),
 	.data_b (bk_data[7:0]),
 	.q_b (bk_q[7:0])
 );
@@ -662,8 +662,8 @@ dpram #(16) cram_h (
 	.q_a (cram_q_h),
 	
 	.clock_b (clk_sys),
-	.address_b (bk_addr[16:1]),
-	.wren_b (bk_wr & bk_addr[0]),
+	.address_b (bk_addr[15:0]),
+	.wren_b (bk_wr),
 	.data_b (bk_data[15:8]),
 	.q_b (bk_q[15:8])
 );
