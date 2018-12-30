@@ -6,7 +6,7 @@ This is port of [Gameboy for MiST](https://github.com/mist-devel/mist-board/tree
 * Place *.gb files into Gameboy folder.
 
 ## **Early** Gameboy Color Support
-Place the Gameboy color bootom into the Gameboy folder and rename it to boot1.rom
+Place the Gameboy color bootrom into the Gameboy folder and rename it to boot1.rom
 
 ## Palettes
 Core supports custom palettes (*.gbp) which should be places into Gameboy folder. Some examples are available in palettes folder.
