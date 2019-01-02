@@ -187,8 +187,7 @@ wire audio_wr = !cpu_wr_n && sel_audio;
 wire [7:0] audio_do;
 
 gbc_snd audio (
-	.clk				( clk 				),
-	.reg_clk			( clk_cpu         ),
+	.clk				( clk2x 				),
 	.reset			( reset				),
 
 	.s1_read  		( audio_rd  		),

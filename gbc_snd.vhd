@@ -10,7 +10,6 @@ entity gbc_snd is
   port
   (
 		clk				: in std_logic;
-		reg_clk        : in std_logic;
 		reset				: in std_logic;
 		
 		s1_read			: in std_logic;
@@ -132,7 +131,14 @@ begin
 	en_snd2 <= en_snd and en_snden2;
 	en_snd4 <= en_snd and en_snden4;
 
-	en_snd <= true;
+	process (clk,en_snd,reset)
+	begin
+		if reset= '1' then
+			en_snd <= false;
+		elsif rising_edge(clk) then
+			en_snd <= not en_snd;
+		end if;
+	end process;
 	
 	-- Calculate divided and frame sequencer clock enables
 	process(clk, en_snd, snd_enable, reset)
@@ -197,7 +203,7 @@ begin
 	end process;
 
 	-- Registers
-	registers : process(reg_clk, snd_enable, reset)
+	registers : process(clk, snd_enable, reset)
 	begin
 
 		-- Registers
@@ -244,7 +250,7 @@ begin
 			ch_map 		<= (others => '0');
 	      ch_vol		<= (others => '0');
 
-		elsif rising_edge(reg_clk) then
+		elsif rising_edge(clk) then
 			if en_snd then
 				sq1_trigger <= '0';
 				sq2_trigger <= '0';
@@ -435,7 +441,7 @@ begin
 
 		if reset = '1' then
 			snd_enable <= '0';
-		elsif rising_edge(reg_clk) then
+		elsif rising_edge(clk) then
 			if s1_write = '1' and s1_addr = "100110" then
 				-- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
 				snd_enable <= s1_writedata(7);
