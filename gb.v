@@ -157,12 +157,11 @@ GBse cpu (
 // --------------------------------------------------------------------
 // --------------------- Speed Toggle KEY1 (GBC)-----------------------
 // --------------------------------------------------------------------
-//wire clk_cpu = cpu_speed?clk2x:clk;
-wire clk_cpu = clk;
+wire clk_cpu = cpu_speed?clk2x:clk;
+//wire clk_cpu = clk;
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
-assign speed = 1'b0;
-//cpu_speed;
+assign speed = cpu_speed;
 
 always @(posedge clk2x) begin
    if(reset) begin
