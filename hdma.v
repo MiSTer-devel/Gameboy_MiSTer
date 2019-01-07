@@ -45,23 +45,37 @@ always @(posedge clk) begin
 	if(reset) begin
 		hdma_active <= 1'b0;
 		hdma_state <= wait_h;
-		hdma_enabled <= 1'b0;	
+		hdma_enabled <= 1'b0;
+		hdma_source_h <= 8'hFF;
+		hdma_source_l <= 4'hF;
+		hdma_target_h <= 5'h1F;
+		hdma_target_l <= 4'hF;		
 	end else begin
+	   if(sel_reg && wr) begin
 		
-		// writing the hdma register engages the dma engine
-		if(wr && (addr == 4'h5) && sel_reg) begin
-			if (hdma_mode == 1 && hdma_enabled && !din[7]) begin  //terminate an active H-Blank transfer by writing zero to Bit 7 of FF55
-				hdma_state <= wait_h;
-				hdma_active <= 1'b0;
-				hdma_enabled <= 1'b0;
-			end else begin															  //normal trigger
-				hdma_enabled <= 1'b1;
-				hdma_mode <= din[7];
-				hdma_length <= {1'b0,din[6:0]} + 8'd1;  
-				hdma_cnt <= 13'd0; 
-				hdma_16byte_cnt <= 5'h1f;
-				if (din[7] == 1) hdma_state <= wait_h;
-			end
+			case (addr)
+				4'd1: hdma_source_h <= din;
+				4'd2: hdma_source_l <= din[7:4];
+				4'd3: hdma_target_h <= din[4:0];
+				4'd4: hdma_target_l <= din[7:4];
+	
+			 
+				// writing the hdma register engages the dma engine
+				4'h5: begin
+							if (hdma_mode == 1 && hdma_enabled && !din[7]) begin  //terminate an active H-Blank transfer by writing zero to Bit 7 of FF55
+								hdma_state <= wait_h;
+								hdma_active <= 1'b0;
+								hdma_enabled <= 1'b0;
+							end else begin															  //normal trigger
+								hdma_enabled <= 1'b1;
+								hdma_mode <= din[7];
+								hdma_length <= {1'b0,din[6:0]} + 8'd1;  
+								hdma_cnt <= 13'd0; 
+								hdma_16byte_cnt <= 5'h1f;
+								if (din[7] == 1) hdma_state <= wait_h;
+							end
+						end
+		    endcase
 		end
 		
 		if (hdma_enabled) begin
@@ -119,31 +133,10 @@ always @(posedge clk) begin
 	end
 end
 
-always @(posedge clk_reg) begin
-	if(reset) begin
-	   //TODO: check default value after reset
-		hdma_source_h <= 8'hFF;
-		hdma_source_l <= 4'hF;
-		hdma_target_h <= 5'h1F;
-		hdma_target_l <= 4'hF;	
-	end else if(sel_reg && wr) begin
-		
-		case (addr)
-			4'd1: hdma_source_h <= din;
-			4'd2: hdma_source_l <= din[7:4];
-			4'd3: hdma_target_h <= din[4:0];
-			4'd4: hdma_target_l <= din[7:4];
-		endcase
-	end
-end
 
 wire [7:0] length_m1 = hdma_length - 8'd1;
 
 assign dout =  sel_reg?
-					(addr==4'd1)?hdma_source_h:
-					(addr==4'd2)?{hdma_source_l,4'd0}:
-					(addr==4'd3)?{3'b100,hdma_target_h}:
-					(addr==4'd4)?{hdma_target_l,4'd0}:
 					(addr==4'd5)?hdma_enabled?{1'b0,length_m1[6:0]}:
 					{1'b1,length_m1[6:0]}:
 					8'hFF:
