@@ -112,6 +112,7 @@ entity T80_MCode is
 		ALU_Op                  : out std_logic_vector(3 downto 0);
 			-- ADD, ADC, SUB, SBC, AND, XOR, OR, CP, ROT, BIT, SET, RES, DAA, RLD, RRD, None
 		Save_ALU                : out std_logic;
+		Rot_Akku                : out std_logic;
 		PreserveC               : out std_logic;
 		Arith16                 : out std_logic;
 		Set_Addr_To             : out std_logic_vector(2 downto 0); -- aNone,aXY,aIOA,aSP,aBC,aDE,aZI
@@ -213,6 +214,7 @@ begin
 		Set_BusA_To <= "0000";
 		ALU_Op <= "0" & IR(5 downto 3);
 		Save_ALU <= '0';
+		Rot_Akku <= '0';
 		PreserveC <= '0';
 		Arith16 <= '0';
 		IORQ <= '0';
@@ -956,6 +958,7 @@ begin
 			Set_BusA_To(2 downto 0) <= "111";
 			ALU_Op <= "1000";
 			Read_To_Reg <= '1';
+			Rot_Akku <= '1';
 			Save_ALU <= '1';
 
 -- JUMP GROUP
