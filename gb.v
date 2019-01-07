@@ -87,10 +87,11 @@ wire sel_iram_bank = (cpu_addr==16'hff70);
 wire sel_hdma = (cpu_addr[15:4]==12'hff5) && 
 					((cpu_addr[3:0]!=4'd0)&&(cpu_addr[3:0]< 4'd6)); //HDMA FF51-FF55 
 wire sel_key1 = cpu_addr == 16'hff4d;  			      // KEY1 - CGB Mode Only - Prepare Speed Switch
+wire sel_rp = cpu_addr == 16'hff56; //FF56 - RP - CGB Mode Only - Infrared Communications Port
 
 //HDMA can select from $0000 to $7ff0 or A000-DFF0
-//wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
-//wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
+wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
+wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
 wire hdma_sel_iram = hdma_source_addr[15:13] == 3'b110;     // 8k internal ram at $c000-$dff0
 
 
@@ -104,10 +105,11 @@ wire [7:0] cpu_di =
 		irq_ack?irq_vec:
 		sel_fast?8'h42:         // fast boot flag
 		sel_if?{3'b111, if_r}:  // interrupt flag register
+		isGBC&&sel_rp?8'h02:
 	   isGBC&&sel_iram_bank?{5'h1f,iram_bank}:
 	   isGBC&&sel_vram_bank?{7'h7f,vram_bank}:
 	   isGBC&&sel_hdma?{hdma_do}:  //hdma GBC
-	   isGBC&&sel_key1?{cpu_speed,6'd0,prepare_switch}: //key1 cpu speed register(GBC)
+	   isGBC&&sel_key1?{cpu_speed,6'h3f,prepare_switch}: //key1 cpu speed register(GBC)
 		sel_joy?joy_do:         // joystick register
 		sel_sb?8'hFF:				// serial transfer data register
 		sel_sc?sc_r:				// serial transfer control register
@@ -406,7 +408,9 @@ reg vram_bank; //0-1 FF4F - VBK
 
 wire [7:0] vram_do,vram1_do;
 wire [7:0] vram_di = (hdma_rd&&isGBC)?
-								hdma_sel_iram?iram_do:cart_do:
+								hdma_sel_iram?iram_do:
+								is_hdma_cart_addr?cart_do:
+								8'hFF:
 							cpu_do;
 
  
@@ -551,10 +555,11 @@ wire [7:0] rom_do = isGBC? //GameBoy Color?
 
 
 wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
+wire is_hdma_cart_addr = (hdma_sel_rom || hdma_sel_cram); //rom or external ram
 
 assign cart_di = cpu_do;
-assign cart_addr = (isGBC&&hdma_rd&&!hdma_sel_iram)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
-assign cart_rd = (isGBC&&hdma_rd&&!hdma_sel_iram) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
+assign cart_addr = (isGBC&&hdma_rd&&is_hdma_cart_addr)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
+assign cart_rd = (isGBC&&hdma_rd&&is_hdma_cart_addr) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n && !hdma_rd;
 
 assign gbc_bios_addr = hdma_rd?hdma_source_addr[11:0]:cpu_addr[11:0];
