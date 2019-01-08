@@ -1,7 +1,6 @@
 module hdma(
 	input  reset,
-   input  clk,    // 4 Mhz cpu clock
-	input  clk_reg,
+   input  clk,    // 8 Mhz cpu clock
 	
 	// cpu register interface
 	input        sel_reg,
@@ -31,12 +30,12 @@ reg hdma_active;
 
 // it takes about 8us to transfer a block of 16 bytes. -> 500ns per byte -> 2Mhz
 // 32 cycles in Normal Speed Mode, and 64 'fast' cycles in Double Speed Mode
-reg [12:0] hdma_cnt; 
-reg [4:0]  hdma_16byte_cnt; //16bytes*2
+reg [13:0] hdma_cnt; 
+reg [5:0]  hdma_16byte_cnt; //16bytes*4
 
 assign hdma_rd = hdma_active;
-assign hdma_source_addr = { hdma_source_h,hdma_source_l,4'd0} + hdma_cnt[12:1];
-assign hdma_target_addr = { 3'b100,hdma_target_h,hdma_target_l,4'd0} + hdma_cnt[12:1];
+assign hdma_source_addr = { hdma_source_h,hdma_source_l,4'd0} + hdma_cnt[13:2];
+assign hdma_target_addr = { 3'b100,hdma_target_h,hdma_target_l,4'd0} + hdma_cnt[13:2];
 
 reg [1:0] hdma_state;
 parameter active=2'd0,blocksent=2'd1,wait_h=2'd2;
@@ -70,8 +69,8 @@ always @(posedge clk) begin
 								hdma_enabled <= 1'b1;
 								hdma_mode <= din[7];
 								hdma_length <= {1'b0,din[6:0]} + 8'd1;  
-								hdma_cnt <= 13'd0; 
-								hdma_16byte_cnt <= 5'h1f;
+								hdma_cnt <= 14'd0; 
+								hdma_16byte_cnt <= 6'h3f;
 								if (din[7] == 1) hdma_state <= wait_h;
 							end
 						end
@@ -98,7 +97,7 @@ always @(posedge clk) begin
 					wait_h:    begin 
 								    if (lcd_mode == 2'b00 ) 	// Mode 00:  h-blank
 									   hdma_state <= active;
-								    hdma_16byte_cnt <= 5'h1f;
+								    hdma_16byte_cnt <= 6'h3f;
 									 hdma_active <= 1'b0;
 							     end
 				   
@@ -148,8 +147,8 @@ endmodule
 
 module hdma_tb;
 
-   // duration for each bit = 250 * timescale = 250 * 1 ns  = 250ns // 4MHz
-   localparam period = 250;  
+   // duration for each bit = 125 * timescale = 125 * 1 ns  = 125ns // 8MHz
+   localparam period = 125;  
 
 	reg  reset = 1'd1;
 	reg  clk = 1'd0;
@@ -173,7 +172,6 @@ module hdma_tb;
 	hdma hdma(
 		.reset	          ( reset         ),
 		.clk		          ( clk           ),
-		.clk_reg           ( clk           ),
 		
 		// cpu register interface
 		.sel_reg 	       ( sel_reg       ),
@@ -191,7 +189,7 @@ module hdma_tb;
 		
 	);
 	
-	always #125 clk <= !clk;
+	always #62 clk <= !clk;
 	initial begin
 		reset <= 1'b0;
 		sel_reg <= 1'b1;

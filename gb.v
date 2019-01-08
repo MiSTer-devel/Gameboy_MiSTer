@@ -456,8 +456,7 @@ wire hdma_rd;
 
 hdma hdma(
 	.reset	          ( reset         ),
-	.clk		          ( clk           ),
-	.clk_reg           ( clk_cpu       ),
+	.clk		          ( clk2x         ),
 	
 	// cpu register interface
 	.sel_reg 	       ( sel_hdma      ),
