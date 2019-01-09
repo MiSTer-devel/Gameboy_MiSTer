@@ -161,6 +161,7 @@ package T80_Pack is
 		ALU_Op                  : out std_logic_vector(3 downto 0);
 			-- ADD, ADC, SUB, SBC, AND, XOR, OR, CP, ROT, BIT, SET, RES, DAA, RLD, RRD, None
 		Save_ALU                : out std_logic;
+		Rot_Akku                : out std_logic;
 		PreserveC               : out std_logic;
 		Arith16                 : out std_logic;
 		Set_Addr_To             : out std_logic_vector(2 downto 0); -- aNone,aXY,aIOA,aSP,aBC,aDE,aZI
@@ -217,6 +218,7 @@ package T80_Pack is
 		Arith16         : in  std_logic;
 		Z16             : in  std_logic;
 		ALU_Op          : in  std_logic_vector(3 downto 0);
+		Rot_Akku        : in  std_logic;
 		IR              : in  std_logic_vector(5 downto 0);
 		ISet            : in  std_logic_vector(1 downto 0);
 		BusA            : in  std_logic_vector(7 downto 0);

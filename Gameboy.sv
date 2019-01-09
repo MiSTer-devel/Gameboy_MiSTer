@@ -257,7 +257,7 @@ sdram sdram (
 
     // system interface
    .clk            ( clk_sys                   ),
-   .sync           ( speed?ce_cpu2x:ce_cpu     ),
+   .sync           ( ce_cpu2x                  ),
    .init           ( ~pll_locked               ),
 
    // cpu interface
@@ -357,7 +357,7 @@ always @(posedge clk_sys) begin
 		mbc1_mode <= 1'b0;
 		mbc3_mode <= 1'b0;
 		mbc_ram_enable <= 1'b0;
-	end else if(speed?ce_cpu2x:ce_cpu) begin
+	end else if(ce_cpu2x) begin
 		
 		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
@@ -393,7 +393,7 @@ always @(posedge clk_sys) begin
 				mbc1_mode <= cart_di[0];
 		
 		//RAM enable/disable
-		if(speed?ce_cpu2x:ce_cpu && cart_wr && (cart_addr[15:13] == 3'b000))
+		if(ce_cpu2x && cart_wr && (cart_addr[15:13] == 3'b000))
 			mbc_ram_enable <= (cart_di[3:0] == 4'ha);
 	end
 end
@@ -537,7 +537,7 @@ wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_bl;
 
 lcd lcd (
-	 .pclk   ( clk_sys    ),
+	 .pclk   ( clk_sys_old),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
 	 .isGBC  ( status[11] ),
@@ -575,17 +575,19 @@ assign CE_PIXEL = ce_pix & !line_cnt;
 assign VGA_HS = video_hs;
 assign VGA_VS = video_vs;
 
+wire clk_sys_old =  clk_sys & ce_sys;
 wire ce_cpu2x = ce_pix;
 wire clk_cpu = clk_sys & ce_cpu;
 wire clk_cpu2x = clk_sys & ce_pix;
 
-reg ce_pix, ce_cpu;
+reg ce_pix, ce_cpu,ce_sys;
 always @(negedge clk_sys) begin
-	reg [2:0] div = 0;
+	reg [3:0] div = 0;
 
 	div <= div + 1'd1;
-	ce_pix   <= !div[1:0];
-	ce_cpu   <= !div[2:0];
+	ce_sys   <= !div[0];
+	ce_pix   <= !div[2:0];
+	ce_cpu   <= !div[3:0];
 end
 
 
@@ -641,7 +643,7 @@ wire [16:0] cram_addr = mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 // Up to 8kb * 16banks of Cart Ram (128kb)
 
 dpram #(16) cram_l (
-	.clock_a (speed?clk_cpu2x:clk_cpu),
+	.clock_a (clk_cpu2x),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & ~cram_addr[0]),
 	.data_a (cart_di),
@@ -655,7 +657,7 @@ dpram #(16) cram_l (
 );
 
 dpram #(16) cram_h (
-	.clock_a (speed?clk_cpu2x:clk_cpu),
+	.clock_a (clk_cpu2x),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & cram_addr[0]),
 	.data_a (cart_di),
@@ -727,7 +729,7 @@ always @(posedge clk_sys) begin
 end
 
 reg [1:0] line_cnt;
-always @(posedge clk_sys) begin
+always @(posedge clk_sys_old) begin
 	reg old_hs;
 	reg old_vs;
 
