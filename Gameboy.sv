@@ -104,7 +104,9 @@ module emu
 	input         UART_RXD,
 	output        UART_TXD,
 	output        UART_DTR,
-	input         UART_DSR
+	input         UART_DSR,
+
+	input         OSD_STATUS
 );
 
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0; 
@@ -115,7 +117,7 @@ assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_USER  = ioctl_download;
-assign LED_DISK  = 0;
+assign LED_DISK  = sav_pending;
 assign LED_POWER = 0;
 
 assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
@@ -142,8 +144,15 @@ localparam CONF_STR1 = {
 localparam CONF_STR2 = {
 	",GBP,Load Palette;",
 	"-;",
-	"R9,Load Backup RAM;",
-	"RA,Save Backup RAM;",
+	"OD,Opening OSD saves,Yes,No;",
+};
+
+localparam CONF_STR3 = {
+	"9,Load Backup RAM;"
+};
+
+localparam CONF_STR4 = {
+	"A,Save Backup RAM;",
 	"-;",
 	"O34,Aspect ratio,4:3,10:9,16:9;",
 	"O78,Stereo mix,none,25%,50%,100%;",
@@ -196,12 +205,14 @@ wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + 1), .WIDE(1)) hps_io
+wire [7:0] sav_char = sav_supported ? "R" : "+";
+
+hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 
-	.conf_str({CONF_STR1,status[1]?"F":"+",CONF_STR2}),
+	.conf_str({CONF_STR1,status[1]?"F":"+",CONF_STR2, sav_char, CONF_STR3, sav_char, CONF_STR4}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
@@ -341,6 +352,9 @@ wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //16
 wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //128
 wire [8:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;  //480
 
+wire mbc_battery = (cart_mbc_type == 8'h03) || (cart_mbc_type == 8'h06) || (cart_mbc_type == 8'h09) || (cart_mbc_type == 8'h0D) ||
+	(cart_mbc_type == 8'h10) || (cart_mbc_type == 8'h13) || (cart_mbc_type == 8'h1B) || (cart_mbc_type == 8'h1E) ||
+	(cart_mbc_type == 8'h22) || (cart_mbc_type == 8'hFF);
 
 // --------------------- CPU register interface ------------------
 reg mbc_ram_enable;
@@ -672,19 +686,32 @@ dpram #(16) cram_h (
 
 wire downloading = cart_download;
 
-reg bk_ena = 0;
+reg  bk_ena          = 0;
+reg  new_load        = 0;
+reg  old_downloading = 0;
+reg  sav_pending     = 0;
+wire sav_supported   = (mbc_battery && (cart_ram_size > 0 || mbc2) && bk_ena);
+
 always @(posedge clk_sys) begin
-	reg old_downloading = 0;
-	
 	old_downloading <= downloading;
 	if(~old_downloading & downloading) bk_ena <= 0;
-	
+
 	//Save file always mounted in the end of downloading state.
 	if(downloading && img_mounted && img_size && !img_readonly) bk_ena <= 1;
+
+	if (old_downloading & ~downloading & sav_supported)
+		new_load <= 1'b1;
+	else if (bk_state)
+		new_load <= 1'b0;
+
+	if (cram_wr & ~OSD_STATUS & sav_supported)
+		sav_pending <= 1'b1;
+	else if (bk_state)
+		sav_pending <= 1'b0;
 end
 
-wire bk_load    = status[9];
-wire bk_save    = status[10];
+wire bk_load    = status[9] | new_load;
+wire bk_save    = status[10] | (sav_pending & OSD_STATUS & ~status[13]);
 reg  bk_loading = 0;
 reg  bk_state   = 0;
 

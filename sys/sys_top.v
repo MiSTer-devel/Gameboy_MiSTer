@@ -749,7 +749,9 @@ osd hdmi_osd
 	.din(hdmi_data_sl),
 	.dout(HDMI_TX_D),
 	.de_in(hdmi_de),
-	.de_out(HDMI_TX_DE)
+	.de_out(HDMI_TX_DE),
+
+	.osd_status(osd_status)
 );
 
 assign HDMI_MCLK = 0;
@@ -937,6 +939,7 @@ wire        uart_cts;
 wire        uart_rts;
 wire        uart_rxd;
 wire        uart_txd;
+wire        osd_status;
 
 emu emu
 (
@@ -1009,7 +1012,9 @@ emu emu
 	.UART_RXD(uart_txd),
 	.UART_TXD(uart_rxd),
 	.UART_DTR(uart_dsr),
-	.UART_DSR(uart_dtr)
+	.UART_DSR(uart_dtr),
+
+	.OSD_STATUS(osd_status)
 );
 
 endmodule
