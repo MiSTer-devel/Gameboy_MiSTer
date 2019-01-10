@@ -13,7 +13,8 @@ module osd
 	input  [23:0] din,
 	output [23:0] dout,
 	input         de_in,
-	output reg    de_out
+	output reg    de_out,
+	output        osd_status
 );
 
 parameter  OSD_COLOR    =  3'd4;
@@ -32,6 +33,8 @@ reg  [8:0] infow;
 reg [11:0] infox;
 reg [21:0] infoy;
 reg [21:0] hrheight;
+
+assign osd_status = osd_enable;
 
 always@(posedge clk_sys) begin
 	reg [11:0] bcnt;
