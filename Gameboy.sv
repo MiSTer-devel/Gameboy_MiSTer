@@ -116,8 +116,8 @@ assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
-assign LED_USER  = ioctl_download;
-assign LED_DISK  = sav_pending;
+assign LED_USER  = ioctl_download | sav_pending;
+assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
 assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
@@ -144,7 +144,7 @@ localparam CONF_STR1 = {
 localparam CONF_STR2 = {
 	",GBP,Load Palette;",
 	"-;",
-	"OD,Opening OSD saves,Yes,No;",
+	"OD,OSD triggered autosaves,No,Yes;",
 };
 
 localparam CONF_STR3 = {
@@ -711,7 +711,7 @@ always @(posedge clk_sys) begin
 end
 
 wire bk_load    = status[9] | new_load;
-wire bk_save    = status[10] | (sav_pending & OSD_STATUS & ~status[13]);
+wire bk_save    = status[10] | (sav_pending & OSD_STATUS & status[13]);
 reg  bk_loading = 0;
 reg  bk_state   = 0;
 
