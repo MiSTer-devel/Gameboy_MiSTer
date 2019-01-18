@@ -85,12 +85,14 @@ always @(posedge clk) begin
 					hdma_16byte_cnt <= hdma_16byte_cnt - 1'd1;
 					if (!hdma_16byte_cnt) begin
 							hdma_length <= hdma_length - 1'd1;
+							if (hdma_length == 1) begin
+								hdma_active <= 1'b0;
+								hdma_enabled <= 1'b0;
+								hdma_length <= 8'h80; //7f+1
+							end
 				   end	
-				end else begin
-					hdma_active <= 1'b0;
-					hdma_enabled <= 1'b0;
-					hdma_length <= 8'h80; //7f+1
-				end
+				end 
+
 			end else begin        			                       //mode 1 HDMA transfer 1 block (16bytes) in each H-Blank only
 				case (hdma_state)
 					
