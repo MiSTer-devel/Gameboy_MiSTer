@@ -316,13 +316,13 @@ reg [14:0] stage2_data;
 reg stage2_clkena;
 
 reg [1:0] stage2_buffer [159:0];
-reg [2:0] stage2_bgp_buffer_pix [159:0]; //GBC keep record of palette used for tile
+reg [3:0] stage2_bgp_buffer_pix [159:0]; //GBC keep record of palette used for tile and priority
 
 reg [7:0] stage2_wptr;
 reg [7:0] stage2_rptr;
 
 
-wire [5:0] palette_index = (stage2_bgp_buffer_pix[stage2_rptr] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
+wire [5:0] palette_index = (stage2_bgp_buffer_pix[stage2_rptr][2:0] << 3) + (stage2_buffer[stage2_rptr]<<1); //gbc
 
 
 // apply bg palette
@@ -350,10 +350,13 @@ wire [14:0] sprite_pix = isGBC?{obpd[sprite_palette_index+1][6:0],obpd[sprite_pa
 // - sprites are enabled
 // - there's a sprite at the current position
 // - the sprites prioroty bit is 0, or
-// - the prites priority is 1 and the backrgound color is 00
+// - the sprites priority is 1 and the backrgound color is 00
+// - GBC : BG priority is 0 
+
+wire bg_piority = isGBC&&stage2_bgp_buffer_pix[stage2_rptr][3];
 	
 wire sprite_pixel_visible = 
-	sprite_pixel_active && lcdc_spr_ena && 
+	sprite_pixel_active && lcdc_spr_ena && (~bg_piority) &&
 	((!sprite_pixel_prio) || (stage2_buffer[stage2_rptr] == 2'b00));
 	
 always @(posedge clk) begin
@@ -364,7 +367,7 @@ always @(posedge clk) begin
 
 	if(stage1_clkena) begin
 		stage2_buffer[stage2_wptr] <= stage1_data;
-		stage2_bgp_buffer_pix[stage2_wptr] <= bg_tile_attr_old[2:0];
+		stage2_bgp_buffer_pix[stage2_wptr] <= {bg_tile_attr_old[7],bg_tile_attr_old[2:0]};  //GBC: buffer palette and Priority Bit
 		stage2_wptr <= stage2_wptr + 8'd1;
 	end
 	
@@ -421,8 +424,6 @@ always @(posedge clk) begin
 		
 		// sprite data is evaluated inside the sprite engine
 	end
-	
-	//TODO: bg_tile_attr Bit 7    BG-to-OAM Priority         (0=Use OAM priority bit, 1=BG Priority)
 	
 	// shift bg/window pixels out 
 	if(bg_tile_obj_rd && h_cnt[0]) begin
@@ -566,7 +567,6 @@ wire win_start = lcdc_win_ena && (v_cnt >= wy_r) && de && (wx_r >= 7) && (pcnt =
 // each memory access takes two cycles
 always @(negedge clk or negedge lcdc_on) begin
 
-	//TODO: fix flicker probably lcd.v needs to be syncronized with this
 	if (!lcdc_on) begin // don't increase counters if lcdoff 
 		//reset counters
 		h_cnt <= 9'd0;  

@@ -511,7 +511,7 @@ wire cpu_wr_iram = sel_iram && !cpu_wr_n;
 wire [7:0] iram_do;
 spram #(15) iram (
 	.clock      ( clk_cpu        ),
-	.address    ( {iram_bank,iram_addr[14:0]} ),
+	.address    ( iram_addr      ),
 	.wren       ( iram_wren      ),
 	.data       ( cpu_do         ),
 	.q          ( iram_do        )
