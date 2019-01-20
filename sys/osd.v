@@ -14,7 +14,7 @@ module osd
 	output [23:0] dout,
 	input         de_in,
 	output reg    de_out,
-	output        osd_status
+	output reg    osd_status
 );
 
 parameter  OSD_COLOR    =  3'd4;
@@ -33,8 +33,6 @@ reg  [8:0] infow;
 reg [11:0] infox;
 reg [21:0] infoy;
 reg [21:0] hrheight;
-
-assign osd_status = osd_enable;
 
 always@(posedge clk_sys) begin
 	reg [11:0] bcnt;
@@ -59,8 +57,8 @@ always@(posedge clk_sys) begin
 				cmd <= io_din[7:0];
 				// command 0x40: OSDCMDENABLE, OSDCMDDISABLE
 				if(io_din[7:4] == 4) begin
-					if(!io_din[0]) highres <= 0;
-					else info <= io_din[2];
+					if(!io_din[0]) {osd_status,highres} <= 0;
+					else {osd_status,info} <= {~io_din[2],io_din[2]};
 					bcnt <= 0;
 				end
 				// command 0x20: OSDCMDWRITE
