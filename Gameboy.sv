@@ -134,8 +134,8 @@ assign AUDIO_MIX = status[8:7];
 localparam CONF_STR1 = {
 	"GAMEBOY;;",
 	"-;",
-	"FS,GBCGB,Load ROM;",
-	"OB,System,Gameboy,Gameboy Color;",
+	"FS,GBCGB ,Load ROM;",
+	"OEF,System,Auto,Gameboy,Gameboy Color;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
 	"O1,Palette,Grayscale,Custom;"
@@ -159,7 +159,7 @@ localparam CONF_STR4 = {
 	"-;",
 	"O2,Boot,Normal,Fast;",
 	"-;",
-	"R6,Reset;",
+	"R0,Reset;",
 	"J1,A,B,Select,Start;",
 	"V,v",`BUILD_DATE
 };
@@ -242,7 +242,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 
 ///////////////////////////////////////////////////
 
-wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h80);
+wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
 wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h00);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 
@@ -509,8 +509,11 @@ wire lcd_on;
 
 assign AUDIO_S = 0;
 
-wire reset = (RESET | status[0] | status[6] | buttons[1] | cart_download | bk_loading);
+wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
 wire speed;
+
+reg isGBC = 0;
+always @(posedge clk_sys) if(reset) isGBC <= status[15:14] ? status[15] : !filetype[7:4];
 
 // the gameboy itself
 gb gb (
@@ -520,7 +523,7 @@ gb gb (
 
 	.fast_boot   ( status[2]  ),
 	.joystick    ( joystick   ),
-	.isGBC       ( status[11] ),
+	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
 
 	// interface to the "external" game cartridge
@@ -554,7 +557,7 @@ lcd lcd (
 	 .pclk   ( clk_sys_old),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
-	 .isGBC  ( status[11] ),
+	 .isGBC  ( isGBC      ),
 
 	 .tint   ( status[1]  ),
 	 .inv    ( status[12]  ),
