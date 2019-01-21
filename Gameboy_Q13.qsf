@@ -51,6 +51,7 @@ set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name TIMEQUEST_MULTICORNER_ANALYSIS OFF
 set_global_assignment -name OPTIMIZE_POWER_DURING_FITTING OFF
 set_global_assignment -name FINAL_PLACEMENT_OPTIMIZATION ALWAYS
+set_global_assignment -name SYNTH_GATED_CLOCK_CONVERSION ON
 set_global_assignment -name SYNTH_TIMING_DRIVEN_SYNTHESIS ON
 set_global_assignment -name OPTIMIZE_POWER_DURING_SYNTHESIS OFF
 set_global_assignment -name OPTIMIZE_HOLD_TIMING "ALL PATHS"
@@ -359,16 +360,10 @@ set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
 
 set_global_assignment -name CDF_FILE jtag.cdf
 set_global_assignment -name QIP_FILE sys/sys_q13.qip
+set_global_assignment -name QIP_FILE t80/T80.qip
+set_global_assignment -name QIP_FILE sdram.qip
 set_global_assignment -name VHDL_FILE spram.vhd
 set_global_assignment -name VHDL_FILE dpram.vhd
-set_global_assignment -name SYSTEMVERILOG_FILE sdram.sv
-set_global_assignment -name VHDL_FILE t80/Z80.vhd
-set_global_assignment -name VHDL_FILE t80/T80_Reg.vhd
-set_global_assignment -name VHDL_FILE t80/T80_Pack.vhd
-set_global_assignment -name VHDL_FILE t80/T80_MCode.vhd
-set_global_assignment -name VHDL_FILE t80/T80_ALU.vhd
-set_global_assignment -name VHDL_FILE t80/T80.vhd
-set_global_assignment -name VHDL_FILE t80/GBse.vhd
 set_global_assignment -name VHDL_FILE boot_rom.vhd
 set_global_assignment -name VERILOG_FILE video.v
 set_global_assignment -name VERILOG_FILE timer.v
@@ -378,5 +373,6 @@ set_global_assignment -name VERILOG_FILE sprite.v
 set_global_assignment -name VERILOG_FILE lcd.v
 set_global_assignment -name VHDL_FILE gbc_snd.vhd
 set_global_assignment -name VERILOG_FILE gb.v
+set_global_assignment -name VERILOG_FILE hdma.v
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
