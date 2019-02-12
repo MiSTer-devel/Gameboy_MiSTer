@@ -90,11 +90,11 @@ sprites sprites (
 	.pixel_cmap   ( sprite_pixel_cmap   ),
 	.pixel_prio   ( sprite_pixel_prio   ),
 
-	.index    ( sprite_index ),
-	.addr     ( sprite_addr  ),
-	.dvalid   ( sprite_dvalid),
-	.data     ( vram_data    ),
-	.data1    ( vram1_data   ),
+	.index    ( sprite_index                ),
+	.addr     ( sprite_addr                 ),
+	.dvalid   ( sprite_dvalid               ),
+	.data     ( vram_data                   ),
+	.data1    ( isGBC?vram1_data:vram_data  ),
 	
 	//gbc
 	.pixel_cmap_gbc ( sprite_pixel_cmap_gbc ),

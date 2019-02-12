@@ -942,9 +942,19 @@ begin
 			end if;
 		when "00001011"|"00011011"|"00101011"|"00111011" =>
 			-- DEC ss
-			TStates <= "110";
-			IncDec_16(3 downto 2) <= "11";
-			IncDec_16(1 downto 0) <= DPair;
+			if Mode = 3 then
+				MCycles <= "010";
+				case to_integer(unsigned(MCycle)) is
+				when 2 =>
+					IncDec_16(3 downto 2) <= "11";
+					IncDec_16(1 downto 0) <= DPair;
+				when others =>
+				end case;
+			else
+				TStates <= "110";
+				IncDec_16(3 downto 2) <= "11";
+				IncDec_16(1 downto 0) <= DPair;
+			end if;
 
 -- ROTATE AND SHIFT GROUP
 		when "00000111"
