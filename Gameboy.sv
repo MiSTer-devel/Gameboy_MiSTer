@@ -157,8 +157,6 @@ localparam CONF_STR4 = {
 	"O34,Aspect ratio,4:3,10:9,16:9;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
-	"O2,Boot,Normal,Fast;",
-	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start;",
 	"V,v",`BUILD_DATE
@@ -521,7 +519,7 @@ gb gb (
 	.clk         ( clk_cpu    ),   // the whole gameboy runs on 4mhnz
 	.clk2x       ( clk_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 
-	.fast_boot   ( status[2]  ),
+	.fast_boot   ( 0          ),
 	.joystick    ( joystick   ),
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
