@@ -57,6 +57,7 @@ module video (
 localparam STAGE2  = 9'd250;   // oam + disp + pause
 localparam OAM_LEN = 80;
 localparam OAM_LEN16 = OAM_LEN/16;
+localparam MODE3_OFFSET = 8'd16;
 
 wire sprite_pixel_active;
 wire [1:0] sprite_pixel_data;
@@ -462,7 +463,7 @@ wire vblank  = (v_cnt >= 144);
 
 // x scroll & 7 needs one more memory read per line
 reg [1:0] hextra_tiles;
-wire [7:0] hextra = { 3'b000, hextra_tiles, 3'b000 };
+wire [7:0] hextra = { 3'b000, hextra_tiles, 3'b000 }+MODE3_OFFSET;
 wire hblank  = ((h_cnt < OAM_LEN) || (h_cnt >= 160+OAM_LEN+hextra));
 wire oam     = (h_cnt < OAM_LEN);                            // 80 clocks oam
 wire stage2  = ((h_cnt >= STAGE2) && (h_cnt < STAGE2+160));  // output out of stage2
@@ -546,6 +547,7 @@ wire bg_tile_obj_rd = (!vblank) && (!hblank) && (h_cnt[2:1] == 2'b11);
 // Mode 10:  oam
 // Mode 11:  oam and vram
 assign mode = 
+	(ly <= 144 && h_cnt<4)?2'b00:  //AntonioND https://github.com/AntonioND/giibiiadvance/blob/master/docs/TCAGBD.pdf
    !lcdc_on?2'b00:
 	vblank?2'b01:
 	oam?2'b10:
