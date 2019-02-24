@@ -278,8 +278,8 @@ wire [7:0] irq_vec =
 			if_r[4]&&ie_r[4]?8'h60:   // input
 			8'h55;
 
-wire vs = (lcd_mode == 2'b01);
-reg vsD, vsD2;
+//wire vs = (lcd_mode == 2'b01);
+//reg vsD, vsD2;
 reg [7:0] inputD, inputD2;
 
 // irq is low when an enable irq is active
@@ -296,9 +296,9 @@ always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 	end
 
 	// rising edge on vs
-	vsD <= vs;
-	vsD2 <= vsD;
-	if(vsD && !vsD2) if_r[0] <= 1'b1;
+//	vsD <= vs;
+//	vsD2 <= vsD;
+	if(vblank_irq) if_r[0] <= 1'b1;
 
 	// video irq already is a 1 clock event
 	if(video_irq) if_r[1] <= 1'b1;
@@ -359,7 +359,7 @@ timer timer (
 // --------------------------------------------------------------------
 
 // cpu tries to read or write the lcd controller registers
-wire video_irq;
+wire video_irq,vblank_irq;
 wire [7:0] video_do;
 wire [12:0] video_addr;
 wire [15:0] dma_addr;
@@ -375,6 +375,8 @@ video video (
 	
 
 	.irq         ( video_irq     ),
+	.vblank_irq  ( vblank_irq    ),
+
 
 	.cpu_sel_reg ( sel_video_reg ),
 	.cpu_sel_oam ( sel_video_oam ),

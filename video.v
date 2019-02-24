@@ -38,6 +38,7 @@ module video (
 	output lcd_clkena,
 	output [14:0] lcd_data,
 	output reg irq,
+	output reg vblank_irq,
 	
 	// vram connection
 	output [1:0] mode,
@@ -198,6 +199,7 @@ end
 
 always @(posedge clk_reg) begin  //TODO: have to check if this is correct
 	irq <= 1'b0;
+	vblank_irq <= 1'b0;
 	
 	//TODO: investigate and fix timing of lyc=ly
 	// lyc=ly coincidence
@@ -209,8 +211,11 @@ always @(posedge clk_reg) begin  //TODO: have to check if this is correct
 		irq <= 1'b1;
 
 	// begin of vblank
-	if(stat[4] && (h_cnt == 455) && (v_cnt == 143))
-		irq <= 1'b1;
+	if((h_cnt == 455) && (v_cnt == 143)) begin
+		if (stat[4])
+			irq <= 1'b1;
+		vblank_irq <= 1'b1;
+	end
 
 	// begin of hblank
 	if(stat[3] && (h_cnt == OAM_LEN + 160 + hextra))
