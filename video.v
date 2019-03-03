@@ -581,11 +581,11 @@ wire win_start = lcdc_win_ena && (v_cnt >= wy_r) && de && (wx_r >= 7) && (pcnt =
 
 
 // each memory access takes two cycles
-always @(negedge clk or negedge lcdc_on) begin
+always @(negedge clk) begin
 
 	if (!lcdc_on) begin // don't increase counters if lcdoff 
 		//reset counters
-		h_cnt <= 9'd0;  
+		h_cnt <= 9'd4;  
 		v_cnt <= 8'd0;
 		
 	end else begin
