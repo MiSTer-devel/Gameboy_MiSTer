@@ -110,7 +110,7 @@ sprites sprites (
 
 // give dma access to oam
 wire [7:0] oam_addr = dma_active?dma_addr[7:0]:cpu_addr;
-wire oam_wr = dma_active?(dma_cnt[1:0] == 2):(cpu_wr && cpu_sel_oam);
+wire oam_wr = dma_active?(dma_cnt[1:0] == 2):(cpu_wr && cpu_sel_oam && !(mode==3 || mode==2));
 wire [7:0] oam_di = dma_active?dma_data:cpu_di;
 
 
@@ -270,20 +270,23 @@ always @(posedge clk_reg) begin
 							bgpi_ai <= cpu_di[7];
 						 end
 				8'h69: begin
-							bgpd[bgpi] <= cpu_di;
-							if (bgpi_ai)
-							  bgpi <= bgpi + 6'h1;
+							if (mode != 3) begin
+								bgpd[bgpi] <= cpu_di;
+								if (bgpi_ai)
+									bgpi <= bgpi + 6'h1;
+							end
 						 end
 				8'h6A: begin
 							obpi <= cpu_di[5:0];
 							obpi_ai <= cpu_di[7];
 						 end
 				8'h6B: begin
-							obpd[obpi] <= cpu_di;
-							if (obpi_ai)
-							  obpi <= obpi + 6'h1;
+							if (mode != 3) begin
+								obpd[obpi] <= cpu_di;
+								if (obpi_ai)
+								  obpi <= obpi + 6'h1;
+							end
 						 end
-
 			endcase
 		end
 	end
@@ -305,9 +308,9 @@ assign cpu_do =
 	(cpu_addr == 8'h4b)?wx:
 	isGBC?
 		(cpu_addr == 8'h68)?{bgpi_ai,1'd0,bgpi}:
-		(cpu_addr == 8'h69)?bgpd[bgpi]:
+		(cpu_addr == 8'h69 && mode != 3)?bgpd[bgpi]:
 		(cpu_addr == 8'h6a)?{obpi_ai,1'd0,obpi}:
-		(cpu_addr == 8'h6b)?obpd[obpi]:
+		(cpu_addr == 8'h6b && mode != 3)?obpd[obpi]:
 		8'hff:
 	8'hff;
 	
@@ -470,7 +473,7 @@ wire vblank  = (v_cnt >= 144);
 reg [1:0] hextra_tiles;
 wire [7:0] hextra = { 3'b000, hextra_tiles, 3'b000 }+MODE3_OFFSET;
 wire hblank  = ((h_cnt < OAM_LEN) || (h_cnt >= 160+OAM_LEN+hextra));
-wire oam     = (h_cnt < OAM_LEN);                            // 80 clocks oam
+wire oam     = (h_cnt <= OAM_LEN);                            // 80 clocks oam
 wire stage2  = ((h_cnt >= STAGE2) && (h_cnt < STAGE2+160));  // output out of stage2
 
 // first valid pixels are delivered 8 clocks after end of hblank
