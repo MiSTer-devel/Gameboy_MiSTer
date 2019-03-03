@@ -142,6 +142,7 @@ wire [7:0] ly = v_cnt;
 // ff45 line counter compare
 wire lyc_match = (ly == lyc);
 reg [7:0] lyc;
+reg lyc_changed=0;
 
 reg [7:0] bgp;
 reg [7:0] obp0;
@@ -197,13 +198,14 @@ end
 // ------------------------------- IRQs -------------------------------
 // --------------------------------------------------------------------
 
-always @(posedge clk_reg) begin  //TODO: have to check if this is correct
+always @(posedge clk_reg) begin
 	irq <= 1'b0;
 	vblank_irq <= 1'b0;
 	
-	//TODO: investigate and fix timing of lyc=ly
-	// lyc=ly coincidence
-	if(stat[6] && (h_cnt == 1) && lyc_match)
+	if(stat[6] && h_cnt == 0 && lyc_match)
+		irq <= 1'b1;
+		
+	if(stat[6] && lyc_changed == 1 && h_cnt > 0 && lyc_match)
 		irq <= 1'b1;
 		
 	// begin of oam phase
@@ -249,6 +251,7 @@ always @(posedge clk_reg) begin
 		end
 		
 	end else begin
+	   lyc_changed<=0;
 		if(cpu_sel_reg && cpu_wr) begin
 			case(cpu_addr) 
 				8'h40:	lcdc <= cpu_di;
@@ -256,7 +259,10 @@ always @(posedge clk_reg) begin
 				8'h42:	scy <= cpu_di;
 				8'h43:	scx <= cpu_di;
 				// a write to 4 is supposed to reset the v_cnt
-				8'h45:	lyc <= cpu_di;
+				8'h45:	begin
+								lyc <= cpu_di;
+								lyc_changed<=1;
+							end
 				8'h46:	dma <= cpu_di;
 				8'h47:	bgp <= cpu_di;
 				8'h48:	obp0 <= cpu_di;
