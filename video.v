@@ -585,7 +585,7 @@ always @(negedge clk) begin
 
 	if (!lcdc_on) begin // don't increase counters if lcdoff 
 		//reset counters
-		h_cnt <= 9'd4;  
+		h_cnt <= 9'd6;  
 		v_cnt <= 8'd0;
 		
 	end else begin
