@@ -131,7 +131,7 @@ wire cpu_iorq_n;
 wire cpu_m1_n;
 wire cpu_mreq_n;
 
-wire cpu_clken = isGBC ? !hdma_rd:1'b1;  //when hdma is enabled stop CPU (GBC)
+wire cpu_clken = isGBC ? !hdma_active:1'b1;  //when hdma is enabled stop CPU (GBC)
 wire cpu_stop;
 	
 GBse cpu (
@@ -455,10 +455,12 @@ wire [15:0] hdma_source_addr;
 wire [15:0] hdma_target_addr;
 wire [7:0] hdma_do;
 wire hdma_rd;
+wire hdma_active;
 
 hdma hdma(
 	.reset	          ( reset         ),
 	.clk		          ( clk2x         ),
+	.speed				 ( cpu_speed     ),
 	
 	// cpu register interface
 	.sel_reg 	       ( sel_hdma      ),
@@ -471,6 +473,7 @@ hdma hdma(
 	
 	// dma connection
 	.hdma_rd           ( hdma_rd          ),
+	.hdma_active       ( hdma_active      ),
 	.hdma_source_addr  ( hdma_source_addr ),
 	.hdma_target_addr  ( hdma_target_addr ) 
 	
