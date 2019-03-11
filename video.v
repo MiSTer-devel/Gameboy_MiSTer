@@ -366,14 +366,25 @@ wire [14:0] sprite_pix = isGBC?{obpd[sprite_palette_index+1][6:0],obpd[sprite_pa
 // - there's a sprite at the current position
 // - the sprites prioroty bit is 0, or
 // - the sprites priority is 1 and the backrgound color is 00
-// - GBC : BG priority is 0 
+// - GBC : BG priority is 0
+// - GBC : BG priority is 1 and the backrgound color is 00
 
 wire bg_piority = isGBC&&stage2_bgp_buffer_pix[stage2_rptr][3];
-	
-wire sprite_pixel_visible = 
-	sprite_pixel_active && lcdc_spr_ena && (~bg_piority) &&
-	((!sprite_pixel_prio) || (stage2_buffer[stage2_rptr] == 2'b00));
-	
+wire [1:0] bg_color = stage2_buffer[stage2_rptr];
+reg sprite_pixel_visible;
+
+always @(*) begin
+	sprite_pixel_visible = 1'b0;
+
+	if (sprite_pixel_active && lcdc_spr_ena) begin		// pixel active and sprites enabled
+		if (bg_color == 2'b00)													// background color = 0
+			sprite_pixel_visible = 1'b1;
+		else if (!bg_piority && !sprite_pixel_prio)   	// sprite has priority enabled and background priority disabled
+			sprite_pixel_visible = 1'b1;
+
+	end
+end
+
 always @(posedge clk) begin
 	if(h_cnt == 455) begin
 		stage2_wptr <= 8'h00;
