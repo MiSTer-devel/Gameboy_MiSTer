@@ -20,8 +20,8 @@ module hdma(
 
 );
 
-localparam DELAY_SINGLE = 10;
-localparam DELAY_DOUBLE = DELAY_SINGLE/2;
+localparam DELAY_SINGLE = 5'd10;
+localparam DELAY_DOUBLE = DELAY_SINGLE/5'd2;
 
 //ff51-ff55 HDMA1-5 (GBC)
 reg [7:0] hdma_source_h;		// ff51
@@ -55,7 +55,7 @@ always @(posedge clk) begin
 		hdma_source_l <= 4'hF;
 		hdma_target_h <= 5'h1F;
 		hdma_target_l <= 4'hF;
-      dma_delay <= 4'd0;
+      dma_delay <= 5'd0;
 	end else begin
 	   if(sel_reg && wr) begin
 		
@@ -90,7 +90,7 @@ always @(posedge clk) begin
 			if(hdma_mode==0) begin 				                    //mode 0 GDMA do the transfer in one go after inital delay
              hdma_active <= 1'b1;
 			    if (dma_delay>0) begin
-                dma_delay <= dma_delay - 1;
+                dma_delay <= dma_delay - 5'd1;
 			    end else begin
 					if(hdma_length != 0) begin
 						hdma_rd <= 1'b1;
@@ -134,7 +134,7 @@ always @(posedge clk) begin
 									if(hdma_length != 0) begin
 									  hdma_active <= 1'b1;
 									  if (dma_delay>0) begin
-										  dma_delay <= dma_delay - 1;
+										  dma_delay <= dma_delay - 5'd1;
 									  end else begin
 											hdma_rd <= 1'b1;
 											hdma_cnt <= hdma_cnt + 1'd1;
