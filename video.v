@@ -132,7 +132,7 @@ reg [7:0] stat;
 
 // ff42, ff43 background scroll registers
 reg [7:0] scy;
-reg [7:0] scy_r;   // stable over entire image
+reg [7:0] scy_r;   // stable over line
 reg [7:0] scx;
 reg [7:0] scx_r;   // stable over line
 
@@ -149,7 +149,8 @@ reg [7:0] obp0;
 reg [7:0] obp1;
 
 reg [7:0] wy;
-reg [7:0] wy_r;   // stable over entire image
+reg [7:0] wy_r;   // stable over line
+
 reg [7:0] wx;
 reg [7:0] wx_r;   // stable over line
 
@@ -610,6 +611,7 @@ always @(negedge clk) begin
 				scx_r <= scx;
 				wx_r <= wx;
 				scy_r <= scy;
+				wy_r <= wy;
 			end
 	
 			// increment address at the end of each 8-pixel-cycle. But don't
@@ -651,7 +653,7 @@ always @(negedge clk) begin
 				v_cnt <= 8'd0;
 				
 				// make sure sginals don't change during the image
-				wy_r <= wy;
+//				wy_r <= wy;
 			end
 		end
 	end
