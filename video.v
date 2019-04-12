@@ -362,28 +362,39 @@ wire [14:0] sprite_pix = isGBC?{obpd[sprite_palette_index+1][6:0],obpd[sprite_pa
 							 (sprite_pixel_data == 2'b10)?{13'd0,obp[5:4]}:
 							 {13'd0,obp[7:6]};
 
-// a sprite pixel is visible if
-// - sprites are enabled
-// - there's a sprite at the current position
-// - the sprites prioroty bit is 0, or
-// - the sprites priority is 1 and the backrgound color is 00
-// - GBC : BG priority is 0
-// - GBC : BG priority is 1 and the backrgound color is 00
-
+// https://forums.nesdev.com/viewtopic.php?f=20&t=10771&sid=8fdb6e110fd9b5434d4a567b1199585e#p122222
+// priority list: BG0 < OBJL < BGL < OBJH < BGH
 wire bg_piority = isGBC&&stage2_bgp_buffer_pix[stage2_rptr][3];
 wire [1:0] bg_color = stage2_buffer[stage2_rptr];
 reg sprite_pixel_visible;
 
 always @(*) begin
 	sprite_pixel_visible = 1'b0;
-
 	if (sprite_pixel_active && lcdc_spr_ena) begin		// pixel active and sprites enabled
-		if (bg_color == 2'b00)													// background color = 0
-			sprite_pixel_visible = 1'b1;
-		else if (!bg_piority && !sprite_pixel_prio)   	// sprite has priority enabled and background priority disabled
-			sprite_pixel_visible = 1'b1;
+
+		if (isGBC) begin
+			if (sprite_pixel_data == 2'b00)
+				sprite_pixel_visible = 1'b0;
+			else if (bg_color == 2'b00)
+				sprite_pixel_visible = 1'b1;
+			else if (!lcdc_bg_ena)
+				sprite_pixel_visible = 1'b1;
+			else if (bg_piority)
+				sprite_pixel_visible = 1'b0;
+			else if (!sprite_pixel_prio) //sprite pixel priority is enabled
+				sprite_pixel_visible = 1'b1;
+
+		end else begin
+			if (sprite_pixel_data == 2'b00)
+				sprite_pixel_visible = 1'b0;
+			else if (bg_color == 2'b00)
+				sprite_pixel_visible = 1'b1;
+			else if (!sprite_pixel_prio) //sprite pixel priority is enabled
+				sprite_pixel_visible = 1'b1;
+		end
 
 	end
+
 end
 
 always @(posedge clk) begin
