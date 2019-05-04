@@ -147,6 +147,8 @@ localparam CONF_STR1 = {
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
+	"FC,GG,Game Genie Code;",
+	"OH,Game Genie,ON,OFF;",
 	"O1,Palette,Grayscale,Custom;"
 };
 
@@ -250,8 +252,10 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
-wire palette_download = ioctl_download && (filetype == 8'h05 || filetype == 8'h00);
+wire palette_download = ioctl_download && (filetype == 8'h07 || filetype == 8'h00);
 wire bios_download = ioctl_download && (filetype == 8'h40);
+
+wire type_gg = filetype == 8'h04;
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
@@ -553,7 +557,10 @@ gb gb (
 	.lcd_data    ( lcd_data   ),
 	.lcd_mode    ( lcd_mode   ),
 	.lcd_on      ( lcd_on     ),
-	.speed       ( speed      )
+	.speed       ( speed      ),
+	
+	.gg              (status[17]),
+	.gg_code         (gg_code)
 );
 
 // the lcd to vga converter
@@ -634,6 +641,29 @@ dpram_dif #(12,8,11,16) boot_rom_gbc (
 	.q_b ()
 );
 
+/////////////////////////  GAME GENIE //////////////////////////////////
+
+reg [34:0] gg_code;
+
+// Code layout:
+// {clock bit, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
+//  34         33      32              31:16         15:8         7:0
+reg [3:0] old_ioctl_addr;
+always_ff @(posedge clk_sys) begin
+	gg_code[34] <= 1'b0;
+	old_ioctl_addr <= ioctl_addr[3:0];
+	gg_code[34] <= 1'b0;
+
+	if (ioctl_download && type_gg) begin
+		case (ioctl_addr[3:0])
+			0:  gg_code[32]    <= ioctl_dout[0];   // Compare Enable
+			4:  gg_code[31:16] <= ioctl_dout;      // Address
+			8:  gg_code[15:8]  <= ioctl_dout[7:0]; // compare byte
+			12: gg_code[7:0]   <= ioctl_dout[7:0]; // replace byte
+			14: gg_code[34]    <=  1'b1;           // Clock it in
+		endcase
+	end
+end
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 

@@ -51,7 +51,10 @@ module gb (
 	output [1:0] lcd_mode,
 	output lcd_on,
 	
-	output speed   //GBC
+	output speed,   //GBC
+	
+	input         gg,
+	input  [34:0] gg_code
 );
 
 // include cpu
@@ -151,10 +154,30 @@ GBse cpu (
    .HALT_n     (               ),
    .BUSAK_n    (               ),
    .A          ( cpu_addr      ),
-   .DI         ( cpu_di        ),
+   .DI         ( genie_ovr ? genie_data : cpu_di),
    .DO         ( cpu_do        ),
 	.STOP       ( cpu_stop      )
 );
+
+// --------------------------------------------------------------------
+// --------------------------- Game Genie -----------------------------
+// --------------------------------------------------------------------
+
+wire genie_ovr;
+wire [7:0] genie_data;
+
+
+geniecodes codes (
+	.clk        (clk2x),
+	.reset      (reset),
+	.enable     (~gg),
+	.addr_in    (cpu_addr),
+	.data_in    (cpu_di),
+	.code       (gg_code),
+	.genie_ovr  (genie_ovr),
+	.genie_data (genie_data)
+);
+
 
 // --------------------------------------------------------------------
 // --------------------- Speed Toggle KEY1 (GBC)-----------------------
