@@ -354,18 +354,6 @@ sysmem_lite sysmem
 	.reset_hps_cold_req(~btn_reset),
 
 	//64-bit DDR3 RAM access
-	.ram1_clk(ram_clk),
-	.ram1_address(ram_address),
-	.ram1_burstcount(ram_burstcount),
-	.ram1_waitrequest(ram_waitrequest),
-	.ram1_readdata(ram_readdata),
-	.ram1_readdatavalid(ram_readdatavalid),
-	.ram1_read(ram_read),
-	.ram1_writedata(ram_writedata),
-	.ram1_byteenable(ram_byteenable),
-	.ram1_write(ram_write),
-
-	//64-bit DDR3 RAM access
 	.ram2_clk(clk_audio),
 	.ram2_address(aram_address),
 	.ram2_burstcount(aram_burstcount),
@@ -413,15 +401,15 @@ ascal
 	.run      (1),
 	.freeze   (0),
 
-	.i_clk  (clk_vid),
-	.i_ce   (ce_pix),
-	.i_r    (r_out),
-	.i_g    (g_out),
-	.i_b    (b_out),
-	.i_hs   (hs),
-	.i_vs   (vs),
-	.i_fl   (f1),
-	.i_de   (de),
+	.i_clk  (clk_ihdmi),
+	.i_ce   (ce_hpix),
+	.i_r    (hr_out),
+	.i_g    (hg_out),
+	.i_b    (hb_out),
+	.i_hs   (hhs),
+	.i_vs   (hvs),
+	.i_fl   (0),
+	.i_de   (hde),
 	.iauto  (1),
 	.himin  (0),
 	.himax  (0),
@@ -798,24 +786,20 @@ wire [15:0] audio_ls, audio_rs;
 wire        audio_s;
 wire  [1:0] audio_mix;
 wire  [7:0] r_out, g_out, b_out;
-wire        vs, hs, de, f1;
+wire        vs, hs, de;
 wire  [1:0] scanlines;
 wire        clk_sys, clk_vid, ce_pix;
-
-wire        ram_clk;
-wire [28:0] ram_address;
-wire [7:0]  ram_burstcount;
-wire        ram_waitrequest;
-wire [63:0] ram_readdata;
-wire        ram_readdatavalid;
-wire        ram_read;
-wire [63:0] ram_writedata;
-wire [7:0]  ram_byteenable;
-wire        ram_write;
-
 wire        led_user;
 wire  [1:0] led_power;
 wire  [1:0] led_disk;
+
+wire  [7:0] hr_out, hg_out, hb_out;
+wire        hvs, hhs, hde;
+wire        clk_ihdmi, ce_hpix;
+
+wire hvs_emu, hhs_emu;
+sync_fix hdmi_sync_v(clk_ihdmi, hvs_emu, hvs);
+sync_fix hdmi_sync_h(clk_ihdmi, hhs_emu, hhs);
 
 wire vs_emu, hs_emu;
 sync_fix sync_v(clk_vid, vs_emu, vs);
@@ -837,24 +821,31 @@ emu emu
 	.RESET(reset),
 	.HPS_BUS({HDMI_TX_VS, clk_100m, clk_vid, ce_pix, de, hs, vs, io_wait, clk_sys, io_fpga, io_uio, io_strobe, io_wide, io_din, io_dout}),
 
-	.CLK_VIDEO(clk_vid),
-	.CE_PIXEL(ce_pix),
-
+	.VGA_CLK(clk_vid),
+	.VGA_CE(ce_pix),
 	.VGA_R(r_out),
 	.VGA_G(g_out),
 	.VGA_B(b_out),
 	.VGA_HS(hs_emu),
 	.VGA_VS(vs_emu),
 	.VGA_DE(de),
-	.VGA_F1(f1),
-	.VGA_SL(scanlines),
+
+	.HDMI_CLK(clk_ihdmi),
+	.HDMI_CE(ce_hpix),
+	.HDMI_R(hr_out),
+	.HDMI_G(hg_out),
+	.HDMI_B(hb_out),
+	.HDMI_HS(hhs_emu),
+	.HDMI_VS(hvs_emu),
+	.HDMI_DE(hde),
+	.HDMI_SL(scanlines),
+
+	.HDMI_ARX(ARX),
+	.HDMI_ARY(ARY),
 
 	.LED_USER(led_user),
 	.LED_POWER(led_power),
 	.LED_DISK(led_disk),
-
-	.VIDEO_ARX(ARX),
-	.VIDEO_ARY(ARY),
 
 	.AUDIO_L(audio_ls),
 	.AUDIO_R(audio_rs),
@@ -867,17 +858,6 @@ emu emu
 	.SD_MISO(SDIO_DAT[0]),
 	.SD_CS(SDIO_DAT[3]),
 	.SD_CD(VGA_EN ? VGA_HS : SDIO_CD),
-
-	.DDRAM_CLK(ram_clk),
-	.DDRAM_ADDR(ram_address),
-	.DDRAM_BURSTCNT(ram_burstcount),
-	.DDRAM_BUSY(ram_waitrequest),
-	.DDRAM_DOUT(ram_readdata),
-	.DDRAM_DOUT_READY(ram_readdatavalid),
-	.DDRAM_RD(ram_read),
-	.DDRAM_DIN(ram_writedata),
-	.DDRAM_BE(ram_byteenable),
-	.DDRAM_WE(ram_write),
 
 	.SDRAM_DQ(SDRAM_DQ),
 	.SDRAM_A(SDRAM_A),

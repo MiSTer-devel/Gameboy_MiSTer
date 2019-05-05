@@ -33,15 +33,11 @@ module emu
 	inout  [44:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
-	output        CLK_VIDEO,
+	output        VGA_CLK,
 
 	//Multiple resolutions are supported using different CE_PIXEL rates.
 	//Must be based on CLK_VIDEO
-	output        CE_PIXEL,
-
-	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output  [7:0] VIDEO_ARX,
-	output  [7:0] VIDEO_ARY,
+	output        VGA_CE,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -49,8 +45,25 @@ module emu
 	output        VGA_HS,
 	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
-	output        VGA_F1,
-	output  [1:0] VGA_SL,
+
+	//Base video clock. Usually equals to CLK_SYS.
+	output        HDMI_CLK,
+
+	//Multiple resolutions are supported using different HDMI_CE rates.
+	//Must be based on CLK_VIDEO
+	output        HDMI_CE,
+
+	output  [7:0] HDMI_R,
+	output  [7:0] HDMI_G,
+	output  [7:0] HDMI_B,
+	output        HDMI_HS,
+	output        HDMI_VS,
+	output        HDMI_DE,   // = ~(VBlank | HBlank)
+	output  [1:0] HDMI_SL,   // scanlines fx
+
+	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
+	output  [7:0] HDMI_ARX,
+	output  [7:0] HDMI_ARY,
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -74,17 +87,6 @@ module emu
 	input         SD_CD,
 
 	//High latency DDR3 RAM interface
-	//Use for non-critical time purposes
-	output        DDRAM_CLK,
-	input         DDRAM_BUSY,
-	output  [7:0] DDRAM_BURSTCNT,
-	output [28:0] DDRAM_ADDR,
-	input  [63:0] DDRAM_DOUT,
-	input         DDRAM_DOUT_READY,
-	output        DDRAM_RD,
-	output [63:0] DDRAM_DIN,
-	output  [7:0] DDRAM_BE,
-	output        DDRAM_WE,
 
 	//SDRAM interface with lower latency
 	output        SDRAM_CLK,
@@ -118,7 +120,6 @@ module emu
 );
 
 assign USER_OUT = '1;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0; 
 assign VGA_F1 = 0;
 
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -129,11 +130,12 @@ assign LED_USER  = ioctl_download | sav_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
-assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
+
+assign HDMI_ARX  = status[4:3] == 2'b10 ? 8'd16:
 						 status[4:3] == 2'b01 ? 8'd10:
 						 8'd4;
 						 
-assign VIDEO_ARY = status[4:3] == 2'b10 ? 8'd9:
+assign HDMI_ARY  = status[4:3] == 2'b10 ? 8'd9:
 						 status[4:3] == 2'b01 ? 8'd9:
 						 8'd3;
 
@@ -176,6 +178,7 @@ localparam CONF_STR4 = {
 ////////////////////   CLOCKS   ///////////////////
 
 wire clk_sys;
+wire clk_vga;
 wire pll_locked;
 		
 pll pll
@@ -184,6 +187,7 @@ pll pll
 	.rst(0),
 	.outclk_0(clk_sys),
 	.outclk_1(SDRAM_CLK),
+	.outclk_2(clk_vga),
 	.locked(pll_locked)
 );
 
@@ -564,11 +568,46 @@ gb gb (
 	.gg_code         (gg_code)
 );
 
-// the lcd to vga converter
-wire [7:0] video_r, video_g, video_b;
-wire video_hs, video_vs, video_bl;
+wire vga_bl;
 
-lcd lcd (
+// VGA output
+lcd #(80, 80, 48, 48) lcd_vga (
+	 .pclk   ( clk_vga    ),
+	 .pce    ( ce_vga     ),
+	 .clk    ( clk_cpu    ),
+	 .isGBC  ( isGBC      ),
+
+	 .tint   ( status[1]  ),
+	 .inv    ( status[12]  ),
+
+	 // Palettes
+	 .pal1   (palette[127:104]),
+	 .pal2   (palette[103:80]),
+	 .pal3   (palette[79:56]),
+	 .pal4   (palette[55:32]),
+
+	 // serial interface
+	 .clkena ( lcd_clkena ),
+	 .data   ( lcd_data   ),
+	 .mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
+	 .on     ( lcd_on     ),
+	 
+  	 .hs     ( VGA_HS  ),
+	 .vs     ( VGA_VS  ),
+	 .blank  ( vga_bl  ),
+	 .r      ( VGA_R   ),
+	 .g      ( VGA_G   ),
+	 .b      ( VGA_B   )
+);
+
+assign VGA_CLK = clk_vga;
+assign VGA_CE = ce_vga;
+assign VGA_DE = ~vga_bl;
+
+wire hdmi_bl;
+
+// HDMI output
+lcd lcd_hdmi (
 	 .pclk   ( clk_sys_old),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
@@ -589,23 +628,18 @@ lcd lcd (
 	 .mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
 	 .on     ( lcd_on     ),
 	 
-  	 .hs     ( video_hs   ),
-	 .vs     ( video_vs   ),
-	 .blank  ( video_bl   ),
-	 .r      ( video_r    ),
-	 .g      ( video_g    ),
-	 .b      ( video_b    )
+  	 .hs     ( HDMI_HS  ),
+	 .vs     ( HDMI_VS  ),
+	 .blank  ( hdmi_bl ),
+	 .r      ( HDMI_R   ),
+	 .g      ( HDMI_G   ),
+	 .b      ( HDMI_B   )
 );
 
-assign VGA_SL = 0;
-assign VGA_R  = video_r;
-assign VGA_G  = video_g;
-assign VGA_B  = video_b;
-assign VGA_DE = ~video_bl;
-assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_pix & !line_cnt;
-assign VGA_HS = video_hs;
-assign VGA_VS = video_vs;
+assign HDMI_CLK = clk_sys;
+assign HDMI_CE = ce_pix;
+assign HDMI_DE = ~hdmi_bl;
+assign HDMI_SL = 0;
 
 wire clk_sys_old =  clk_sys & ce_sys;
 wire ce_cpu2x = ce_pix;
@@ -620,6 +654,14 @@ always @(negedge clk_sys) begin
 	ce_sys   <= !div[0];
 	ce_pix   <= !div[2:0];
 	ce_cpu   <= !div[3:0];
+end
+
+reg ce_vga;
+always @(negedge clk_vga) begin
+	reg [3:0] div = 0;
+
+	div <= div + 1'd1;
+	ce_vga   <= !div[1:0];   // clk_vga div 4   = 6.029 MHz
 end
 
 
@@ -801,18 +843,6 @@ always @(posedge clk_sys) begin
 			end
 		end
 	end
-end
-
-reg [1:0] line_cnt;
-always @(posedge clk_sys_old) begin
-	reg old_hs;
-	reg old_vs;
-
-	old_vs <= video_vs;
-	old_hs <= video_hs;
-
-	if(old_hs & ~video_hs) line_cnt <= line_cnt + 1'd1;
-	if(old_vs & ~video_vs) line_cnt <= 0;
 end
 
 endmodule
