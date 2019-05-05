@@ -21,6 +21,7 @@
 
 module gb (
    input reset,
+	input new_game_load,
    input clk,
    input clk2x,
 
@@ -169,7 +170,7 @@ wire [7:0] genie_data;
 
 geniecodes codes (
 	.clk        (clk2x),
-	.reset      (reset),
+	.reset      (new_game_load),
 	.enable     (~gg),
 	.addr_in    (cpu_addr),
 	.data_in    (cpu_di),

@@ -531,6 +531,7 @@ gb gb (
 	.reset	    ( reset      ),
 	.clk         ( clk_cpu    ),   // the whole gameboy runs on 4mhnz
 	.clk2x       ( clk_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
+	.new_game_load  ( cart_download),
 
 	.fast_boot   ( 0          ),
 	.joystick    ( joystick   ),
