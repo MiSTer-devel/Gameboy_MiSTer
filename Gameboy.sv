@@ -529,8 +529,11 @@ always @(posedge clk_sys) if(reset) isGBC <= status[15:14] ? status[15] : !filet
 // the gameboy itself
 gb gb (
 	.reset	    ( reset      ),
-	.clk         ( clk_cpu    ),   // the whole gameboy runs on 4mhnz
-	.clk2x       ( clk_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
+	
+	.clk_sys     ( clk_sys    ),
+	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
+	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
+	
 	.new_game_load  ( cart_download),
 
 	.fast_boot   ( 0          ),
@@ -644,15 +647,12 @@ dpram_dif #(12,8,11,16) boot_rom_gbc (
 
 /////////////////////////  GAME GENIE //////////////////////////////////
 
-reg [34:0] gg_code;
+reg [34:0] gg_code=35'd0;
 
 // Code layout:
 // {clock bit, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
 //  34         33      32              31:16         15:8         7:0
-reg [3:0] old_ioctl_addr;
 always_ff @(posedge clk_sys) begin
-	gg_code[34] <= 1'b0;
-	old_ioctl_addr <= ioctl_addr[3:0];
 	gg_code[34] <= 1'b0;
 
 	if (ioctl_download && type_gg) begin
