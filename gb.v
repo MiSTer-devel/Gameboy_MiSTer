@@ -22,8 +22,10 @@
 module gb (
    input reset,
 	input new_game_load,
-   input clk,
-   input clk2x,
+   
+	input clk_sys,
+	input ce,
+	input ce_2x,
 
 	input fast_boot,
 	input [7:0] joystick,
@@ -135,12 +137,22 @@ wire cpu_iorq_n;
 wire cpu_m1_n;
 wire cpu_mreq_n;
 
-wire cpu_clken = isGBC ? !hdma_active:1'b1;  //when hdma is enabled stop CPU (GBC)
+wire clk = clk_sys & ce;
+wire clk2x = clk_sys & ce_2x;
+
+
+wire current_cpu_ce = cpu_speed ? ce_2x:ce;
+wire clk_cpu = clk_sys & current_cpu_ce;
+
+wire cpu_clken = isGBC && hdma_active ? 1'b0 :current_cpu_ce;  //when hdma is enabled stop CPU (GBC)
+
+
 wire cpu_stop;
+
 	
 GBse cpu (
 	.RESET_n    ( !reset        ),
-	.CLK_n      ( clk_cpu       ),
+	.CLK_n      ( clk_sys       ),
 	.CLKEN      ( cpu_clken     ),
 	.WAIT_n     ( 1'b1          ),
 	.INT_n      ( irq_n         ),
@@ -183,8 +195,6 @@ geniecodes codes (
 // --------------------------------------------------------------------
 // --------------------- Speed Toggle KEY1 (GBC)-----------------------
 // --------------------------------------------------------------------
-wire clk_cpu = cpu_speed?clk2x:clk;
-//wire clk_cpu = clk;
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
 assign speed = cpu_speed;
