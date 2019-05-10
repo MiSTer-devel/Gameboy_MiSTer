@@ -3,23 +3,13 @@
 
 // The gameboy lcd runs from a shift register which is filled at 4194304 pixels/sec
 
-module lcd #(
-   parameter HPRE=0,
-   parameter HPOST=0,
-   parameter VPRE=0,
-   parameter VPOST=0
-)
-(
-	// pixel clock
-   input        pclk,
-   input        pce,
-
-	input        clk,
-	input        clkena,
+module lcd (
+	input   clk,
+	input   clkena,
 	input [14:0] data,
-	input [1:0]  mode,
-	input        on,
-
+	input [1:0] mode,
+	input isGBC,
+	
 	//palette
 	input [23:0] pal1,
 	input [23:0] pal2,
@@ -28,22 +18,30 @@ module lcd #(
 
 	input tint,
 	input inv,
-	input isGBC,
 
-   // video output
+	// pixel clock
+   input  pclk,
+   input  pce,
+	input  on,
+	
+   // VGA output
    output reg	hs,
-   output reg	vs,
-   output reg	blank,
+   output reg 	vs,
+   output reg 	blank,
    output [7:0] r,
    output [7:0] g,
    output [7:0] b
 );
 
+
 reg [14:0] vbuffer_inptr;
+reg vbuffer_write;
 
 reg [14:0] vbuffer_outptr;
 reg [14:0] vbuffer_lineptr;
 
+
+//image buffer 160x144x2bits for now , later 15bits for cgb
 dpram #(15,15) vbuffer (
 	.clock_a (clk),
 	.address_a (vbuffer_inptr),
@@ -59,47 +57,67 @@ dpram #(15,15) vbuffer (
 );
 
 always @(posedge clk) begin
-	if(!on || (mode==2'd01)) begin  //lcd disabled or vsync restart pointer
+	if(!on || (mode==2'd01)) begin  //lcd disabled of vsync restart pointer
 	   vbuffer_inptr <= 15'h0;
 	end else begin
-		if(clkena) vbuffer_inptr <= vbuffer_inptr + 15'd1; // end of vsync
-	end
+		
+		// end of vsync
+		if(clkena) begin
+			vbuffer_inptr <= vbuffer_inptr + 15'd1;
+		end
+		
+	end;
 end
 
-parameter H     = 160;    // width of visible area
-parameter HFP   = 8;     // unused time before hsync
-parameter HS    = 32;     // width of hsync
-parameter HBP   = 24;     // unused time after hsync
+	
+// Mode 00:  h-blank
+// Mode 01:  v-blank
+// Mode 10:  oam
+// Mode 11:  oam and vram	
 
-parameter V     = 144;    // height of visible area
-parameter VFP   = 4;      // unused time before vsync
-parameter VS    = 3;      // width of vsync
-parameter VBP   = 16;     // unused time after vsync
+// 
+parameter H   = 160;    // width of visible area
+parameter HFP = 16;     // unused time before hsync
+parameter HS  = 20;     // width of hsync
+parameter HBP = 32;     // unused time after hsync
+// total = 228
 
-reg[8:0] h_cnt;         // horizontal pixel counter
-reg[8:0] v_cnt;         // vertical pixel counter
+parameter V   = 576;    // height of visible area
+parameter VFP = 2;      // unused time before vsync
+parameter VS  = 2;      // width of vsync
+parameter VBP = 36;     // unused time after vsync
+// total = 616
+
+reg[7:0] h_cnt;         // horizontal pixel counter
+reg[9:0] v_cnt;         // vertical pixel counter
 
 // horizontal pixel counter
+reg [1:0] last_mode_h;
 always@(posedge pclk) begin
 	if(pce) begin
-		if(h_cnt==HPRE+H+HPOST+HFP+HS+HBP-1)   h_cnt <= 0;
-		else                                   h_cnt <= h_cnt + 1'd1;
+		
+		if(h_cnt==H+HFP+HS+HBP-1)   h_cnt <= 0;
+		else                        h_cnt <= h_cnt + 1'd1;
+
 		// generate positive hsync signal
-		if(h_cnt == HPRE+H+HPOST+HFP)    hs <= 1'b1;
-		if(h_cnt == HPRE+H+HPOST+HFP+HS) hs <= 1'b0;
+		if(h_cnt == H+HFP)    hs <= 1'b1;
+		if(h_cnt == H+HFP+HS) hs <= 1'b0;
+
 	end
 end
 
-// vertical pixel counter
+// veritical pixel counter
+reg [1:0] last_mode_v;
 always@(posedge pclk) begin
 	if(pce) begin
 		// the vertical counter is processed at the begin of each hsync
-		if(h_cnt == HPRE+H+HPOST+HFP+HS+HBP-1) begin
-			if(v_cnt==VPRE+V+VPOST+VFP+VS+VBP-1)	v_cnt <= 0;
-			else												v_cnt <= v_cnt + 1'd1;
+		if(h_cnt == H+HFP+HS+HBP-1) begin
+			if(v_cnt==VS+VFP+V+VBP-1)  v_cnt <= 0; 
+			else							   v_cnt <= v_cnt + 1'd1;
+
 			// generate positive vsync signal
-			if(v_cnt == VPRE+V+VPOST+VFP)    vs <= 1'b1;
-			if(v_cnt == VPRE+V+VPOST+VFP+VS) vs <= 1'b0;
+			if(v_cnt == V+VFP)    vs <= 1'b1;
+			if(v_cnt == V+VFP+VS) vs <= 1'b0;
 		end
 	end
 end
@@ -109,52 +127,62 @@ end
 // -------------------------------------------------------------------------------
 reg [14:0] pixel_reg;
 
-wire prepost = (v_cnt < VPRE) || (v_cnt >= VPRE+V) || (h_cnt < HPRE) || (h_cnt >= HPRE+H);
-
 always@(posedge pclk) begin
 	if(pce) begin
 		// visible area?
-      blank <= prepost;
+		if((v_cnt < V) && (h_cnt < H)) begin
+			blank <= 1'b0;
+		end else begin
+			blank <= 1'b1;
+		end
 	end
 end
 
-reg [8:0] currentpixel;
+
+reg [7:0] currentpixel;
+reg [1:0] linecnt;
 always@(posedge pclk) begin
+	
 	if(pce) begin
-      // visible area?
-      if((v_cnt >= VPRE) && (v_cnt < (VPRE + V))) begin
-         // visible pixel?
-         if ((h_cnt >= HPRE) && (h_cnt < (HPRE + H))) begin
-            currentpixel   <= currentpixel + 9'd1;
-         end else begin
-            // move to the next line after visible area
-            if(h_cnt == HPRE+H+HPOST+HFP) begin
-               vbuffer_lineptr <= vbuffer_lineptr + H;
-               currentpixel    <= 9'd0;
-            end
-         end
-         vbuffer_outptr <= vbuffer_lineptr + currentpixel;
-      // not visible area, reset pointers
-      end else begin
-         vbuffer_outptr 	<= 15'd0;
-         vbuffer_lineptr	<= 15'd0;
-         currentpixel <=	9'd0;
-      end
+		if(h_cnt == H+HFP+HS+HBP-1) begin
+
+			//reset output at vsync
+			if(v_cnt == V+VFP) begin
+				vbuffer_outptr 	<= 15'd0; 
+				vbuffer_lineptr	<= 15'd0;
+				currentpixel		<=	8'd0;
+				linecnt <= 2'd3;
+			end
+		end else
+			// visible area?
+			if((v_cnt < V) && (h_cnt < H)) begin
+				vbuffer_outptr <= vbuffer_lineptr + currentpixel; 
+				if (currentpixel + 8'd1 == 160) begin
+					currentpixel <= 8'd0;
+					linecnt <= linecnt - 2'd1;
+					
+					//increment vbuffer_lineptr after 4 lines
+					if (!linecnt)
+						vbuffer_lineptr <= vbuffer_lineptr + 15'd160;
+				end else
+					currentpixel <= currentpixel + 8'd1;
+			end
 	end
 end
+
 
 wire [14:0] pixel = on?isGBC?pixel_reg:
 							  {13'd0,(pixel_reg[1:0] ^ {inv,inv})}: //invert gb only
 							  15'd0;
 
+							  
 wire [4:0] r5 = pixel_reg[4:0];
 wire [4:0] g5 = pixel_reg[9:5];
 wire [4:0] b5 = pixel_reg[14:10];
 
-wire [31:0] r10 = (r5 * 13) + (g5 * 2) + b5;
-wire [31:0] g10 = (g5 *  3) + b5;
-wire [31:0] b10 = (r5 *  3) + (g5 * 2) + (b5 * 11);
-
+wire [31:0] r10 = (r5 * 13) + (g5 * 2) +b5;
+wire [31:0] g10 = (g5 * 3) + b5;
+wire [31:0] b10 = (r5 * 3) + (g5 * 2) + (b5 * 11);
 
 // gameboy "color" palette
 wire [7:0] pal_r = //isGBC?{pixel_reg[4:0],3'd0}:
@@ -180,9 +208,8 @@ wire [7:0] pal_b = //isGBC?{pixel_reg[14:10],3'd0}:
 
 // greyscale
 wire [7:0] grey = (pixel==0)?8'd252:(pixel==1)?8'd168:(pixel==2)?8'd96:8'd0;
-
-assign r = blank?8'd0:tint||isGBC?pal_r:grey;
-assign g = blank?8'd0:tint||isGBC?pal_g:grey;
-assign b = blank?8'd0:tint||isGBC?pal_b:grey;
+assign r = blank?8'b00000000:tint||isGBC?pal_r:grey;
+assign g = blank?8'b00000000:tint||isGBC?pal_g:grey;
+assign b = blank?8'b00000000:tint||isGBC?pal_b:grey;
 
 endmodule

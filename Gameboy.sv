@@ -571,8 +571,8 @@ gb gb (
 wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_bl;
 
-lcd #(80, 80, 48, 48) lcd (
-	 .pclk   ( clk_sys    ),
+lcd lcd (
+	 .pclk   ( clk_sys_old),
 	 .pce    ( ce_pix     ),
 	 .clk    ( clk_cpu    ),
 	 .isGBC  ( isGBC      ),
@@ -606,30 +606,23 @@ assign VGA_G  = video_g;
 assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
 assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_pix;
+assign CE_PIXEL = ce_pix & !line_cnt;
 assign VGA_HS = video_hs;
 assign VGA_VS = video_vs;
 
+wire clk_sys_old =  clk_sys & ce_sys;
+wire ce_cpu2x = ce_pix;
 wire clk_cpu = clk_sys & ce_cpu;
-wire clk_cpu2x = clk_sys & ce_cpu2x;
+wire clk_cpu2x = clk_sys & ce_pix;
 
-reg ce_pix, ce_cpu, ce_cpu2x, ce_sys;
+reg ce_pix, ce_cpu,ce_sys;
 always @(negedge clk_sys) begin
 	reg [3:0] div = 0;
 
 	div <= div + 1'd1;
 	ce_sys   <= !div[0];
-	ce_cpu2x <= !div[2:0];
+	ce_pix   <= !div[2:0];
 	ce_cpu   <= !div[3:0];
-end
-
-always @(negedge clk_sys) begin
-	reg [4:0] div = 0;
-
-	div <= div + 1; 
-	if (div == 5'd10)
-		div <= 0;
-	ce_pix   <= !div;
 end
 
 
@@ -808,6 +801,18 @@ always @(posedge clk_sys) begin
 			end
 		end
 	end
+end
+
+reg [1:0] line_cnt;
+always @(posedge clk_sys_old) begin
+	reg old_hs;
+	reg old_vs;
+
+	old_vs <= video_vs;
+	old_hs <= video_hs;
+
+	if(old_hs & ~video_hs) line_cnt <= line_cnt + 1'd1;
+	if(old_vs & ~video_vs) line_cnt <= 0;
 end
 
 endmodule
