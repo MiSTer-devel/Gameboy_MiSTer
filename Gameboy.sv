@@ -146,23 +146,27 @@ localparam CONF_STR1 = {
 	"FS,GBCGB ,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
 	"-;",
-	"OC,Inverted color,No,Yes;",
-	"FC,GG,Game Genie Code;",
-	"OH,Game Genie,ON,OFF;",
-	"O1,Palette,Grayscale,Custom;"
+	"C,Cheats;"
 };
 
 localparam CONF_STR2 = {
-	",GBP,Load Palette;",
+	"H,Cheats enabled,Yes,No;",
 	"-;",
-	"OD,OSD triggered autosaves,No,Yes;",
+	"OC,Inverted color,No,Yes;",
+	"O1,Palette,Grayscale,Custom;"
 };
 
 localparam CONF_STR3 = {
-	"9,Load Backup RAM;"
+	",GBP,Load Palette;",
+	"-;",
+	"OD,OSD triggered autosaves,No,Yes;"
 };
 
 localparam CONF_STR4 = {
+	"9,Load Backup RAM;"
+};
+
+localparam CONF_STR5 = {
 	"A,Save Backup RAM;",
 	"-;",
 	"O34,Aspect ratio,4:3,10:9,16:9;",
@@ -216,12 +220,12 @@ wire [63:0] img_size;
 
 wire [7:0] sav_char = sav_supported ? "R" : "+";
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + 3), .WIDE(1)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + ($size(CONF_STR5)>>3) + 4), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 
-	.conf_str({CONF_STR1,status[1]?"F":"+",CONF_STR2, sav_char, CONF_STR3, sav_char, CONF_STR4}),
+	.conf_str({CONF_STR1, gg_available ? "O" : "+",CONF_STR2, status[1]?"F":"+",CONF_STR3, sav_char, CONF_STR4, sav_char, CONF_STR5}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
@@ -252,10 +256,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
-wire palette_download = ioctl_download && (filetype == 8'h07 || filetype == 8'h00);
+wire palette_download = ioctl_download && (filetype == 8'h07 || filetype == 8'h06 || filetype == 8'h00);
 wire bios_download = ioctl_download && (filetype == 8'h40);
-
-wire type_gg = filetype == 8'h04;
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
@@ -534,8 +536,6 @@ gb gb (
 	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
-	.new_game_load  ( cart_download),
-
 	.fast_boot   ( 0          ),
 	.joystick    ( joystick   ),
 	.isGBC       ( isGBC      ),
@@ -563,8 +563,12 @@ gb gb (
 	.lcd_on      ( lcd_on     ),
 	.speed       ( speed      ),
 	
-	.gg              (status[17]),
-	.gg_code         (gg_code)
+	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
+	// so clear the cheats and disable second option (chheats enable/disable)
+	.gg_reset((code_download && ioctl_wr && !ioctl_addr) | cart_download | palette_download),
+	.gg_en(~status[17]),
+	.gg_code(gg_code),
+	.gg_available(gg_available)
 );
 
 // the lcd to vga converter
@@ -645,23 +649,34 @@ dpram_dif #(12,8,11,16) boot_rom_gbc (
 	.q_b ()
 );
 
-/////////////////////////  GAME GENIE //////////////////////////////////
-
-reg [34:0] gg_code=35'd0;
+///////////////////////////// CHEATS //////////////////////////////////
+// Code loading for WIDE IO (16 bit)
+reg [128:0] gg_code;
+wire        gg_available;
+wire        code_download = &filetype;
 
 // Code layout:
-// {clock bit, enable, compare enable, 15'b address, 8'b compare, 8'b replace}
-//  34         33      32              31:16         15:8         7:0
-always_ff @(posedge clk_sys) begin
-	gg_code[34] <= 1'b0;
+// {clock bit, code flags,     32'b address, 32'b compare, 32'b replace}
+//  128        127:96          95:64         63:32         31:0
+// Integer values are in BIG endian byte order, so it up to the loader
+// or generator of the code to re-arrange them correctly.
 
-	if (ioctl_download && type_gg) begin
+always_ff @(posedge clk_sys) begin
+	gg_code[128] <= 1'b0;
+
+	if (code_download & ioctl_wr) begin
 		case (ioctl_addr[3:0])
-			0:  gg_code[32]    <= ioctl_dout[0];   // Compare Enable
-			4:  gg_code[31:16] <= ioctl_dout;      // Address
-			8:  gg_code[15:8]  <= ioctl_dout[7:0]; // compare byte
-			12: gg_code[7:0]   <= ioctl_dout[7:0]; // replace byte
-			14: gg_code[34]    <=  1'b1;           // Clock it in
+			0:  gg_code[111:96]  <= ioctl_dout; // Flags Bottom Word
+			2:  gg_code[127:112] <= ioctl_dout; // Flags Top Word
+			4:  gg_code[79:64]   <= ioctl_dout; // Address Bottom Word
+			6:  gg_code[95:80]   <= ioctl_dout; // Address Top Word
+			8:  gg_code[47:32]   <= ioctl_dout; // Compare Bottom Word
+			10: gg_code[63:48]   <= ioctl_dout; // Compare top Word
+			12: gg_code[15:0]    <= ioctl_dout; // Replace Bottom Word
+			14: begin
+				gg_code[31:16]    <= ioctl_dout; // Replace Top Word
+				gg_code[128]      <= 1'b1;       // Clock it in
+			end
 		endcase
 	end
 end

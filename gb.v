@@ -21,7 +21,6 @@
 
 module gb (
    input reset,
-	input new_game_load,
    
 	input clk_sys,
 	input ce,
@@ -56,8 +55,10 @@ module gb (
 	
 	output speed,   //GBC
 	
-	input         gg,
-	input  [34:0] gg_code
+	input          gg_reset,
+	input          gg_en,
+	input  [128:0] gg_code,
+	output         gg_available
 );
 
 // include cpu
@@ -173,19 +174,19 @@ GBse cpu (
 );
 
 // --------------------------------------------------------------------
-// --------------------------- Game Genie -----------------------------
+// --------------------------- Cheat Engine ---------------------------
 // --------------------------------------------------------------------
 
 wire genie_ovr;
 wire [7:0] genie_data;
 
-
-geniecodes codes (
-	.clk        (clk2x),
-	.reset      (new_game_load),
-	.enable     (~gg),
+CODES codes (
+	.clk        (clk_sys),
+	.reset      (gg_reset),
+	.enable     (gg_en),
 	.addr_in    (cpu_addr),
 	.data_in    (cpu_di),
+	.available  (gg_available),
 	.code       (gg_code),
 	.genie_ovr  (genie_ovr),
 	.genie_data (genie_data)

@@ -362,7 +362,7 @@ set_global_assignment -name QIP_FILE sdram.qip
 set_global_assignment -name VHDL_FILE spram.vhd
 set_global_assignment -name VHDL_FILE dpram.vhd
 set_global_assignment -name VHDL_FILE boot_rom.vhd
-set_global_assignment -name SYSTEMVERILOG_FILE gamegenie.sv
+set_global_assignment -name SYSTEMVERILOG_FILE cheatcodes.sv
 set_global_assignment -name VERILOG_FILE video.v
 set_global_assignment -name VERILOG_FILE timer.v
 set_global_assignment -name VERILOG_FILE sprite_sort.v
