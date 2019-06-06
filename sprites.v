@@ -36,8 +36,7 @@ module sprites (
 	
 	//gbc
 	output [2:0] pixel_cmap_gbc,
-	output tile_vbank,
-	
+
 	input sort,
 	input [3:0] index,          // index of sprite which video wants to read data for
 	output [10:0] addr,
@@ -82,7 +81,8 @@ assign oam_do = sprite_oam_do[oam_addr[7:2]];
 
 // address where the sprite wants to read data from
 wire [5:0] sprite_idx_array [SPRITES-1:0];
-wire [5:0] prio_index = sprite_idx_array[index];
+wire [5:0] padded_index = {2'd0,index};
+wire [5:0] prio_index = sprite_idx_array[padded_index];
 assign addr = sprite_addr[prio_index];
 
 //gbc
@@ -116,7 +116,6 @@ for(i=0;i<SPRITES;i=i+1) begin : spr
 		
 	   //gbc
 	   .pixel_cmap_gbc ( sprite_pixel_cmap_gbc[i] ),
-	   .tile_vbank     ( sprite_tile_vbank[i]     ),		
 	
 		.oam_wr   ( oam_wr && (oam_addr[7:2] == i) ),
 		.oam_addr ( oam_addr[1:0] ),
@@ -200,21 +199,6 @@ assign pixel_cmap_gbc =
 	sprite_pixel_active[spr9]?sprite_pixel_cmap_gbc[spr9]:
 	1'b0;
 
-// get the tile vbank of the leftmost sprite
-assign tile_vbank =
-	sprite_pixel_active[spr0]?sprite_tile_vbank[spr0]:
-	sprite_pixel_active[spr1]?sprite_tile_vbank[spr1]:
-	sprite_pixel_active[spr2]?sprite_tile_vbank[spr2]:
-	sprite_pixel_active[spr3]?sprite_tile_vbank[spr3]:
-	sprite_pixel_active[spr4]?sprite_tile_vbank[spr4]:
-	sprite_pixel_active[spr5]?sprite_tile_vbank[spr5]:
-	sprite_pixel_active[spr6]?sprite_tile_vbank[spr6]:
-	sprite_pixel_active[spr7]?sprite_tile_vbank[spr7]:
-	sprite_pixel_active[spr8]?sprite_tile_vbank[spr8]:
-	sprite_pixel_active[spr9]?sprite_tile_vbank[spr9]:
-	1'b0;
-	
-	
 // get the priority of the leftmost sprite
 assign pixel_prio =
 	sprite_pixel_active[spr0]?sprite_pixel_prio[spr0]:

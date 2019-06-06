@@ -41,7 +41,6 @@ module sprite (
 	
 	//gbc
 	output [2:0] pixel_cmap_gbc,
-	output tile_vbank,
 	
 	input oam_wr,
 	input [1:0] oam_addr,
@@ -88,7 +87,6 @@ assign pixel_cmap = flags[4];
 assign pixel_prio = flags[7];
 
 assign pixel_cmap_gbc = flags[2:0];
-assign tile_vbank = flags[3];
 
 reg [7:0] y_pos;
 reg [7:0] x_pos;

@@ -71,7 +71,6 @@ wire [10:0] sprite_addr;
 
 //gbc
 wire [2:0] sprite_pixel_cmap_gbc;
-wire sprite_tile_vbank;
 
 // "data strobe" for the two bytes each sprite line consists of
 wire [1:0] sprite_dvalid = {
@@ -100,7 +99,6 @@ sprites sprites (
 
 	//gbc
 	.pixel_cmap_gbc ( sprite_pixel_cmap_gbc ),
-	.tile_vbank     ( sprite_tile_vbank     ),
 
 	.oam_wr   ( oam_wr       ),
 	.oam_addr ( oam_addr     ),
