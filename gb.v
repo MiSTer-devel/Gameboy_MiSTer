@@ -590,7 +590,7 @@ wire [7:0] rom_do = isGBC? //GameBoy Color?
                         ((cpu_addr[14:9] == 6'h00) || (hdma_rd&& hdma_source_addr[14:9] == 6'h00))? cart_do:                                 //100-1FF Cart Header
                         (((cpu_addr[14:12] == 3'h0) || (hdma_rd&& hdma_source_addr[14:12] == 3'h0)) && boot_rom_enabled)?gbc_bios_do:        //200-8FF bootrom 2nd part
                         cart_do:                                                            //rest of card
-                    ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?boot_rom_do:cart_do;    //GB
+                    ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?fast_boot?fast_boot_rom_do:boot_rom_do:cart_do;    //GB
 
 
 wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
@@ -608,6 +608,13 @@ boot_rom boot_rom (
 	.addr    ( cpu_addr[7:0] ),
 	.clk     ( clk           ),
 	.data    ( boot_rom_do   )
+);
+
+wire [7:0] fast_boot_rom_do;
+fast_boot_rom fast_boot_rom (
+	.addr    ( cpu_addr[7:0] ),
+	.clk     ( clk           ),
+	.data    ( fast_boot_rom_do )
 );
 
 endmodule
