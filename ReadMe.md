@@ -5,8 +5,8 @@ This is port of [Gameboy for MiST](https://github.com/mist-devel/mist-board/tree
 * Place RBF file into root of SD card.
 * Place *.gb files into Gameboy folder.
 
-## Gameboy Color Support
-Place the Gameboy color bios/bootrom into the Gameboy folder and rename it to boot1.rom
+## Open Source Bootstrap roms
+This now includes the open source boot ROMs from [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/) (for maximum GBC compatibility/authenticity you can still place the Gameboy color bios/bootrom into the Gameboy folder and rename it to boot1.rom)
 
 ## Palettes
 Core supports custom palettes (*.gbp) which should be places into Gameboy folder. Some examples are available in palettes folder.
