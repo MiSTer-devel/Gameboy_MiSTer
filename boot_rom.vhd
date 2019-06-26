@@ -23,7 +23,7 @@ architecture prom of boot_rom is
 		X"06",X"1E",X"C1",X"FE",X"64",X"20",X"06",X"7B",X"E2",X"0C",X"3E",X"87",X"E2",X"F0",X"42",X"90",
 		X"E0",X"42",X"15",X"20",X"D2",X"05",X"20",X"64",X"16",X"20",X"18",X"CB",X"E0",X"40",X"18",X"5C",
 		X"06",X"04",X"C5",X"CB",X"11",X"17",X"C1",X"CB",X"11",X"17",X"05",X"20",X"F5",X"22",X"22",X"22",
-		X"22",X"C9",X"3C",X"42",X"A5",X"81",X"A5",X"99",X"42",X"3C",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",
+		X"22",X"C9",X"3C",X"42",X"B9",X"A5",X"B9",X"A5",X"42",X"3C",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",
 		X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",
 		X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",
 		X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",X"FF",
