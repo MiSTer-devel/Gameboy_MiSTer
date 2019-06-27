@@ -172,6 +172,8 @@ localparam CONF_STR5 = {
 	"O34,Aspect ratio,4:3,10:9,16:9;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
+   "O2,Boot,Normal,Fast;",
+	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start;",
 	"V,v",`BUILD_DATE
@@ -536,7 +538,7 @@ gb gb (
 	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
-	.fast_boot   ( 0          ),
+	.fast_boot   ( status[2]  ),
 	.joystick    ( joystick   ),
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
@@ -635,7 +637,7 @@ end
 wire [7:0] bios_do;
 wire [11:0] bios_addr;
 
-dpram_dif #(12,8,11,16) boot_rom_gbc (
+dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc (
 	.clock (clk_sys),
 	
 	.address_a (bios_addr),
