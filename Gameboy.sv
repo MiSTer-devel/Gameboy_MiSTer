@@ -199,6 +199,7 @@ pll pll
 	.rst(0),
 	.outclk_0(clk_sys),
 	.outclk_1(SDRAM_CLK),
+	.outclk_2(CLK_VIDEO),
 	.locked(pll_locked)
 );
 
@@ -620,10 +621,24 @@ assign VGA_R  = video_r;
 assign VGA_G  = video_g;
 assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
-assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_pix & !line_cnt;
-assign VGA_HS = video_hs;
-assign VGA_VS = video_vs;
+//assign CLK_VIDEO = clk_sys;
+assign CE_PIXEL = ce_o; //ce_pix & !line_cnt;
+assign VGA_HS = hs_o;
+assign VGA_VS = vs_o;
+
+reg hs_o, vs_o, ce_o;
+always @(posedge CLK_VIDEO) begin
+	reg old_ce;
+
+	old_ce <= ce_pix;
+
+	ce_o <= 0;
+	if(~old_ce & ce_pix) begin
+		ce_o <= 1;
+		hs_o <= video_hs;
+		if(~hs_o & video_hs) vs_o <= video_vs;
+	end
+end
 
 wire clk_sys_old =  clk_sys & ce_sys;
 wire ce_cpu2x = ce_pix;
