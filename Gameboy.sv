@@ -60,6 +60,11 @@ module emu
 	output  [1:0] LED_POWER,
 	output  [1:0] LED_DISK,
 
+	// I/O board button press simulation (active high)
+	// b[1]: user button
+	// b[0]: osd button
+	output  [1:0] BUTTONS,
+
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
 	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
@@ -68,7 +73,7 @@ module emu
 	//ADC
 	inout   [3:0] ADC_BUS,
 
-	// SD-SPI
+	//SD-SPI
 	output        SD_SCK,
 	output        SD_MOSI,
 	input         SD_MISO,
@@ -111,10 +116,10 @@ module emu
 	// Open-drain User port.
 	// 0 - D+/RX
 	// 1 - D-/TX
-	// 2..5 - USR1..USR4
+	// 2..6 - USR2..USR6
 	// Set USER_OUT to 1 to read from USER_IN.
-	input   [5:0] USER_IN,
-	output  [5:0] USER_OUT,
+	input   [6:0] USER_IN,
+	output  [6:0] USER_OUT,
 
 	input         OSD_STATUS
 );
@@ -131,6 +136,7 @@ assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign LED_USER  = ioctl_download | sav_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
+assign BUTTONS   = 0;
 
 assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
 						 status[4:3] == 2'b01 ? 8'd10:
