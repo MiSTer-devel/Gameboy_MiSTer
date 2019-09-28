@@ -51,6 +51,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=0, WIDE=0, VDNUM=1, PS2WE=0)
 
 	output      [1:0] buttons,
 	output            forced_scandoubler,
+	output            direct_video,
 
 	output reg [31:0] status,
 	input      [31:0] status_in,
@@ -145,12 +146,13 @@ assign HPS_BUS[36]   = clk_sys;
 assign HPS_BUS[32]   = io_wide;
 assign HPS_BUS[15:0] = io_dout;
 
-reg [7:0] cfg;
+reg [15:0] cfg;
 assign buttons = cfg[1:0];
 //cfg[2] - vga_scaler handled in sys_top
 //cfg[3] - csync handled in sys_top
 assign forced_scandoubler = cfg[4];
 //cfg[5] - ypbpr handled in sys_top
+assign direct_video = cfg[10];
 
 // command byte read by the io controller
 wire [15:0] sd_cmd =
@@ -346,7 +348,7 @@ always@(posedge clk_sys) begin
 
 				case(cmd)
 					// buttons and switches
-					'h01: cfg <= io_din[7:0];
+					'h01: cfg <= io_din;
 					'h02: if(byte_cnt==1) joystick_0[15:0] <= io_din; else joystick_0[31:16] <= io_din;
 					'h03: if(byte_cnt==1) joystick_1[15:0] <= io_din; else joystick_1[31:16] <= io_din;
 					'h10: if(byte_cnt==1) joystick_2[15:0] <= io_din; else joystick_2[31:16] <= io_din;

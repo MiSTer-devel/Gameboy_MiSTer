@@ -207,6 +207,7 @@ pll pll
 
 wire [31:0] status;
 wire  [1:0] buttons;
+wire        direct_video;
 
 wire        ioctl_download;
 wire        ioctl_wr;
@@ -260,6 +261,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 
 	.buttons(buttons),
 	.status(status),
+	.direct_video(direct_video),
 
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1)
@@ -621,8 +623,7 @@ assign VGA_R  = video_r;
 assign VGA_G  = video_g;
 assign VGA_B  = video_b;
 assign VGA_DE = ~video_bl;
-//assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_o; //ce_pix & !line_cnt;
+assign CE_PIXEL = ce_o & (direct_video | !line_cnt);
 assign VGA_HS = hs_o;
 assign VGA_VS = vs_o;
 
@@ -633,7 +634,7 @@ always @(posedge CLK_VIDEO) begin
 	old_ce <= ce_pix;
 
 	ce_o <= 0;
-	if(~old_ce & ce_pix) begin
+	if(old_ce & ~ce_pix) begin
 		ce_o <= 1;
 		hs_o <= video_hs;
 		if(~hs_o & video_hs) vs_o <= video_vs;

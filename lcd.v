@@ -28,9 +28,9 @@ module lcd (
    output reg	hs,
    output reg 	vs,
    output reg 	blank,
-   output [7:0] r,
-   output [7:0] g,
-   output [7:0] b
+   output reg [7:0] r,
+   output reg [7:0] g,
+   output reg [7:0] b
 );
 
 
@@ -128,13 +128,14 @@ end
 reg [14:0] pixel_reg;
 
 always@(posedge pclk) begin
+	reg blank_r;
 	if(pce) begin
 		// visible area?
-		if((v_cnt < V) && (h_cnt < H)) begin
-			blank <= 1'b0;
-		end else begin
-			blank <= 1'b1;
-		end
+		blank_r <= (v_cnt >= V) || (h_cnt >= H);
+		blank <= blank_r;
+		r <= blank_r ? 8'd0 : (tint||isGBC) ? pal_r : grey;
+		g <= blank_r ? 8'd0 : (tint||isGBC) ? pal_g : grey;
+		b <= blank_r ? 8'd0 : (tint||isGBC) ? pal_b : grey;
 	end
 end
 
@@ -208,8 +209,5 @@ wire [7:0] pal_b = //isGBC?{pixel_reg[14:10],3'd0}:
 
 // greyscale
 wire [7:0] grey = (pixel==0)?8'd252:(pixel==1)?8'd168:(pixel==2)?8'd96:8'd0;
-assign r = blank?8'b00000000:tint||isGBC?pal_r:grey;
-assign g = blank?8'b00000000:tint||isGBC?pal_g:grey;
-assign b = blank?8'b00000000:tint||isGBC?pal_b:grey;
 
 endmodule
