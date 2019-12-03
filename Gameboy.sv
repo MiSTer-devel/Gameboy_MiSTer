@@ -125,7 +125,6 @@ module emu
 );
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0; 
 assign VGA_F1 = 0;
 
@@ -585,6 +584,13 @@ gb gb (
 	.lcd_on      ( lcd_on     ),
 	.speed       ( speed      ),
 	
+	// serial port
+	.sc_int_clock2(sc_int_clock_out),
+	.serial_clk_in(ser_clk_in),
+	.serial_data_in(ser_data_in),
+	.serial_clk_out(ser_clk_out),
+	.serial_data_out(ser_data_out),
+	
 	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
 	// so clear the cheats and disable second option (chheats enable/disable)
 	.gg_reset((code_download && ioctl_wr && !ioctl_addr) | cart_download | palette_download),
@@ -768,6 +774,28 @@ always_ff @(posedge clk_sys) begin
 		endcase
 	end
 end
+
+/////////////////////////////  Serial link  ///////////////////////////////
+
+assign USER_OUT[2] = 1'b1;
+assign USER_OUT[3] = 1'b1;
+assign USER_OUT[4] = 1'b1;
+assign USER_OUT[5] = 1'b1;
+assign USER_OUT[6] = 1'b1;
+
+wire sc_int_clock_out;
+wire ser_data_in;
+wire ser_data_out;
+wire ser_clk_in;
+wire ser_clk_out;
+
+assign ser_data_in = USER_IN[2];	
+assign USER_OUT[1] = ser_data_out;
+
+assign ser_clk_in = USER_IN[0];
+assign USER_OUT[0] = sc_int_clock_out?ser_clk_out:1'b1;
+
+
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 

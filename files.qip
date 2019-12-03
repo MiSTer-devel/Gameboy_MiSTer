@@ -13,6 +13,7 @@ set_global_assignment -name VERILOG_FILE lcd.v
 set_global_assignment -name VHDL_FILE gbc_snd.vhd
 set_global_assignment -name VERILOG_FILE gb.v
 set_global_assignment -name VERILOG_FILE hdma.v
+set_global_assignment -name VERILOG_FILE link.v
 set_global_assignment -name SDC_FILE Gameboy.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv
 set_global_assignment -name VERILOG_FILE sgb.v

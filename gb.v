@@ -61,7 +61,14 @@ module gb (
 	input          gg_reset,
 	input          gg_en,
 	input  [128:0] gg_code,
-	output         gg_available
+	output         gg_available,
+
+	//serial port
+	output sc_int_clock2,
+	input serial_clk_in,
+	output serial_clk_out,
+	input  serial_data_in,
+	output serial_data_out
 );
 
 // include cpu
@@ -121,7 +128,7 @@ wire [7:0] cpu_di =
 	   isGBC&&sel_hdma?{hdma_do}:  //hdma GBC
 	   isGBC&&sel_key1?{cpu_speed,6'h3f,prepare_switch}: //key1 cpu speed register(GBC)
 		sel_joy?joy_do:         // joystick register
-		sel_sb?8'hFF:				// serial transfer data register
+		sel_sb?sb:				// serial transfer data register
 		sel_sc?sc_r:				// serial transfer control register
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
@@ -240,46 +247,39 @@ gbc_snd audio (
 );
 
 // --------------------------------------------------------------------
-// -----------------------serial port(dummy)---------------------------
+// -----------------------serial port()--------------------------------
 // --------------------------------------------------------------------
 
-reg [3:0] serial_counter;
-reg sc_start,sc_shiftclock;
+wire serial_irq;
+wire [7:0] sb;
+wire sc_start;
+wire sc_shiftclock;
 
-reg serial_irq;
-reg [8:0] serial_clk_div; //8192Hz
+assign sc_int_clock2 = sc_shiftclock;
 
-always @(posedge clk_cpu) begin
-	serial_irq <= 1'b0;
-   if(reset) begin
-		  sc_start <= 1'b0;
-		  sc_shiftclock <= 1'b0;
-	end else if (sel_sc && !cpu_wr_n) begin	 //cpu write
-		sc_start <= cpu_do[7];
-		sc_shiftclock <= cpu_do[0];
-		if (cpu_do[7]) begin 						//enable transfer
-			serial_clk_div <= 9'h1FF;
-			serial_counter <= 4'd8;
-		end 
-	end else if (sc_start && sc_shiftclock) begin // serial transfer and serial clock enabled
-		
-		serial_clk_div <= serial_clk_div - 9'd1;
-		
-		if (serial_clk_div == 9'd0  && serial_counter)
-				serial_counter <= serial_counter - 4'd1;
-		
-		if (!serial_counter) begin
-			serial_irq <= 1'b1; 	//trigger interrupt
-			sc_start <= 1'b0; 	//reset transfer state
-			serial_clk_div <= 9'h1FF;
-		   serial_counter <= 4'd8;
-		end	
-	
-	end
-	
-end
+link link (
+  .clk(clk_cpu),
+  .rst(reset),
 
-			
+  .sel_sc(sel_sc),
+  .sel_sb(sel_sb),
+  .cpu_wr_n(cpu_wr_n),
+  .sc_start_in(cpu_do[7]),
+  .sc_int_clock_in(cpu_do[0]),
+
+  .sb_in(cpu_do),
+
+  .serial_clk_in(serial_clk_in),
+  .serial_data_in(serial_data_in),
+
+  .serial_clk_out(serial_clk_out),
+  .serial_data_out(serial_data_out),
+  .sb(sb),
+  .serial_irq(serial_irq),
+  .sc_start(sc_start),
+  .sc_int_clock(sc_shiftclock)
+
+);
 
 // --------------------------------------------------------------------
 // ------------------------------ inputs ------------------------------
