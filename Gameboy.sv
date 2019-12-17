@@ -198,8 +198,7 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.outclk_1(SDRAM_CLK),
-	.outclk_2(CLK_VIDEO),
+	.outclk_1(CLK_VIDEO),
 	.locked(pll_locked)
 );
 
@@ -292,6 +291,7 @@ sdram sdram (
    .sd_we          ( SDRAM_nWE                 ),
    .sd_ras         ( SDRAM_nRAS                ),
    .sd_cas         ( SDRAM_nCAS                ),
+   .sd_clk         ( SDRAM_CLK                 ),
 
     // system interface
    .clk            ( clk_sys                   ),
@@ -631,10 +631,10 @@ reg hs_o, vs_o, ce_o;
 always @(posedge CLK_VIDEO) begin
 	reg old_ce;
 
-	old_ce <= ce_pix;
+	old_ce <= ce_pix2;
 
 	ce_o <= 0;
-	if(old_ce & ~ce_pix) begin
+	if(old_ce & ~ce_pix2) begin
 		ce_o <= 1;
 		hs_o <= video_hs;
 		if(~hs_o & video_hs) vs_o <= video_vs;
@@ -646,14 +646,18 @@ wire ce_cpu2x = ce_pix;
 wire clk_cpu = clk_sys & ce_cpu;
 wire clk_cpu2x = clk_sys & ce_pix;
 
-reg ce_pix, ce_cpu,ce_sys;
+reg ce_pix, ce_pix2, ce_cpu,ce_sys;
 always @(negedge clk_sys) begin
 	reg [3:0] div = 0;
+	reg [1:0] ce_pix_r;
 
-	div <= div + 1'd1;
-	ce_sys   <= !div[0];
-	ce_pix   <= !div[2:0];
-	ce_cpu   <= !div[3:0];
+	div    <= div + 1'd1;
+	ce_sys <= !div[0];
+	ce_pix <= !div[2:0];
+	ce_cpu <= !div[3:0];
+
+	ce_pix_r <= {ce_pix_r[0], ce_pix};
+	ce_pix2  <= |ce_pix_r;
 end
 
 
