@@ -9,7 +9,7 @@ This is port of [Gameboy for MiST](https://github.com/mist-devel/mist-board/tree
 This now includes the open source boot ROMs from [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/) (for maximum GBC compatibility/authenticity you can still place the Gameboy color bios/bootrom into the Gameboy folder and rename it to boot1.rom)
 
 ## Palettes
-Core supports custom palettes (*.gbp) which should be places into Gameboy folder. Some examples are available in palettes folder.
+Core supports custom palettes (*.gbp) which should be placed into Gameboy folder. Some examples are available in palettes folder.
 
 ## Autoload
 To autoload custom palette at startup rename it to boot0.rom
@@ -20,7 +20,7 @@ Due to using a weird video resolution and frequencies (from a TV signal perspect
 
 For now you can append this to your MiSTer.ini configuration file (credit goes to ghogan42/soltan_g42) that enables the vga_scaler to be active when using this core
 
-**be aware that you will lose HDMI output for this core** :
+**Be aware that you will lose HDMI output for this core**:
 
 ```ini
 [Gameboy]
