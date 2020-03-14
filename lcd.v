@@ -4,11 +4,13 @@
 // The gameboy lcd runs from a shift register which is filled at 4194304 pixels/sec
 
 module lcd (
-	input   clk,
+	input   clk_sys, // 67.108864 MHz
+	input   ce_cpu, // 4.194304 Mhz
 	input   clkena,
 	input [14:0] data,
 	input [1:0] mode,
 	input isGBC,
+	input  double_buffer,
 	
 	//palette
 	input [23:0] pal1,
@@ -19,11 +21,10 @@ module lcd (
 	input tint,
 	input inv,
 
-	// pixel clock
-   input  pclk,
-   input  pce,
 	input  on,
-	
+
+	output reg ce_pix,
+
    // VGA output
    output reg	hs,
    output reg 	vs,
@@ -35,90 +36,123 @@ module lcd (
 
 
 reg [14:0] vbuffer_inptr;
-reg vbuffer_write;
-
 reg [14:0] vbuffer_outptr;
-reg [14:0] vbuffer_lineptr;
+reg vbuffer_in_bank, vbuffer_out_bank;
 
-
-//image buffer 160x144x2bits for now , later 15bits for cgb
-dpram #(15,15) vbuffer (
-	.clock_a (clk),
-	.address_a (vbuffer_inptr),
+//image buffer 160x144x15bits for cgb
+dpram #(16,15) vbuffer (
+	.clock_a (clk_sys & ce_cpu),
+	.address_a (vbuffer_in_bank ? (vbuffer_inptr+16'd23040) : vbuffer_inptr),
 	.wren_a (clkena),
 	.data_a (data),
 	.q_a (),
 	
-	.clock_b (pclk),
-	.address_b (vbuffer_outptr),
+	.clock_b (clk_sys & ce_pix),
+	.address_b (vbuffer_out_bank ? (vbuffer_outptr+16'd23040) : vbuffer_outptr),
 	.wren_b (1'b0), //only reads
 	.data_b (),
 	.q_b (pixel_reg)
 );
 
-always @(posedge clk) begin
-	if(!on || (mode==2'd01)) begin  //lcd disabled of vsync restart pointer
-	   vbuffer_inptr <= 15'h0;
-	end else begin
-		
-		// end of vsync
-		if(clkena) begin
-			vbuffer_inptr <= vbuffer_inptr + 15'd1;
-		end
-		
-	end;
-end
-
-	
 // Mode 00:  h-blank
 // Mode 01:  v-blank
 // Mode 10:  oam
 // Mode 11:  oam and vram	
 
-// 
-parameter H   = 160;    // width of visible area
-parameter HFP = 16;     // unused time before hsync
-parameter HS  = 20;     // width of hsync
-parameter HBP = 32;     // unused time after hsync
-// total = 228
+parameter H      = 160;   // width of visible area
+parameter HFP    = 103;   // unused time before hsync
+parameter HS     = 32;    // width of hsync
+parameter HBP    = 130;   // unused time after hsync
+parameter HTOTAL = H+HFP+HS+HBP;
+// total = 425
 
-parameter V   = 576;    // height of visible area
-parameter VFP = 2;      // unused time before vsync
-parameter VS  = 2;      // width of vsync
-parameter VBP = 36;     // unused time after vsync
-// total = 616
+parameter V        = 144; // height of visible area
+parameter VS_START = 35;  // start of vsync
+parameter VSTART   = 105; // start of active video
+parameter VTOTAL   = 264;
 
-reg[7:0] h_cnt;         // horizontal pixel counter
-reg[9:0] v_cnt;         // vertical pixel counter
+reg[8:0] h_cnt;         // horizontal pixel counter
+reg[8:0] v_cnt;         // vertical pixel counter
 
-// horizontal pixel counter
-reg [1:0] last_mode_h;
-always@(posedge pclk) begin
-	if(pce) begin
-		
-		if(h_cnt==H+HFP+HS+HBP-1)   h_cnt <= 0;
-		else                        h_cnt <= h_cnt + 1'd1;
 
-		// generate positive hsync signal
-		if(h_cnt == H+HFP)    hs <= 1'b1;
-		if(h_cnt == H+HFP+HS) hs <= 1'b0;
+// (67108864 / 32 / 228 / 154) == (67108864 / 10 /  425.6 / 264) == 59.7275Hz
+// We need 4256 cycles per line so 1 pixel clock cycle needs to be 6 cycles longer.
+// 424x10 + 1x16 cycles
+reg [3:0] pix_div_cnt;
+always @(posedge clk_sys) begin
+	pix_div_cnt <= pix_div_cnt + 1'd1;
+	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd9) // Longer cycle at the last pixel
+		pix_div_cnt <= 0;
 
-	end
+	ce_pix <= !pix_div_cnt;
 end
 
-// veritical pixel counter
-reg [1:0] last_mode_v;
-always@(posedge pclk) begin
-	if(pce) begin
-		// the vertical counter is processed at the begin of each hsync
-		if(h_cnt == H+HFP+HS+HBP-1) begin
-			if(v_cnt==VS+VFP+V+VBP-1)  v_cnt <= 0; 
-			else							   v_cnt <= v_cnt + 1'd1;
+wire lcd_off = !on || (mode == 2'd01);
+reg old_lcd_off;
+reg hb, vb;
+always @(posedge clk_sys) begin
+
+	if (ce_cpu) begin
+		if(clkena) begin
+			if (~lcd_off) begin
+				vbuffer_inptr <= vbuffer_inptr + 1'd1;
+			end
+		end
+	end
+
+	if (!pix_div_cnt) begin
+		// generate positive hsync signal
+		if(h_cnt == H+HFP+HS) hs <= 0;
+		if(h_cnt == H+HFP)    begin
+			hs <= 1;
 
 			// generate positive vsync signal
-			if(v_cnt == V+VFP)    vs <= 1'b1;
-			if(v_cnt == V+VFP+VS) vs <= 1'b0;
+			if(v_cnt == VS_START)   vs <= 1;
+			if(v_cnt == VS_START+3) vs <= 0;
 		end
+
+		// Hblank
+		if(h_cnt == 0)        hb <= 0;
+		if(h_cnt >= H)        hb <= 1;
+
+		// Vblank
+		if(v_cnt == VSTART)    vb <= 0;
+		if(v_cnt >= VSTART+V)  vb <= 1;
+
+	end
+
+	if(ce_pix) begin
+
+		h_cnt <= h_cnt + 1'd1;
+		if(h_cnt == HTOTAL-1) begin
+			h_cnt <= 0;
+			if(~&v_cnt) v_cnt <= v_cnt + 1'd1;
+			if( (double_buffer || lcd_off) && v_cnt >= VTOTAL-1) v_cnt <= 0;
+
+			if(v_cnt == VSTART-1) begin
+				vbuffer_outptr 	<= 0;
+				// Read from write buffer if it is far enough ahead
+				vbuffer_out_bank <= (vbuffer_inptr >= (160*60) || ~double_buffer) ? vbuffer_in_bank : ~vbuffer_in_bank;
+			end
+		end
+
+		// visible area?
+		if(~hb & ~vb) begin
+			vbuffer_outptr <= vbuffer_outptr + 1'd1;
+		end
+	end
+
+	old_lcd_off <= lcd_off;
+	if(~old_lcd_off & lcd_off) begin  //lcd disabled or vsync restart pointer
+		vbuffer_inptr <= 0;
+		vbuffer_in_bank <= ~vbuffer_in_bank;
+	end
+
+	if (old_lcd_off & ~lcd_off & ~double_buffer & vb) begin // lcd enabled
+		h_cnt <= 0;
+		v_cnt <= 0;
+		hs    <= 0;
+		vs    <= 0;
 	end
 end
 
@@ -127,50 +161,17 @@ end
 // -------------------------------------------------------------------------------
 reg [14:0] pixel_reg;
 
-always@(posedge pclk) begin
+always@(posedge clk_sys) begin
 	reg blank_r;
-	if(pce) begin
+	if(ce_pix) begin
 		// visible area?
-		blank_r <= (v_cnt >= V) || (h_cnt >= H);
+		blank_r <= (hb | vb);
 		blank <= blank_r;
 		r <= blank_r ? 8'd0 : (tint||isGBC) ? pal_r : grey;
 		g <= blank_r ? 8'd0 : (tint||isGBC) ? pal_g : grey;
 		b <= blank_r ? 8'd0 : (tint||isGBC) ? pal_b : grey;
 	end
 end
-
-
-reg [7:0] currentpixel;
-reg [1:0] linecnt;
-always@(posedge pclk) begin
-	
-	if(pce) begin
-		if(h_cnt == H+HFP+HS+HBP-1) begin
-
-			//reset output at vsync
-			if(v_cnt == V+VFP) begin
-				vbuffer_outptr 	<= 15'd0; 
-				vbuffer_lineptr	<= 15'd0;
-				currentpixel		<=	8'd0;
-				linecnt <= 2'd3;
-			end
-		end else
-			// visible area?
-			if((v_cnt < V) && (h_cnt < H)) begin
-				vbuffer_outptr <= vbuffer_lineptr + currentpixel; 
-				if (currentpixel + 8'd1 == 160) begin
-					currentpixel <= 8'd0;
-					linecnt <= linecnt - 2'd1;
-					
-					//increment vbuffer_lineptr after 4 lines
-					if (!linecnt)
-						vbuffer_lineptr <= vbuffer_lineptr + 15'd160;
-				end else
-					currentpixel <= currentpixel + 8'd1;
-			end
-	end
-end
-
 
 wire [14:0] pixel = on?isGBC?pixel_reg:
 							  {13'd0,(pixel_reg[1:0] ^ {inv,inv})}: //invert gb only

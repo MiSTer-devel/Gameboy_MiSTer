@@ -179,6 +179,7 @@ localparam CONF_STR5 = {
 	"A,Save Backup RAM;",
 	"-;",
 	"O34,Aspect ratio,4:3,10:9,16:9;",
+	"O5,Stabilize video(buffer),Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
    "O2,Boot,Normal,Fast;",
@@ -590,15 +591,16 @@ gb gb (
 // the lcd to vga converter
 wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_bl;
+wire ce_pix;
 
 lcd lcd (
-	 .pclk   ( clk_sys_old),
-	 .pce    ( ce_pix     ),
-	 .clk    ( clk_cpu    ),
+	 .clk_sys( clk_sys    ),
+	 .ce_cpu ( ce_cpu     ),
 	 .isGBC  ( isGBC      ),
 
 	 .tint   ( status[1]  ),
 	 .inv    ( status[12]  ),
+	 .double_buffer( status[5]),
 
 	 // Palettes
 	 .pal1   (palette[127:104]),
@@ -617,11 +619,12 @@ lcd lcd (
 	 .blank  ( video_bl   ),
 	 .r      ( video_r    ),
 	 .g      ( video_g    ),
-	 .b      ( video_b    )
+	 .b      ( video_b    ),
+	 .ce_pix ( ce_pix     )
 );
 
 assign VGA_SL = 0;
-assign CE_PIXEL = ce_o & (direct_video | !line_cnt);
+assign CE_PIXEL = ce_o;
 
 reg hs_o, vs_o, ce_o;
 always @(posedge CLK_VIDEO) begin
@@ -657,20 +660,16 @@ gamma_fast gamma
 
 //////////////////////////////// CE ////////////////////////////////////
 
-wire clk_sys_old =  clk_sys & ce_sys;
-wire ce_cpu2x = ce_pix;
-wire clk_cpu = clk_sys & ce_cpu;
-wire clk_cpu2x = clk_sys & ce_pix;
+wire clk_cpu2x = clk_sys & ce_cpu2x;
 
-reg ce_pix, ce_pix2, ce_cpu,ce_sys;
+reg ce_pix2, ce_cpu, ce_cpu2x;
 always @(negedge clk_sys) begin
 	reg [3:0] div = 0;
 	reg [1:0] ce_pix_r;
 
-	div    <= div + 1'd1;
-	ce_sys <= !div[0];
-	ce_pix <= !div[2:0];
-	ce_cpu <= !div[3:0];
+	div      <= div + 1'd1;
+	ce_cpu2x <= !div[2:0];
+	ce_cpu   <= !div[3:0];
 
 	ce_pix_r <= {ce_pix_r[0], ce_pix};
 	ce_pix2  <= |ce_pix_r;
@@ -862,18 +861,6 @@ always @(posedge clk_sys) begin
 			end
 		end
 	end
-end
-
-reg [1:0] line_cnt;
-always @(posedge clk_sys_old) begin
-	reg old_hs;
-	reg old_vs;
-
-	old_vs <= video_vs;
-	old_hs <= video_hs;
-
-	if(old_hs & ~video_hs) line_cnt <= line_cnt + 1'd1;
-	if(old_vs & ~video_vs) line_cnt <= 0;
 end
 
 endmodule
