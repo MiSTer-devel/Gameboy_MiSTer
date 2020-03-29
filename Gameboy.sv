@@ -149,34 +149,21 @@ assign VIDEO_ARY = status[4:3] == 2'b10 ? 8'd9:
 assign AUDIO_MIX = status[8:7];
 
 `include "build_id.v" 
-localparam CONF_STR1 = {
+localparam CONF_STR = {
 	"GAMEBOY;;",
-	"-;",
-	"FS,GBCGB ,Load ROM;",
+	"FS1,GBCGB ,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
 	"-;",
-	"C,Cheats;"
-};
-
-localparam CONF_STR2 = {
-	"H,Cheats enabled,Yes,No;",
+	"C,Cheats;",
+	"h0OH,Cheats enabled,Yes,No;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
-	"O1,Palette,Grayscale,Custom;"
-};
-
-localparam CONF_STR3 = {
-	",GBP,Load Palette;",
+	"O1,Palette,Grayscale,Custom;",
+	"h1F2,GBP,Load Palette;",
 	"-;",
-	"OD,OSD triggered autosaves,No,Yes;"
-};
-
-localparam CONF_STR4 = {
-	"9,Load Backup RAM;"
-};
-
-localparam CONF_STR5 = {
-	"A,Save Backup RAM;",
+	"h2R9,Load Backup RAM;",
+	"h2RA,Save Backup RAM;",
+	"OD,Autosave,Off,On;",
 	"-;",
 	"O34,Aspect ratio,4:3,10:9,16:9;",
 	"O5,Stabilize video(buffer),Off,On;",
@@ -232,14 +219,12 @@ wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
 
-wire [7:0] sav_char = sav_supported ? "R" : "+";
-
-hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR3)>>3) + ($size(CONF_STR4)>>3) + ($size(CONF_STR5)>>3) + 4), .WIDE(1)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 
-	.conf_str({CONF_STR1, gg_available ? "O" : "+",CONF_STR2, status[1]?"F":"+",CONF_STR3, sav_char, CONF_STR4, sav_char, CONF_STR5}),
+	.conf_str(CONF_STR),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
@@ -262,6 +247,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 
 	.buttons(buttons),
 	.status(status),
+	.status_menumask({sav_supported,status[1],gg_available}),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
 
@@ -272,7 +258,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3) + ($size(CONF_STR2)>>3) + ($size(CONF_STR
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
-wire palette_download = ioctl_download && (filetype == 8'h07 || filetype == 8'h06 || filetype == 8'h00);
+wire palette_download = ioctl_download && (filetype == 2 || !filetype);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};

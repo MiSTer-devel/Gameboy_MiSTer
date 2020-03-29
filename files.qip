@@ -3,6 +3,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE sdram.sv
 set_global_assignment -name VHDL_FILE spram.vhd
 set_global_assignment -name VHDL_FILE dpram.vhd
 set_global_assignment -name VHDL_FILE boot_rom.vhd
+set_global_assignment -name VERILOG_FILE fast_boot_rom.v
 set_global_assignment -name SYSTEMVERILOG_FILE cheatcodes.sv
 set_global_assignment -name VERILOG_FILE video.v
 set_global_assignment -name VERILOG_FILE timer.v
