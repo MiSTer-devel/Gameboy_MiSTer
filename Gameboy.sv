@@ -166,6 +166,7 @@ localparam CONF_STR = {
 	"OD,Autosave,Off,On;",
 	"-;",
 	"O34,Aspect ratio,4:3,10:9,16:9;",
+	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O5,Stabilize video(buffer),Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
@@ -180,13 +181,14 @@ localparam CONF_STR = {
 
 wire clk_sys;
 wire pll_locked;
-		
+
+assign CLK_VIDEO = clk_sys;
+
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.outclk_1(CLK_VIDEO),
 	.locked(pll_locked)
 );
 
@@ -194,6 +196,7 @@ pll pll
 
 wire [31:0] status;
 wire  [1:0] buttons;
+wire        forced_scandoubler;
 wire        direct_video;
 wire [21:0] gamma_bus;
 
@@ -250,6 +253,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.status_menumask({sav_supported,status[1],gg_available}),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
+	.forced_scandoubler(forced_scandoubler),
 
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1)
@@ -576,7 +580,8 @@ gb gb (
 
 // the lcd to vga converter
 wire [7:0] video_r, video_g, video_b;
-wire video_hs, video_vs, video_bl;
+wire video_hs, video_vs;
+wire HBlank, VBlank;
 wire ce_pix;
 
 lcd lcd (
@@ -602,15 +607,13 @@ lcd lcd (
 	 
   	 .hs     ( video_hs   ),
 	 .vs     ( video_vs   ),
-	 .blank  ( video_bl   ),
+	 .hbl    ( HBlank     ),
+	 .vbl    ( VBlank     ),
 	 .r      ( video_r    ),
 	 .g      ( video_g    ),
 	 .b      ( video_b    ),
 	 .ce_pix ( ce_pix     )
 );
-
-assign VGA_SL = 0;
-assign CE_PIXEL = ce_o;
 
 reg hs_o, vs_o, ce_o;
 always @(posedge CLK_VIDEO) begin
@@ -626,22 +629,30 @@ always @(posedge CLK_VIDEO) begin
 	end
 end
 
-gamma_fast gamma
+assign VGA_F1 = 0;
+assign VGA_SL = sl[1:0];
+
+wire [2:0] scale = status[20:18];
+wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
+wire       scandoubler = (scale || forced_scandoubler);
+
+video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 (
+	.*,
+
 	.clk_vid(CLK_VIDEO),
 	.ce_pix(ce_o),
+	.ce_pix_out(CE_PIXEL),
 
-	.gamma_bus(gamma_bus),
+	.scanlines(0),
+	.hq2x(scale==1),
+	.mono(0),
 
 	.HSync(hs_o),
 	.VSync(vs_o),
-	.DE(~video_bl),
-	.RGB_in({video_r, video_g, video_b}),
-
-	.HSync_out(VGA_HS),
-	.VSync_out(VGA_VS),
-	.DE_out(VGA_DE),
-	.RGB_out({VGA_R,VGA_G,VGA_B})
+	.R(video_r),
+	.G(video_g),
+	.B(video_b)
 );
 
 //////////////////////////////// CE ////////////////////////////////////

@@ -28,7 +28,8 @@ module lcd (
    // VGA output
    output reg	hs,
    output reg 	vs,
-   output reg 	blank,
+   output reg 	hbl,
+   output reg 	vbl,
    output reg [7:0] r,
    output reg [7:0] g,
    output reg [7:0] b
@@ -162,14 +163,16 @@ end
 reg [14:0] pixel_reg;
 
 always@(posedge clk_sys) begin
-	reg blank_r;
+	reg hbl_r, vbl_r;
 	if(ce_pix) begin
 		// visible area?
-		blank_r <= (hb | vb);
-		blank <= blank_r;
-		r <= blank_r ? 8'd0 : (tint||isGBC) ? pal_r : grey;
-		g <= blank_r ? 8'd0 : (tint||isGBC) ? pal_g : grey;
-		b <= blank_r ? 8'd0 : (tint||isGBC) ? pal_b : grey;
+		hbl_r <= hb;
+		vbl_r <= vb;
+		hbl <= hbl_r;
+		vbl <= vbl_r;
+		r <= (tint||isGBC) ? pal_r : grey;
+		g <= (tint||isGBC) ? pal_g : grey;
+		b <= (tint||isGBC) ? pal_b : grey;
 	end
 end
 
