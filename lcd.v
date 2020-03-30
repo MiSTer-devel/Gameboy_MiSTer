@@ -3,54 +3,59 @@
 
 // The gameboy lcd runs from a shift register which is filled at 4194304 pixels/sec
 
-module lcd (
-	input   clk_sys, // 33.554432 MHz
-	input   ce_cpu, // 4.194304 Mhz
-	input   clkena,
+module lcd
+(
+	input        clk_sys,
+	input        pix_wr,
 	input [14:0] data,
-	input [1:0] mode,
-	input isGBC,
-	input  double_buffer,
-	
+
+	input  [1:0] mode,
+	input        isGBC,
+	input        double_buffer,
+
 	//palette
 	input [23:0] pal1,
 	input [23:0] pal2,
 	input [23:0] pal3,
 	input [23:0] pal4,
 
-	input tint,
-	input inv,
+	input        tint,
+	input        inv,
 
-	input  on,
+	input        on,
 
-	output reg ce_pix,
-
-   // VGA output
-   output reg	hs,
-   output reg 	vs,
-   output reg 	hbl,
-   output reg 	vbl,
-   output reg [7:0] r,
-   output reg [7:0] g,
-   output reg [7:0] b
+	// VGA output
+	input            clk_vid, // 67.108864 MHz
+	output reg       ce_pix,
+	output reg	     hs,
+	output reg 	     vs,
+	output reg 	     hbl,
+	output reg 	     vbl,
+	output reg [7:0] r,
+	output reg [7:0] g,
+	output reg [7:0] b
 );
-
 
 reg [14:0] vbuffer_inptr;
-reg [14:0] vbuffer_outptr;
-reg vbuffer_in_bank, vbuffer_out_bank;
+reg vbuffer_in_bank;
+reg lcd_off;
+always @(posedge clk_sys) begin
+	reg old_lcd_off;
 
-//image buffer 160x144x15bits for cgb
-dpram #(16,15) vbuffer (
-	.clock_a(clk_sys),
-	.address_a ({vbuffer_in_bank, vbuffer_inptr}),
-	.wren_a(clkena & ce_cpu),
-	.data_a(data),
+	lcd_off <= !on || (mode == 2'd01);
 
-	.clock_b(clk_sys),
-	.address_b ({vbuffer_out_bank, vbuffer_outptr}),
-	.q_b (pixel_reg)
-);
+	if (pix_wr & ~lcd_off) vbuffer_inptr <= vbuffer_inptr + 1'd1;
+
+	old_lcd_off <= lcd_off;
+	if(~old_lcd_off & lcd_off) begin  //lcd disabled or vsync restart pointer
+		vbuffer_inptr <= 0;
+		vbuffer_in_bank <= ~vbuffer_in_bank;
+	end
+end
+
+reg [14:0] vbuffer[65536];
+always @(posedge clk_sys) if(pix_wr) vbuffer[{vbuffer_in_bank, vbuffer_inptr}] <= data;
+
 
 // Mode 00:  h-blank
 // Mode 01:  v-blank
@@ -72,25 +77,29 @@ parameter VTOTAL   = 264;
 reg[8:0] h_cnt;         // horizontal pixel counter
 reg[8:0] v_cnt;         // vertical pixel counter
 
-
 // (67108864 / 32 / 228 / 154) == (67108864 / 10 /  425.6 / 264) == 59.7275Hz
 // We need 4256 cycles per line so 1 pixel clock cycle needs to be 6 cycles longer.
 // 424x10 + 1x16 cycles
-reg [2:0] pix_div_cnt;
-always @(posedge clk_sys) begin
+reg [3:0] pix_div_cnt;
+always @(posedge clk_vid) begin
 	pix_div_cnt <= pix_div_cnt + 1'd1;
-	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd4) // Longer cycle at the last pixel
+	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd9) // Longer cycle at the last pixel
 		pix_div_cnt <= 0;
 
 	ce_pix <= !pix_div_cnt;
 end
 
-wire lcd_off = !on || (mode == 2'd01);
-reg old_lcd_off;
-reg hb, vb;
-always @(posedge clk_sys) begin
+reg [14:0] vbuffer_outptr;
+reg vbuffer_out_bank;
 
-	if (ce_cpu & clkena & ~lcd_off) vbuffer_inptr <= vbuffer_inptr + 1'd1;
+reg hb, vb;
+always @(posedge clk_vid) begin
+	reg [14:0] inptr,inptr1,inptr2;
+	reg old_lcd_off;
+
+	inptr2 <= vbuffer_inptr;
+	inptr1 <= inptr2;
+	if(inptr1 == inptr2) inptr <= inptr1;
 
 	if (!pix_div_cnt) begin
 		// generate positive hsync signal
@@ -124,7 +133,7 @@ always @(posedge clk_sys) begin
 			if(v_cnt == VSTART-1) begin
 				vbuffer_outptr 	<= 0;
 				// Read from write buffer if it is far enough ahead
-				vbuffer_out_bank <= (vbuffer_inptr >= (160*60) || ~double_buffer) ? vbuffer_in_bank : ~vbuffer_in_bank;
+				vbuffer_out_bank <= (inptr >= (160*60) || ~double_buffer) ? vbuffer_in_bank : ~vbuffer_in_bank;
 			end
 		end
 
@@ -135,11 +144,6 @@ always @(posedge clk_sys) begin
 	end
 
 	old_lcd_off <= lcd_off;
-	if(~old_lcd_off & lcd_off) begin  //lcd disabled or vsync restart pointer
-		vbuffer_inptr <= 0;
-		vbuffer_in_bank <= ~vbuffer_in_bank;
-	end
-
 	if (old_lcd_off & ~lcd_off & ~double_buffer & vb) begin // lcd enabled
 		h_cnt <= 0;
 		v_cnt <= 0;
@@ -152,51 +156,43 @@ end
 // ------------------------------- pixel generator -------------------------------
 // -------------------------------------------------------------------------------
 reg [14:0] pixel_reg;
+always @(posedge clk_vid) pixel_reg <= vbuffer[{vbuffer_out_bank, vbuffer_outptr}];
 
-always@(posedge clk_sys) begin
-	reg hbl_r, vbl_r;
+always@(posedge clk_vid) begin
 	if(ce_pix) begin
 		// visible area?
-		hbl_r <= hb;
-		vbl_r <= vb;
-		hbl <= hbl_r;
-		vbl <= vbl_r;
+		hbl <= hb;
+		vbl <= vb;
 		r <= (tint||isGBC) ? pal_r : grey;
 		g <= (tint||isGBC) ? pal_g : grey;
 		b <= (tint||isGBC) ? pal_b : grey;
 	end
 end
 
-wire [14:0] pixel = on?isGBC?pixel_reg:
-							  {13'd0,(pixel_reg[1:0] ^ {inv,inv})}: //invert gb only
-							  15'd0;
-
+wire [14:0] pixel = isGBC ? pixel_reg : {13'd0,(pixel_reg[1:0] ^ {inv,inv})}; //invert gb only
 							  
-wire [4:0] r5 = pixel_reg[4:0];
-wire [4:0] g5 = pixel_reg[9:5];
-wire [4:0] b5 = pixel_reg[14:10];
+wire  [4:0] r5 = pixel_reg[4:0];
+wire  [4:0] g5 = pixel_reg[9:5];
+wire  [4:0] b5 = pixel_reg[14:10];
 
 wire [31:0] r10 = (r5 * 13) + (g5 * 2) +b5;
 wire [31:0] g10 = (g5 * 3) + b5;
 wire [31:0] b10 = (r5 * 3) + (g5 * 2) + (b5 * 11);
 
 // gameboy "color" palette
-wire [7:0] pal_r = //isGBC?{pixel_reg[4:0],3'd0}:
-                   isGBC?r10[8:1]:
+wire [7:0] pal_r = isGBC?r10[8:1]:
                    (pixel==0)?pal1[23:16]:
 						 (pixel==1)?pal2[23:16]:
 						 (pixel==2)?pal3[23:16]:
 						 pal4[23:16];
 
-wire [7:0] pal_g = //isGBC?{pixel_reg[9:5],3'd0}:
-                   isGBC?{g10[6:0],1'b0}:
+wire [7:0] pal_g = isGBC?{g10[6:0],1'b0}:
                    (pixel==0)?pal1[15:8]:
                    (pixel==1)?pal2[15:8]:
 						 (pixel==2)?pal3[15:8]:
 						 pal4[15:8];
 						 
-wire [7:0] pal_b = //isGBC?{pixel_reg[14:10],3'd0}:
-                    isGBC?b10[8:1]:
+wire [7:0] pal_b = isGBC?b10[8:1]:
 						 (pixel==0)?pal1[7:0]:
                    (pixel==1)?pal2[7:0]:
 						 (pixel==2)?pal3[7:0]:

@@ -585,46 +585,41 @@ wire video_hs, video_vs;
 wire HBlank, VBlank;
 wire ce_pix;
 
-lcd lcd (
-	 .clk_sys( clk_sys    ),
-	 .ce_cpu ( ce_cpu     ),
-	 .isGBC  ( isGBC      ),
+lcd lcd
+(
+	// serial interface
+	.clk_sys( clk_sys    ),
+	.pix_wr ( lcd_clkena & ce_cpu ),
+	.data   ( lcd_data   ),
+	.mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
+	.on     ( lcd_on     ),
 
-	 .tint   ( status[1]  ),
-	 .inv    ( status[12]  ),
-	 .double_buffer( status[5]),
+	.isGBC  ( isGBC      ),
 
-	 // Palettes
-	 .pal1   (palette[127:104]),
-	 .pal2   (palette[103:80]),
-	 .pal3   (palette[79:56]),
-	 .pal4   (palette[55:32]),
+	.tint   ( status[1]  ),
+	.inv    ( status[12]  ),
+	.double_buffer( status[5]),
 
-	 // serial interface
-	 .clkena ( lcd_clkena ),
-	 .data   ( lcd_data   ),
-	 .mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
-	 .on     ( lcd_on     ),
-	 
-  	 .hs     ( video_hs   ),
-	 .vs     ( video_vs   ),
-	 .hbl    ( HBlank     ),
-	 .vbl    ( VBlank     ),
-	 .r      ( video_r    ),
-	 .g      ( video_g    ),
-	 .b      ( video_b    ),
-	 .ce_pix ( ce_pix     )
+	// Palettes
+	.pal1   (palette[127:104]),
+	.pal2   (palette[103:80]),
+	.pal3   (palette[79:56]),
+	.pal4   (palette[55:32]),
+
+	.clk_vid( CLK_VIDEO  ),
+	.hs     ( video_hs   ),
+	.vs     ( video_vs   ),
+	.hbl    ( HBlank     ),
+	.vbl    ( VBlank     ),
+	.r      ( video_r    ),
+	.g      ( video_g    ),
+	.b      ( video_b    ),
+	.ce_pix ( ce_pix     )
 );
 
-reg hs_o, vs_o, ce_o;
+reg hs_o, vs_o;
 always @(posedge CLK_VIDEO) begin
-	reg old_ce;
-
-	old_ce <= ce_pix;
-
-	ce_o <= 0;
-	if(old_ce & ~ce_pix) begin
-		ce_o <= 1;
+	if(ce_pix) begin
 		hs_o <= video_hs;
 		if(~hs_o & video_hs) vs_o <= video_vs;
 	end
@@ -642,7 +637,6 @@ video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 	.*,
 
 	.clk_vid(CLK_VIDEO),
-	.ce_pix(ce_o),
 	.ce_pix_out(CE_PIXEL),
 
 	.scanlines(0),
@@ -676,14 +670,11 @@ dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc (
 	.clock (clk_sys),
 	
 	.address_a (bios_addr),
-	.wren_a (),
-	.data_a (),
 	.q_a (bios_do),
 	
 	.address_b (ioctl_addr[11:1]),
 	.wren_b (ioctl_wr && bios_download),
-	.data_b (ioctl_dout),
-	.q_b ()
+	.data_b (ioctl_dout)
 );
 
 ///////////////////////////// CHEATS //////////////////////////////////
