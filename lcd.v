@@ -4,7 +4,7 @@
 // The gameboy lcd runs from a shift register which is filled at 4194304 pixels/sec
 
 module lcd (
-	input   clk_sys, // 67.108864 MHz
+	input   clk_sys, // 33.554432 MHz
 	input   ce_cpu, // 4.194304 Mhz
 	input   clkena,
 	input [14:0] data,
@@ -79,10 +79,10 @@ reg[8:0] v_cnt;         // vertical pixel counter
 // (67108864 / 32 / 228 / 154) == (67108864 / 10 /  425.6 / 264) == 59.7275Hz
 // We need 4256 cycles per line so 1 pixel clock cycle needs to be 6 cycles longer.
 // 424x10 + 1x16 cycles
-reg [3:0] pix_div_cnt;
+reg [2:0] pix_div_cnt;
 always @(posedge clk_sys) begin
 	pix_div_cnt <= pix_div_cnt + 1'd1;
-	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd9) // Longer cycle at the last pixel
+	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd4) // Longer cycle at the last pixel
 		pix_div_cnt <= 0;
 
 	ce_pix <= !pix_div_cnt;

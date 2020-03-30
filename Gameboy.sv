@@ -179,16 +179,17 @@ localparam CONF_STR = {
 
 ////////////////////   CLOCKS   ///////////////////
 
-wire clk_sys;
+wire clk_sys, clk_ram;
 wire pll_locked;
 
-assign CLK_VIDEO = clk_sys;
+assign CLK_VIDEO = clk_ram;
 
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
-	.outclk_0(clk_sys),
+	.outclk_0(clk_ram),
+	.outclk_1(clk_sys),
 	.locked(pll_locked)
 );
 
@@ -287,7 +288,7 @@ sdram sdram (
    .sd_clk         ( SDRAM_CLK                 ),
 
     // system interface
-   .clk            ( clk_sys                   ),
+   .clk            ( clk_ram                   ),
    .sync           ( ce_cpu2x                  ),
    .init           ( ~pll_locked               ),
 
@@ -619,10 +620,10 @@ reg hs_o, vs_o, ce_o;
 always @(posedge CLK_VIDEO) begin
 	reg old_ce;
 
-	old_ce <= ce_pix2;
+	old_ce <= ce_pix;
 
 	ce_o <= 0;
-	if(old_ce & ~ce_pix2) begin
+	if(old_ce & ~ce_pix) begin
 		ce_o <= 1;
 		hs_o <= video_hs;
 		if(~hs_o & video_hs) vs_o <= video_vs;
@@ -657,19 +658,13 @@ video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 
 //////////////////////////////// CE ////////////////////////////////////
 
-wire clk_cpu2x = clk_sys & ce_cpu2x;
-
-reg ce_pix2, ce_cpu, ce_cpu2x;
+reg ce_cpu, ce_cpu2x;
 always @(negedge clk_sys) begin
-	reg [3:0] div = 0;
-	reg [1:0] ce_pix_r;
+	reg [2:0] div = 0;
 
 	div      <= div + 1'd1;
-	ce_cpu2x <= !div[2:0];
-	ce_cpu   <= !div[3:0];
-
-	ce_pix_r <= {ce_pix_r[0], ce_pix};
-	ce_pix2  <= |ce_pix_r;
+	ce_cpu2x <= !div[1:0];
+	ce_cpu   <= !div[2:0];
 end
 
 ///////////////////////////// GBC BIOS /////////////////////////////////
@@ -755,7 +750,7 @@ wire [16:0] cram_addr = mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 // Up to 8kb * 16banks of Cart Ram (128kb)
 
 dpram #(16) cram_l (
-	.clock_a (clk_cpu2x),
+	.clock_a (clk_sys),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & ~cram_addr[0]),
 	.data_a (cart_di),
@@ -769,7 +764,7 @@ dpram #(16) cram_l (
 );
 
 dpram #(16) cram_h (
-	.clock_a (clk_cpu2x),
+	.clock_a (clk_sys),
 	.address_a (cram_addr[16:1]),
 	.wren_a (cram_wr & cram_addr[0]),
 	.data_a (cart_di),
