@@ -1,6 +1,7 @@
 module hdma(
 	input  reset,
-   input  clk,    // 8 Mhz cpu clock
+   input  clk,
+   input  ce, // 8 Mhz cpu clock
 	input  speed,  // cpu speed mode use for initial delay
 	
 	// cpu register interface
@@ -56,7 +57,8 @@ always @(posedge clk) begin
 		hdma_target_h <= 5'h1F;
 		hdma_target_l <= 4'hF;
       dma_delay <= 5'd0;
-	end else begin
+	end
+	else if(ce) begin
 	   if(sel_reg && wr) begin
 		
 			case (addr)
@@ -170,6 +172,7 @@ assign dout =  sel_reg?
 
 endmodule
 
+/*
 `timescale 1 ns/100 ps  // time-unit = 1 ns, precision = 100 ps
 
 module hdma_tb;
@@ -358,3 +361,4 @@ module hdma_tb;
 	end  
   
 endmodule
+*/

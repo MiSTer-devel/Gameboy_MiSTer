@@ -139,13 +139,11 @@ wire cpu_m1_n;
 wire cpu_mreq_n;
 
 wire clk = clk_sys & ce;
-wire clk2x = clk_sys & ce_2x;
-
 
 wire current_cpu_ce = cpu_speed ? ce_2x:ce;
 wire clk_cpu = clk_sys & current_cpu_ce;
 
-wire cpu_clken = isGBC && hdma_active ? 1'b0 :current_cpu_ce;  //when hdma is enabled stop CPU (GBC)
+wire cpu_clken = !(isGBC && hdma_active) && current_cpu_ce;  //when hdma is enabled stop CPU (GBC)
 
 
 wire cpu_stop;
@@ -200,19 +198,19 @@ reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
 assign speed = cpu_speed;
 
-always @(posedge clk2x) begin
+always @(posedge clk_sys) begin
    if(reset) begin
-			cpu_speed <= 1'b0;
-			prepare_switch <= 1'b0;
-	end else if (sel_key1 && !cpu_wr_n && isGBC)begin
+		cpu_speed <= 1'b0;
+		prepare_switch <= 1'b0;
+	end
+	else if (ce_2x && sel_key1 && !cpu_wr_n && isGBC)begin
 		prepare_switch <= cpu_do[0];
 	end
 	
-	if (isGBC && prepare_switch && cpu_stop) begin
+	if (ce_2x && isGBC && prepare_switch && cpu_stop) begin
 		cpu_speed <= !cpu_speed;
 		prepare_switch <= 1'b0;
 	end
-	
 end
 
 // --------------------------------------------------------------------
@@ -224,7 +222,8 @@ wire audio_wr = !cpu_wr_n && sel_audio;
 wire [7:0] audio_do;
 
 gbc_snd audio (
-	.clk				( clk2x 				),
+	.clk				( clk_sys			),
+	.ce            ( ce_2x           ),
 	.reset			( reset				),
 
 	.s1_read  		( audio_rd  		),
@@ -494,7 +493,8 @@ wire hdma_active;
 
 hdma hdma(
 	.reset	          ( reset         ),
-	.clk		          ( clk2x         ),
+	.clk		          ( clk_sys       ),
+	.ce                ( ce_2x         ),
 	.speed				 ( cpu_speed     ),
 	
 	// cpu register interface
@@ -606,14 +606,14 @@ assign gbc_bios_addr = hdma_rd?hdma_source_addr[11:0]:cpu_addr[11:0];
 wire [7:0] boot_rom_do;
 boot_rom boot_rom (
 	.addr    ( cpu_addr[7:0] ),
-	.clk     ( clk           ),
+	.clk     ( clk_sys       ),
 	.data    ( boot_rom_do   )
 );
 
 wire [7:0] fast_boot_rom_do;
 fast_boot_rom fast_boot_rom (
 	.addr    ( cpu_addr[7:0] ),
-	.clk     ( clk           ),
+	.clk     ( clk_sys       ),
 	.data    ( fast_boot_rom_do )
 );
 

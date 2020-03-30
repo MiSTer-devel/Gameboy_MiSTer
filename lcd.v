@@ -42,16 +42,13 @@ reg vbuffer_in_bank, vbuffer_out_bank;
 
 //image buffer 160x144x15bits for cgb
 dpram #(16,15) vbuffer (
-	.clock_a (clk_sys & ce_cpu),
-	.address_a (vbuffer_in_bank ? (vbuffer_inptr+16'd23040) : vbuffer_inptr),
-	.wren_a (clkena),
-	.data_a (data),
-	.q_a (),
-	
-	.clock_b (clk_sys & ce_pix),
-	.address_b (vbuffer_out_bank ? (vbuffer_outptr+16'd23040) : vbuffer_outptr),
-	.wren_b (1'b0), //only reads
-	.data_b (),
+	.clock_a(clk_sys),
+	.address_a ({vbuffer_in_bank, vbuffer_inptr}),
+	.wren_a(clkena & ce_cpu),
+	.data_a(data),
+
+	.clock_b(clk_sys),
+	.address_b ({vbuffer_out_bank, vbuffer_outptr}),
 	.q_b (pixel_reg)
 );
 
@@ -93,13 +90,7 @@ reg old_lcd_off;
 reg hb, vb;
 always @(posedge clk_sys) begin
 
-	if (ce_cpu) begin
-		if(clkena) begin
-			if (~lcd_off) begin
-				vbuffer_inptr <= vbuffer_inptr + 1'd1;
-			end
-		end
-	end
+	if (ce_cpu & clkena & ~lcd_off) vbuffer_inptr <= vbuffer_inptr + 1'd1;
 
 	if (!pix_div_cnt) begin
 		// generate positive hsync signal
