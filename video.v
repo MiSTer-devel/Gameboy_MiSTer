@@ -604,13 +604,13 @@ assign mode =
 
 reg [8:0] h_cnt;            // max 455
 reg [7:0] v_cnt;            // max 153
+reg [7:0] win_line;
 
 // line inside the background/window currently being drawn
-wire [7:0] win_line = v_cnt - wy_r;
 wire [7:0] bg_line = v_cnt + scy_r;
 wire [2:0] tile_line = window_ena?win_line[2:0]:bg_line[2:0];
 
-wire win_start = lcdc_win_ena && (v_cnt >= wy_r) && de && (wx_r >= 7) && (pcnt == wx_r-8);
+wire win_start = lcdc_win_ena && (v_cnt >= wy_r) && de && (wx_r >= 7) && (wx_r < 8'hA7) && (pcnt == wx_r-8);
 
 
 
@@ -668,11 +668,14 @@ always @(negedge clk) begin
 			// end of line reached
 			h_cnt <= 9'd0;
 
+			if (window_ena) win_line <= win_line + 1'b1;
+
 			if(v_cnt != 153)
 				v_cnt <= v_cnt + 8'd1;
 			else begin
 				// start of new image
 				v_cnt <= 8'd0;
+				win_line <= 8'd0;
 
 				// make sure sginals don't change during the image
 //				wy_r <= wy;
