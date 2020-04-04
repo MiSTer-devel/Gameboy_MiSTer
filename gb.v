@@ -52,6 +52,9 @@ module gb (
 	output [14:0] lcd_data,
 	output [1:0] lcd_mode,
 	output lcd_on,
+
+	output [5:0] joy_p54,
+	input  [5:0] joy_sgb,
 	
 	output speed,   //GBC
 	
@@ -287,11 +290,12 @@ wire [3:0] joy_p5 = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4
 reg  [1:0] p54;
 
 always @(posedge clk_cpu) begin
-	if(reset) p54 <= 2'b00;
+	if(reset) p54 <= 2'b11;
 	else if(sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
 
-wire [7:0] joy_do = { 2'b11, p54, joy_p4 & joy_p5 };
+wire [7:0] joy_do = { 2'b11, joy_sgb };
+assign joy_p54 = {p54, joy_p4 & joy_p5};
 
 // --------------------------------------------------------------------
 // ---------------------------- interrupts ----------------------------
