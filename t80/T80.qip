@@ -1,6 +1,0 @@
-set_global_assignment -name VHDL_FILE t80/GBse.vhd
-set_global_assignment -name VHDL_FILE t80/T80_Reg.vhd
-set_global_assignment -name VHDL_FILE t80/T80_MCode.vhd
-set_global_assignment -name VHDL_FILE t80/T80_ALU.vhd
-set_global_assignment -name VHDL_FILE t80/T80.vhd
-set_global_assignment -name VHDL_FILE t80/T80_Pack.vhd

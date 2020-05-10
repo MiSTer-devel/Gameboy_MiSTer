@@ -544,7 +544,10 @@ wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
 wire speed;
 
 reg isGBC = 0;
-always @(posedge clk_sys) if(reset) isGBC <= status[15:14] ? status[15] : !filetype[7:4];
+always @(posedge clk_sys) if(reset) begin
+	if(status[15:14]) isGBC <= status[15];
+	else if(cart_download) isGBC <= !filetype[7:4];
+end
 
 // the gameboy itself
 gb gb (
