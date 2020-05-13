@@ -64,6 +64,7 @@ module gb (
 	output         gg_available,
 
 	//serial port
+	input   serial_ena,
 	output sc_int_clock2,
 	input serial_clk_in,
 	output serial_clk_out,
@@ -250,10 +251,16 @@ gbc_snd audio (
 // -----------------------serial port()--------------------------------
 // --------------------------------------------------------------------
 
-wire serial_irq;
-wire [7:0] sb;
-wire sc_start;
-wire sc_shiftclock;
+wire serial_irq    = serial_ena ? serial_irq_s    : serial_irq_f;
+wire [7:0] sb      = serial_ena ? sb_s            : 8'hFF;
+wire sc_start      = serial_ena ? sc_start_s      : sc_start_f;
+wire sc_shiftclock = serial_ena ? sc_shiftclock_s : sc_shiftclock_f;
+
+// SNAC
+wire serial_irq_s;
+wire [7:0] sb_s;
+wire sc_start_s;
+wire sc_shiftclock_s;
 
 assign sc_int_clock2 = sc_shiftclock;
 
@@ -274,12 +281,49 @@ link link (
 
   .serial_clk_out(serial_clk_out),
   .serial_data_out(serial_data_out),
-  .sb(sb),
-  .serial_irq(serial_irq),
-  .sc_start(sc_start),
-  .sc_int_clock(sc_shiftclock)
+  .sb(sb_s),
+  .serial_irq(serial_irq_s),
+  .sc_start(sc_start_s),
+  .sc_int_clock(sc_shiftclock_s)
 
 );
+
+// Fake
+reg sc_start_f,sc_shiftclock_f;
+reg serial_irq_f;
+
+always @(posedge clk_cpu) begin
+	reg [3:0] serial_counter;
+	reg [8:0] serial_clk_div; //8192Hz
+
+	serial_irq_f <= 1'b0;
+   if(reset) begin
+		  sc_start_f <= 1'b0;
+		  sc_shiftclock_f <= 1'b0;
+	end else if (sel_sc && !cpu_wr_n) begin	 //cpu write
+		sc_start_f <= cpu_do[7];
+		sc_shiftclock_f <= cpu_do[0];
+		if (cpu_do[7]) begin 						//enable transfer
+			serial_clk_div <= 9'h1FF;
+			serial_counter <= 4'd8;
+		end 
+	end else if (sc_start_f && sc_shiftclock_f) begin // serial transfer and serial clock enabled
+		
+		serial_clk_div <= serial_clk_div - 9'd1;
+		
+		if (serial_clk_div == 9'd0  && serial_counter)
+				serial_counter <= serial_counter - 4'd1;
+		
+		if (!serial_counter) begin
+			serial_irq_f <= 1'b1; 	//trigger interrupt
+			sc_start_f <= 1'b0; 	//reset transfer state
+			serial_clk_div <= 9'h1FF;
+		   serial_counter <= 4'd8;
+		end	
+	
+	end
+	
+end
 
 // --------------------------------------------------------------------
 // ------------------------------ inputs ------------------------------
