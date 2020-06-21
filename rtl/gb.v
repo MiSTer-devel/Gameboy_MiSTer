@@ -86,7 +86,7 @@ wire sel_cram = cpu_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire sel_vram = cpu_addr[15:13] == 3'b100;           // 8k video ram at $8000
 wire sel_ie   = cpu_addr == 16'hffff;                // interupt enable
 wire sel_if   = cpu_addr == 16'hff0f;                // interupt flag
-wire sel_iram = (cpu_addr[15:14] == 2'b11) && (cpu_addr[15:8] != 8'hff); // 8k internal ram at $c000
+wire sel_iram = (cpu_addr[15:14] == 2'b11) && (~&cpu_addr[13:9]); // 8k internal ram at $C000-DFFF. C000-DDFF mirrored to E000-FDFF
 wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram at $ff80
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
@@ -96,7 +96,7 @@ wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
 wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
 wire dma_sel_cram = dma_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $8000
-wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
+wire dma_sel_iram = (dma_addr[15:8] >= 8'hC0 && dma_addr[15:8] <= 8'hF1); // 8k internal ram at $c000
 
 //CGB
 wire sel_vram_bank = (cpu_addr==16'hff4f);
@@ -150,10 +150,10 @@ wire cpu_mreq_n;
 
 wire clk = clk_sys & ce;
 
-wire current_cpu_ce = cpu_speed ? ce_2x:ce;
-wire clk_cpu = clk_sys & current_cpu_ce;
+wire ce_cpu = cpu_speed ? ce_2x:ce;
+wire clk_cpu = clk_sys & ce_cpu;
 
-wire cpu_clken = !(isGBC && hdma_active) && current_cpu_ce;  //when hdma is enabled stop CPU (GBC)
+wire cpu_clken = !(isGBC && hdma_active) && ce_cpu;  //when hdma is enabled stop CPU (GBC)
 
 
 wire cpu_stop;
@@ -498,7 +498,7 @@ wire hdma_active;
 hdma hdma(
 	.reset	          ( reset         ),
 	.clk		          ( clk_sys       ),
-	.ce                ( ce_2x         ),
+	.ce                ( ce_cpu         ),
 	.speed				 ( cpu_speed     ),
 	
 	// cpu register interface
