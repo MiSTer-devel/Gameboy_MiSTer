@@ -1170,9 +1170,15 @@ begin
 		when "11101001" =>
 			-- JP (HL)
 			JumpXY <= '1';
-		when "00010000" =>
-			if Mode = 3 then
+		when "00010000" =>  
+			if Mode = 3 then -- STOP and skip next byte
+				MCycles <= "010";
 				I_DJNZ <= '1';
+				case to_integer(unsigned(MCycle)) is
+				when 2 =>
+					Inc_PC <= '1';
+				when others => null;
+				end case;
 			elsif Mode < 2 then
 				-- DJNZ,e
 				MCycles <= "011";

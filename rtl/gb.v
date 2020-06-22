@@ -87,7 +87,7 @@ wire sel_cram = cpu_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire sel_vram = cpu_addr[15:13] == 3'b100;           // 8k video ram at $8000
 wire sel_ie   = cpu_addr == 16'hffff;                // interupt enable
 wire sel_if   = cpu_addr == 16'hff0f;                // interupt flag
-wire sel_iram = (cpu_addr[15:14] == 2'b11) && (cpu_addr[15:8] != 8'hff); // 8k internal ram at $c000
+wire sel_iram = (cpu_addr[15:14] == 2'b11) && (~&cpu_addr[13:9]); // 8k internal ram at $C000-DFFF. C000-DDFF mirrored to E000-FDFF
 wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram at $ff80
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
@@ -97,7 +97,7 @@ wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
 wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
 wire dma_sel_cram = dma_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $8000
-wire dma_sel_iram = (dma_addr[15:14] == 2'b11) && (dma_addr[15:8] != 8'hff); // 8k internal ram at $c000
+wire dma_sel_iram = (dma_addr[15:8] >= 8'hC0 && dma_addr[15:8] <= 8'hF1); // 8k internal ram at $c000
 
 //CGB
 wire sel_vram_bank = (cpu_addr==16'hff4f);
@@ -151,10 +151,10 @@ wire cpu_mreq_n;
 
 wire clk = clk_sys & ce;
 
-wire current_cpu_ce = cpu_speed ? ce_2x:ce;
-wire clk_cpu = clk_sys & current_cpu_ce;
+wire ce_cpu = cpu_speed ? ce_2x:ce;
+wire clk_cpu = clk_sys & ce_cpu;
 
-wire cpu_clken = !(isGBC && hdma_active) && current_cpu_ce;  //when hdma is enabled stop CPU (GBC)
+wire cpu_clken = !(isGBC && hdma_active) && ce_cpu;  //when hdma is enabled stop CPU (GBC)
 
 
 wire cpu_stop;
@@ -369,6 +369,8 @@ wire irq_n = !(ie_r & if_r);
 
 reg [4:0] if_r;
 reg [4:0] ie_r; // writing  $ffff sets the irq enable mask
+
+reg old_vblank_irq, old_video_irq, old_timer_irq, old_serial_irq;
 always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 	reg old_ack = 0;
 	
@@ -377,19 +379,22 @@ always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 		if_r <= 5'h00;
 	end
 
-	// rising edge on vs
-//	vsD <= vs;
-//	vsD2 <= vsD;
-	if(vblank_irq) if_r[0] <= 1'b1;
+    // "When an interrupt signal changes from low to high,
+    //  then the corresponding bit in the IF register becomes set."
+    old_vblank_irq <= vblank_irq;
+	if(~old_vblank_irq & vblank_irq) if_r[0] <= 1'b1;
 
 	// video irq already is a 1 clock event
-	if(video_irq) if_r[1] <= 1'b1;
+    old_video_irq <= video_irq;
+	if(~old_video_irq & video_irq) if_r[1] <= 1'b1;
 	
 	// timer_irq already is a 1 clock event
-	if(timer_irq) if_r[2] <= 1'b1;
+    old_timer_irq <= timer_irq;
+	if(~old_timer_irq & timer_irq) if_r[2] <= 1'b1;
 	
 	// serial irq already is a 1 clock event
-	if(serial_irq) if_r[3] <= 1'b1;
+    old_serial_irq <= serial_irq;
+	if(~old_serial_irq & serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
 	inputD <= {joy_p4, joy_p5};
@@ -450,9 +455,10 @@ wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?(isGBC&&vram_bank)?vram1
 
 
 video video (
-	.reset	    ( reset         ),
-	.clk		    ( clk           ),
-	.clk_reg     ( clk_cpu       ),   //can be 2x in cgb double speed mode
+	.reset       ( reset         ),
+	.clk         ( clk_sys       ),
+	.ce          ( ce            ),   // 4Mhz
+	.ce_cpu      ( ce_cpu        ),   //can be 2x in cgb double speed mode
 	.isGBC       ( isGBC         ),
 	.isGBC_game  ( isGBC_game|boot_rom_enabled ),  //enable GBC mode during bootstrap rom
 
@@ -542,7 +548,7 @@ wire hdma_active;
 hdma hdma(
 	.reset	          ( reset         ),
 	.clk		          ( clk_sys       ),
-	.ce                ( ce_2x         ),
+	.ce                ( ce_cpu         ),
 	.speed				 ( cpu_speed     ),
 	
 	// cpu register interface
