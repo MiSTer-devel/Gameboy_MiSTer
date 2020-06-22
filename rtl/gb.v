@@ -325,6 +325,8 @@ wire irq_n = !(ie_r & if_r);
 
 reg [4:0] if_r;
 reg [4:0] ie_r; // writing  $ffff sets the irq enable mask
+
+reg old_vblank_irq, old_video_irq, old_timer_irq, old_serial_irq;
 always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 	reg old_ack = 0;
 	
@@ -333,19 +335,22 @@ always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 		if_r <= 5'h00;
 	end
 
-	// rising edge on vs
-//	vsD <= vs;
-//	vsD2 <= vsD;
-	if(vblank_irq) if_r[0] <= 1'b1;
+    // "When an interrupt signal changes from low to high,
+    //  then the corresponding bit in the IF register becomes set."
+    old_vblank_irq <= vblank_irq;
+	if(~old_vblank_irq & vblank_irq) if_r[0] <= 1'b1;
 
 	// video irq already is a 1 clock event
-	if(video_irq) if_r[1] <= 1'b1;
+    old_video_irq <= video_irq;
+	if(~old_video_irq & video_irq) if_r[1] <= 1'b1;
 	
 	// timer_irq already is a 1 clock event
-	if(timer_irq) if_r[2] <= 1'b1;
+    old_timer_irq <= timer_irq;
+	if(~old_timer_irq & timer_irq) if_r[2] <= 1'b1;
 	
 	// serial irq already is a 1 clock event
-	if(serial_irq) if_r[3] <= 1'b1;
+    old_serial_irq <= serial_irq;
+	if(~old_serial_irq & serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
 	inputD <= {joy_p4, joy_p5};
@@ -406,9 +411,10 @@ wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?(isGBC&&vram_bank)?vram1
 
 
 video video (
-	.reset	    ( reset         ),
-	.clk		    ( clk           ),
-	.clk_reg     ( clk_cpu       ),   //can be 2x in cgb double speed mode
+	.reset       ( reset         ),
+	.clk         ( clk_sys       ),
+	.ce          ( ce            ),   // 4Mhz
+	.ce_cpu      ( ce_cpu        ),   //can be 2x in cgb double speed mode
 	.isGBC       ( isGBC         ),
 	.isGBC_game  ( isGBC_game|boot_rom_enabled ),  //enable GBC mode during bootstrap rom
 
