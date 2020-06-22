@@ -21,200 +21,187 @@
 
 module sprites (
 	input clk,
-	input clk_reg,
+	input ce,
+	input ce_cpu,
 	input size16,
 	input isGBC_game,
+
+	input lcd_on,
 
 	// pixel position input which the current pixel is generated for
 	input [7:0] v_cnt,
 	input [7:0] h_cnt,
 	
-	// pixel output
-	output pixel_active,        // current pixel
-	output [1:0] pixel_data,
-	output pixel_cmap,
-	output pixel_prio,
-	
-	//gbc
-	output [2:0] pixel_cmap_gbc,
+	input sprite_fetch_done,
+	output sprite_fetch,
 
-	input sort,
-	input [3:0] index,          // index of sprite which video wants to read data for
-	output [10:0] addr,
-	input [1:0] dvalid,
-	input [7:0] data,
-	input [7:0] data1,
+	input oam_eval,
+	input oam_fetch,
+	input oam_eval_reset,
+
+	output [10:0] sprite_addr,
+	output reg [7:0] sprite_attr,
+	output [3:0] sprite_index,
+
+	output oam_eval_end,
 
 	// oam memory interface
+	input dma_active,
 	input oam_wr,
-	input [7:0] oam_addr,
+	input [7:0] oam_addr_in,
 	input [7:0] oam_di,
 	output [7:0] oam_do
 );
 
-localparam SPRITES = 40;
+localparam SPRITES_PER_LINE = 10;
 
-// ------------------------------------------------------------------------
-// ---------------------------- priority sorting --------------------------
-// ------------------------------------------------------------------------
 
-// sprites have priority from left to right and the leftmost 10 are
-// being displayed. We thus need to sort them	
-wire [SPRITES*8-1:0] sprite_x;
-wire [SPRITES*6-1:0] sprite_idx;
+wire [7:0] oam_addr = dma_active ? oam_addr_in :
+						oam_eval ? oam_spr_addr :
+						oam_fetch ? oam_fetch_addr :
+						oam_addr_in;
 
-sprite_sort #(.WIDTH(SPRITES)) sprite_sort (
-	.clk   ( clk         ),
-	.load  ( sort        ),    // begin of oam phase
-	.x     ( sprite_x    ),
-	.idx   ( sprite_idx  )
-);
+reg [7:0] oam_spr_addr;
+wire valid_oam_addr = (oam_addr[7:4] < 4'hA); // $FEA0 - $FEFF unused range
+assign oam_do = dma_active ? 8'hFF : valid_oam_addr ? oam_q : 8'd0;
 
-wire [SPRITES-1:0] sprite_pixel_active;
-wire [SPRITES-1:0] sprite_pixel_cmap;
-wire [SPRITES-1:0] sprite_pixel_prio;
-wire [1:0] sprite_pixel_data [SPRITES-1:0];
-	
-wire [10:0] sprite_addr [SPRITES-1:0];
-wire [7:0] sprite_oam_do [SPRITES-1:0];
+reg [7:0] oam_data[0:159];
+reg [7:0] oam_q;
+always @(posedge clk) begin
+	if (ce_cpu) begin
+		if(oam_wr && valid_oam_addr) begin
+			oam_data[oam_addr] <= oam_di;
+		end
+	end
 
-assign oam_do = sprite_oam_do[oam_addr[7:2]];
-
-// address where the sprite wants to read data from
-wire [5:0] sprite_idx_array [SPRITES-1:0];
-wire [5:0] padded_index = {2'd0,index};
-wire [5:0] prio_index = sprite_idx_array[padded_index];
-assign addr = sprite_addr[prio_index];
-
-//gbc
-wire [2:0] sprite_pixel_cmap_gbc [SPRITES-1:0];
-wire sprite_tile_vbank [SPRITES-1:0];
-
-generate
-genvar i;
-for(i=0;i<SPRITES;i=i+1) begin : spr
-	// map 1d array to 2d array
-	assign sprite_idx_array[i] = sprite_idx[6*i+5:6*i];
-
-	sprite sprite (
-		.clk      ( clk_reg ),
-		.size16   ( size16  ),
-		.isGBC_game    ( isGBC_game  ),
-		
-		.sprite_index ( i   ),
-
-		.v_cnt    ( v_cnt   ),
-		.h_cnt    ( h_cnt   ),
-		.x        ( sprite_x[(8*i)+7:(8*i)] ),
-	
-		.addr     ( sprite_addr[i] ),
-		.ds       ( (prio_index == i)?dvalid:2'b00),
-		.data     ( data     ),
-		.data_1   ( data1    ),
-
-		.pixel_cmap   ( sprite_pixel_cmap[i] ),
-		.pixel_prio   ( sprite_pixel_prio[i] ),
-		.pixel_active ( sprite_pixel_active[i] ),
-		.pixel_data   ( sprite_pixel_data[i] ),
-		
-		
-	   //gbc
-	   .pixel_cmap_gbc ( sprite_pixel_cmap_gbc[i] ),
-	
-		.oam_wr   ( oam_wr && (oam_addr[7:2] == i) ),
-		.oam_addr ( oam_addr[1:0] ),
-		.oam_di   ( oam_di  ),
-		.oam_do   ( sprite_oam_do[i] )
-	);
+	oam_q <= oam_data[oam_addr];
 end
-endgenerate
 
-// ------------------------------------------------------------------------
-// ---------------------------- priority display --------------------------
-// ------------------------------------------------------------------------
+reg [7:0] sprite_x[0:SPRITES_PER_LINE-1];
+reg [3:0] sprite_y[0:SPRITES_PER_LINE-1];
+reg [5:0] sprite_no[0:SPRITES_PER_LINE-1];
 
-// only the 10 leftmost sprites are potentially being displayed
+// OAM evaluation. Get the first 10 sprites on the current line.
+reg [5:0] spr_index; // 40 sprites
+reg [3:0] sprite_cnt;
+reg sprite_cycle;
 
-// get the indices of the 10 leftmost sprites
-wire [5:0] spr0 = sprite_idx_array[0];
-wire [5:0] spr1 = sprite_idx_array[1];
-wire [5:0] spr2 = sprite_idx_array[2];
-wire [5:0] spr3 = sprite_idx_array[3];
-wire [5:0] spr4 = sprite_idx_array[4];
-wire [5:0] spr5 = sprite_idx_array[5];
-wire [5:0] spr6 = sprite_idx_array[6];
-wire [5:0] spr7 = sprite_idx_array[7];
-wire [5:0] spr8 = sprite_idx_array[8];
-wire [5:0] spr9 = sprite_idx_array[9];
+reg [7:0] spr_y;
+wire [7:0] spr_height = size16 ? 8'd16 : 8'd8;
+wire sprite_on_line = (v_cnt + 8'd16 >= spr_y) && (v_cnt + 8'd16 < spr_y + spr_height);
 
-// if any of these is active then the current pixel is being driven by
-// the sprite engine
-assign pixel_active = 
-	sprite_pixel_active[spr0] ||
-	sprite_pixel_active[spr1] ||
-	sprite_pixel_active[spr2] ||
-	sprite_pixel_active[spr3] ||
-	sprite_pixel_active[spr4] ||
-	sprite_pixel_active[spr5] ||
-	sprite_pixel_active[spr6] ||
-	sprite_pixel_active[spr7] ||
-	sprite_pixel_active[spr8] ||
-	sprite_pixel_active[spr9];
+assign oam_eval_end = (spr_index == 6'd40);
 
-// get the pixel information of the leftmost sprite
-assign pixel_data =
-	sprite_pixel_active[spr0]?sprite_pixel_data[spr0]:
-	sprite_pixel_active[spr1]?sprite_pixel_data[spr1]:
-	sprite_pixel_active[spr2]?sprite_pixel_data[spr2]:
-	sprite_pixel_active[spr3]?sprite_pixel_data[spr3]:
-	sprite_pixel_active[spr4]?sprite_pixel_data[spr4]:
-	sprite_pixel_active[spr5]?sprite_pixel_data[spr5]:
-	sprite_pixel_active[spr6]?sprite_pixel_data[spr6]:
-	sprite_pixel_active[spr7]?sprite_pixel_data[spr7]:
-	sprite_pixel_active[spr8]?sprite_pixel_data[spr8]:
-	sprite_pixel_active[spr9]?sprite_pixel_data[spr9]:
-	2'b00;
-	
-// get the colormap of the leftmost sprite
-assign pixel_cmap =
-	sprite_pixel_active[spr0]?sprite_pixel_cmap[spr0]:
-	sprite_pixel_active[spr1]?sprite_pixel_cmap[spr1]:
-	sprite_pixel_active[spr2]?sprite_pixel_cmap[spr2]:
-	sprite_pixel_active[spr3]?sprite_pixel_cmap[spr3]:
-	sprite_pixel_active[spr4]?sprite_pixel_cmap[spr4]:
-	sprite_pixel_active[spr5]?sprite_pixel_cmap[spr5]:
-	sprite_pixel_active[spr6]?sprite_pixel_cmap[spr6]:
-	sprite_pixel_active[spr7]?sprite_pixel_cmap[spr7]:
-	sprite_pixel_active[spr8]?sprite_pixel_cmap[spr8]:
-	sprite_pixel_active[spr9]?sprite_pixel_cmap[spr9]:
-	1'b0;
+reg old_fetch_done;
+always @(posedge clk) begin
+	if (!lcd_on) begin
+		sprite_cnt <= 0;
+		spr_index <= 0;
+		sprite_cycle <= 0;
+		oam_spr_addr <= 0;
+	end else if (ce) begin
+		if (oam_eval) begin
 
-// get the colormap of the leftmost sprite gbc
-assign pixel_cmap_gbc =
-	sprite_pixel_active[spr0]?sprite_pixel_cmap_gbc[spr0]:
-	sprite_pixel_active[spr1]?sprite_pixel_cmap_gbc[spr1]:
-	sprite_pixel_active[spr2]?sprite_pixel_cmap_gbc[spr2]:
-	sprite_pixel_active[spr3]?sprite_pixel_cmap_gbc[spr3]:
-	sprite_pixel_active[spr4]?sprite_pixel_cmap_gbc[spr4]:
-	sprite_pixel_active[spr5]?sprite_pixel_cmap_gbc[spr5]:
-	sprite_pixel_active[spr6]?sprite_pixel_cmap_gbc[spr6]:
-	sprite_pixel_active[spr7]?sprite_pixel_cmap_gbc[spr7]:
-	sprite_pixel_active[spr8]?sprite_pixel_cmap_gbc[spr8]:
-	sprite_pixel_active[spr9]?sprite_pixel_cmap_gbc[spr9]:
-	1'b0;
+			if (spr_index < 6'd40) begin
+				if (sprite_cycle) spr_index <= spr_index + 1'b1;
 
-// get the priority of the leftmost sprite
-assign pixel_prio =
-	sprite_pixel_active[spr0]?sprite_pixel_prio[spr0]:
-	sprite_pixel_active[spr1]?sprite_pixel_prio[spr1]:
-	sprite_pixel_active[spr2]?sprite_pixel_prio[spr2]:
-	sprite_pixel_active[spr3]?sprite_pixel_prio[spr3]:
-	sprite_pixel_active[spr4]?sprite_pixel_prio[spr4]:
-	sprite_pixel_active[spr5]?sprite_pixel_prio[spr5]:
-	sprite_pixel_active[spr6]?sprite_pixel_prio[spr6]:
-	sprite_pixel_active[spr7]?sprite_pixel_prio[spr7]:
-	sprite_pixel_active[spr8]?sprite_pixel_prio[spr8]:
-	sprite_pixel_active[spr9]?sprite_pixel_prio[spr9]:
-	1'b0;
+				if (sprite_cnt < SPRITES_PER_LINE) begin
+					if (~sprite_cycle) begin
+						spr_y <= oam_do;
+						oam_spr_addr <= {spr_index,2'b01};
+					end else begin
+						if (sprite_on_line) begin
+							sprite_no[sprite_cnt] <= spr_index;
+							sprite_x[sprite_cnt] <= oam_do;
+							sprite_y[sprite_cnt] <= v_cnt[3:0] - spr_y[3:0];
+							sprite_cnt <= sprite_cnt + 1'b1;
+						end
+						oam_spr_addr <= {spr_index+1'b1, 2'b00};
+					end
+				end
+			end
+
+			sprite_cycle <= ~sprite_cycle;
+		end
+
+		if (oam_eval_reset) begin
+			sprite_cnt <= 0;
+			spr_index <= 0;
+			sprite_cycle <= 0;
+			oam_spr_addr <= 0;
+		end
+
+		// Set X-position to FF after fetching the sprite to prevent fetching it again.
+		old_fetch_done <= sprite_fetch_done;
+		if (~old_fetch_done & sprite_fetch_done) begin
+			if (sprite_x_matches[0]) sprite_x[0] <= 8'hFF;
+			else if (sprite_x_matches[1]) sprite_x[1] <= 8'hFF;
+			else if (sprite_x_matches[2]) sprite_x[2] <= 8'hFF;
+			else if (sprite_x_matches[3]) sprite_x[3] <= 8'hFF;
+			else if (sprite_x_matches[4]) sprite_x[4] <= 8'hFF;
+			else if (sprite_x_matches[5]) sprite_x[5] <= 8'hFF;
+			else if (sprite_x_matches[6]) sprite_x[6] <= 8'hFF;
+			else if (sprite_x_matches[7]) sprite_x[7] <= 8'hFF;
+			else if (sprite_x_matches[8]) sprite_x[8] <= 8'hFF;
+			else if (sprite_x_matches[9]) sprite_x[9] <= 8'hFF;
+		end
+	end
+end
+
+
+// Sprite fetching
+wire [0:9] sprite_x_matches = {
+		sprite_x[0] == h_cnt,
+		sprite_x[1] == h_cnt,
+		sprite_x[2] == h_cnt,
+		sprite_x[3] == h_cnt,
+		sprite_x[4] == h_cnt,
+		sprite_x[5] == h_cnt,
+		sprite_x[6] == h_cnt,
+		sprite_x[7] == h_cnt,
+		sprite_x[8] == h_cnt,
+		sprite_x[9] == h_cnt
+};
+
+assign sprite_fetch = |sprite_x_matches & oam_fetch;
+
+wire [3:0] active_sprite =
+		sprite_x_matches[0] ? 4'd0 :
+		sprite_x_matches[1] ? 4'd1 :
+		sprite_x_matches[2] ? 4'd2 :
+		sprite_x_matches[3] ? 4'd3 :
+		sprite_x_matches[4] ? 4'd4 :
+		sprite_x_matches[5] ? 4'd5 :
+		sprite_x_matches[6] ? 4'd6 :
+		sprite_x_matches[7] ? 4'd7 :
+		sprite_x_matches[8] ? 4'd8 :
+							  4'd9;
+assign sprite_index = active_sprite;
+
+wire [5:0] oam_fetch_index = sprite_no[active_sprite];
+
+reg [3:0] row;
+reg [7:0] tile_no;
+reg oam_fetch_cycle;
+wire [7:0] oam_fetch_addr = {oam_fetch_index, 1'b1, oam_fetch_cycle};
+assign sprite_addr = size16 ? {tile_no[7:1],row} : {tile_no,row[2:0]};
+
+always @(posedge clk) begin
+	if (ce) begin
+		if (sprite_fetch) begin
+
+			if (~oam_fetch_cycle) begin
+				tile_no <= oam_do;
+			end else begin
+				sprite_attr <= oam_do;
+				row <= oam_do[6] ? ~sprite_y[active_sprite] : sprite_y[active_sprite];
+			end
+
+			oam_fetch_cycle <= ~oam_fetch_cycle;
+		end else begin
+			oam_fetch_cycle <= 0;
+		end
+	end
+end
 
 endmodule
