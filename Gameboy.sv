@@ -215,8 +215,8 @@ wire [24:0] ioctl_addr;
 wire [15:0] ioctl_dout;
 reg         ioctl_wait;
 
-wire [15:0] joystick_0, joystick_1;
-wire [15:0] joystick = joystick_0 | joystick_1;
+wire [15:0] joystick_0, joystick_1, joystick_2, joystick_3;
+
 wire [7:0]  filetype;
 
 reg  [31:0] sd_lba;
@@ -266,7 +266,9 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 
 	.joystick_0(joystick_0),
-	.joystick_1(joystick_1)
+	.joystick_1(joystick_1),
+	.joystick_2(joystick_2),
+	.joystick_3(joystick_3)
 );
 
 ///////////////////////////////////////////////////
@@ -561,12 +563,12 @@ gb gb (
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.fast_boot   ( status[2]  ),
-	.joystick    ( joystick   ),
+
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
 
-	.joy_p54     (joy_p54     ),
-	.joy_sgb     (joy_do_sgb  ),
+	.joy_p54     ( joy_p54     ),
+	.joy_din     ( joy_do_sgb  ),
 
 	// interface to the "external" game cartridge
 	.cart_addr   ( cart_addr  ),
@@ -652,7 +654,8 @@ lcd lcd
 	.v_cnt  ( v_cnt      )
 );
 
-wire [5:0] joy_p54, joy_do_sgb;
+wire [1:0] joy_p54;
+wire [3:0] joy_do_sgb;
 wire [14:0] sgb_lcd_data;
 wire [15:0] sgb_border_pix;
 wire sgb_lcd_clkena, sgb_lcd_on;
@@ -668,7 +671,11 @@ sgb sgb (
 	.clk_vid     ( CLK_VIDEO   ),
 	.ce_pix      ( ce_pix      ),
 
-	.joy_di      ( joy_p54     ),
+	.joystick_0  ( joystick_0  ),
+	.joystick_1  ( joystick_1  ),
+	.joystick_2  ( joystick_2  ),
+	.joystick_3  ( joystick_3  ),
+	.joy_p54     ( joy_p54     ),
 	.joy_do      ( joy_do_sgb  ),
 
 	.sgb_en      ( ~sgb_en[1] & isSGB_game & ~isGBC ),

@@ -53,8 +53,8 @@ module gb (
 	output [1:0] lcd_mode,
 	output lcd_on,
 
-	output [5:0] joy_p54,
-	input  [5:0] joy_sgb,
+	output [1:0] joy_p54,
+	input  [3:0] joy_din,
 	
 	output speed,   //GBC
 	
@@ -329,8 +329,6 @@ end
 // ------------------------------ inputs ------------------------------
 // --------------------------------------------------------------------
 
-wire [3:0] joy_p4 = ~{ joystick[2], joystick[3], joystick[1], joystick[0] } | {4{p54[0]}};
-wire [3:0] joy_p5 = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4{p54[1]}};
 reg  [1:0] p54;
 
 always @(posedge clk_cpu) begin
@@ -338,8 +336,8 @@ always @(posedge clk_cpu) begin
 	else if(sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
 
-wire [7:0] joy_do = { 2'b11, joy_sgb };
-assign joy_p54 = {p54, joy_p4 & joy_p5};
+wire [7:0] joy_do = { 2'b11, p54, joy_din };
+assign joy_p54 = p54;
 
 // --------------------------------------------------------------------
 // ---------------------------- interrupts ----------------------------
@@ -362,7 +360,7 @@ wire [7:0] irq_vec =
 
 //wire vs = (lcd_mode == 2'b01);
 //reg vsD, vsD2;
-reg [7:0] inputD, inputD2;
+reg [3:0] inputD, inputD2;
 
 // irq is low when an enable irq is active
 wire irq_n = !(ie_r & if_r);
@@ -397,7 +395,8 @@ always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 	if(~old_serial_irq & serial_irq) if_r[3] <= 1'b1;
 
 	// falling edge on any input line P10..P13
-	inputD <= {joy_p4, joy_p5};
+
+	inputD <= joy_din;
 	inputD2 <= inputD;
 	if(~inputD & inputD2) if_r[4] <= 1'b1;
 
