@@ -129,6 +129,11 @@ always @(posedge clk_sys) begin
 
 		end
 
+		// Corrupt packet. p15 and p14 should both go high after one is low.
+		if ( (old_p15 ^ p15) & (old_p15 ^ old_p14) & (p15 ^ p14) ) begin
+			packet_end <= 1'b1;
+		end
+
 		trn_start <= 0;
 		pal_set <= 0;
 		attr_set <= 0;
@@ -583,7 +588,7 @@ reg [4:0] attr_tile_cnt_x, attr_tile_cnt_y;
 reg [1:0] attr_file_pal_wr;
 reg attr_file_wr;
 
-reg [1:0] attr_chr_pal_cnt;
+reg [8:0] attr_chr_pal_cnt;
 reg [4:0] attr_chr_x;
 reg [8:0] attr_chr_offset;
 
@@ -725,8 +730,8 @@ always @(posedge clk_sys) begin
 		// ATTR_CHR
 		if (attr_chr_set) begin
 			attr_chr_busy <= 1'b1;
-			attr_chr_pal_cnt <= 0;
 			if (attr_chr_start) begin
+				attr_chr_pal_cnt <= 0;
 				attr_chr_x <= attr_chr_data_x;
 				attr_chr_offset <= attr_chr_data_offset;
 			end
@@ -734,7 +739,7 @@ always @(posedge clk_sys) begin
 
 		if (attr_chr_busy) begin
 			attr_chr_pal_cnt <= attr_chr_pal_cnt + 1'b1;
-			if (&attr_chr_pal_cnt || data_set_cnt+attr_chr_pal_cnt == data_set_len) attr_chr_busy <= 0;
+			if (&attr_chr_pal_cnt[1:0] || attr_chr_pal_cnt+1'b1 == attr_chr_len) attr_chr_busy <= 0;
 
 			if (attr_chr_dir) begin
 				attr_chr_offset <= attr_chr_offset + 9'd20;
@@ -755,7 +760,7 @@ always @(posedge clk_sys) begin
 			end
 
 			attr_tile_no_wr <= attr_chr_offset + attr_chr_x;
-			case (attr_chr_pal_cnt)
+			case (attr_chr_pal_cnt[1:0])
 				0: attr_file_pal_wr <= attr_chr_data[7:6];
 				1: attr_file_pal_wr <= attr_chr_data[5:4];
 				2: attr_file_pal_wr <= attr_chr_data[3:2];
