@@ -140,11 +140,7 @@ reg [7:0] obp0;
 reg [7:0] obp1;
 
 reg [7:0] wy;
-reg [7:0] wy_r;   // stable over line
-
 reg [7:0] wx;
-reg [7:0] wx_r;   // stable over line
-
 
 //ff68-ff6A GBC
 //FF68 - BCPS/BGPI  - Background Palette Index
@@ -364,7 +360,6 @@ assign cpu_do =
 reg skip_en;
 reg [7:0] skip;
 reg [7:0] pcnt;
-reg [9:0] bg_tile_map_addr;
 
 always @(posedge clk) begin
 	if (!lcd_on) begin
@@ -401,13 +396,9 @@ end
 reg [8:0] h_cnt;            // max 455
 reg [7:0] v_cnt;            // max 153
 reg [7:0] win_line;
-reg [2:0] tile_line;
-
-// line inside the background currently being drawn
-wire [7:0] bg_line = v_cnt + scy;
 
 // TODO: Fix window_x = A6. Hblank starts when it should be waiting for the window fetching to end
-wire win_start = lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy_r) && (pcnt == wx_r) && (wx_r < 8'hA6);
+wire win_start = lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy) && (pcnt == wx) && (wx < 8'hA6);
 reg window_ena;
 
 // vcnt_reset goes high a few cycles after v_cnt is incremented to 153.
@@ -436,7 +427,16 @@ always @(posedge clk) begin
 	end
 end
 
-localparam DISPLAY_START = 4+80;
+// line inside the background currently being drawn
+wire [7:0] bg_line = v_cnt + scy;
+wire [7:0] bg_col  = pcnt + scx;
+wire [9:0] bg_map_addr = {bg_line[7:3], bg_col[7:3]};
+
+reg  [4:0] win_col;
+wire [9:0] win_map_addr = {win_line[7:3], win_col[4:0]};
+
+wire [9:0] bg_tile_map_addr = window_ena ? win_map_addr : bg_map_addr;
+wire [2:0] tile_line = window_ena ? win_line[2:0] : bg_line[2:0];
 
 always @(posedge clk) begin
 
@@ -449,30 +449,14 @@ always @(posedge clk) begin
 		if(h_cnt != 455) begin
 			h_cnt <= h_cnt + 9'd1;
 
-			// make sure signals don't change during the line
-			// latch at latest possible moment (one clock before display starts)
-			if(h_cnt == DISPLAY_START-1) begin
-				// set tile map address for this line
-				bg_tile_map_addr[9:5] <= bg_line[7:3];
-				bg_tile_map_addr[4:0] <= scx[7:3];
-				tile_line <= bg_line[2:0];
-				wx_r <= wx;
-				wy_r <= wy;
-			end
-
-			// Increment address when fetching is done and not waiting for sprites.
-			// The first bg tile fetch is only used for starting the tile shifter to find
-			// partially offscreen sprites and window so the second fetch starts at the
-			// same address so don't increment when pcnt = 0.
-			if(~sprite_fetch_hold && bg_fetch_done && bg_reload_shift && |pcnt)
-				bg_tile_map_addr[4:0] <= bg_tile_map_addr[4:0] + 1'd1;
-
 			if(win_start) begin
-				bg_tile_map_addr[9:5] <= win_line[7:3];
-				bg_tile_map_addr[4:0] <= 5'd0;           // window always start with its very left
-				tile_line <= win_line[2:0];
+				win_col <= 5'd0; // window always start with its very left
 				window_ena <= 1'b1;
 			end
+
+			// Increment when fetching is done and not waiting for sprites.
+			if(window_ena && ~sprite_fetch_hold && bg_fetch_done && bg_reload_shift)
+				win_col <= win_col + 1'b1;
 
 		end else begin
 			window_ena <= 1'b0;   // next line starts with background
@@ -743,7 +727,6 @@ wire [5:0] sprite_palette_index = isGBC_game? {spr_cgb_pal_out, sprite_pixel_dat
 wire [14:0] sprite_pix = isGBC ? {obpd[sprite_palette_index+1][6:0],obpd[sprite_palette_index]} : //gbc
 							{13'd0,obp_data};
 
-//wire lcd_clk = !vblank && ~skip_en && ~sprite_fetch_hold && ~bg_shift_empty && (pcnt >= 8);
 wire lcd_clk = mode3 && ~skip_en && ~sprite_fetch_hold && ~bg_shift_empty && (pcnt >= 8);
 
 reg [14:0] lcd_data_out;
