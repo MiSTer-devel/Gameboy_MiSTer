@@ -1105,7 +1105,7 @@ begin
 				BusAck <= '0';
 				if TState = 2 and Wait_n = '0' then
 				elsif T_Res = '1' then
-					if Halt = '1' then
+					if Halt = '1' and  ( not(Mode = 3 and INT_n = '0' and IntE_FF1 = '0')) then  -- halt bug when Mode = 3 , INT_n = '0' and IME=0
 						Halt_FF <= '1';
 					end if;
 					if BusReq_s = '1' then
