@@ -13,6 +13,8 @@ entity gbc_snd is
 		ce					: in std_logic;
 		reset				: in std_logic;
 		
+		is_gbc			: in std_logic;
+		
 		s1_read			: in std_logic;
 		s1_write			: in std_logic;
 		s1_addr			: in std_logic_vector(5 downto 0);
@@ -211,6 +213,7 @@ begin
 
 	-- Registers
 	registers : process(clk, snd_enable, reset)
+	variable wav_trigger_cnt		: unsigned(2 downto 0);
 	begin
 
 		-- Registers
@@ -242,6 +245,7 @@ begin
 			wav_freq		<= (others => '0');
 			wav_trigger	<= '0';
 			wav_lenchk	<= '0';
+			wav_trigger_cnt := (others => '0');  --counter to leave the trigger high for 6 cycles
 
 
 			noi_slen		<= (others => '0');
@@ -262,7 +266,11 @@ begin
 				if en_snd then
 					sq1_trigger <= '0';
 					sq2_trigger <= '0';
-					wav_trigger <= '0';
+					if wav_trigger_cnt = "000" then
+						wav_trigger <= '0';
+					else
+						wav_trigger_cnt := wav_trigger_cnt -1;
+					end if;
 					noi_trigger <= '0';
 				end if;
 				
@@ -355,6 +363,9 @@ begin
 						wav_freq(7 downto 0) <= s1_writedata;
 					when "011110" =>	-- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
 						wav_trigger <= s1_writedata(7);
+						if s1_writedata(7) = '1' then
+							wav_trigger_cnt := "101";
+						end if;
 						if wav_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
 								wav_lenquirk <= '1';				
 						end if;
