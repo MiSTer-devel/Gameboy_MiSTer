@@ -213,7 +213,7 @@ begin
     begin
 
         -- Registers
-        if snd_enable = '0' then
+        if reset = '1' then
             -- Reset register values
             sq1_swper   <= (others => '0');
             sq1_swdir   <= '0';
@@ -251,9 +251,80 @@ begin
             noi_div     <= (others => '0');
             noi_trigger <= '0';
             noi_lenchk  <= '0';
-
+            
             ch_map      <= (others => '0');
             ch_vol      <= (others => '0');
+
+            --      Wave table   https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware#Power_Control
+            if is_gbc = '1' then
+                wav_ram(0) <=  X"0";
+                wav_ram(1) <=  X"0";
+                wav_ram(2) <=  X"F";
+                wav_ram(3) <=  X"F";
+                wav_ram(4) <=  X"0";
+                wav_ram(5) <=  X"0";
+                wav_ram(6) <=  X"F";
+                wav_ram(7) <=  X"F";
+                wav_ram(8) <=  X"0";
+                wav_ram(9) <=  X"0";
+                wav_ram(10) <= X"F";
+                wav_ram(11) <= X"F";
+                wav_ram(12) <= X"0";
+                wav_ram(13) <= X"0";
+                wav_ram(14) <= X"F";
+                wav_ram(15) <= X"F";
+                wav_ram(16) <= X"0";
+                wav_ram(17) <= X"0";
+                wav_ram(18) <= X"F";
+                wav_ram(19) <= X"F";
+                wav_ram(20) <= X"0";
+                wav_ram(21) <= X"0";
+                wav_ram(22) <= X"F";
+                wav_ram(23) <= X"F";
+                wav_ram(24) <= X"0";
+                wav_ram(25) <= X"0";
+                wav_ram(26) <= X"F";
+                wav_ram(27) <= X"F";
+                wav_ram(28) <= X"0";
+                wav_ram(29) <= X"0";
+                wav_ram(30) <= X"F";
+                wav_ram(31) <= X"F";
+            else
+                wav_ram(0) <=  X"8";
+                wav_ram(1) <=  X"4";
+                wav_ram(2) <=  X"4";
+                wav_ram(3) <=  X"0";
+                wav_ram(4) <=  X"4";
+                wav_ram(5) <=  X"3";
+                wav_ram(6) <=  X"A";
+                wav_ram(7) <=  X"A";
+                wav_ram(8) <=  X"2";
+                wav_ram(9) <=  X"D";
+                wav_ram(10) <= X"7";
+                wav_ram(11) <= X"8";
+                wav_ram(12) <= X"9";
+                wav_ram(13) <= X"2";
+                wav_ram(14) <= X"3";
+                wav_ram(15) <= X"C";
+                wav_ram(16) <= X"6";
+                wav_ram(17) <= X"0";
+                wav_ram(18) <= X"5";
+                wav_ram(19) <= X"9";
+                wav_ram(20) <= X"5";
+                wav_ram(21) <= X"9";
+                wav_ram(22) <= X"B";
+                wav_ram(23) <= X"0";
+                wav_ram(24) <= X"3";
+                wav_ram(25) <= X"4";
+                wav_ram(26) <= X"B";
+                wav_ram(27) <= X"8";
+                wav_ram(28) <= X"2";
+                wav_ram(29) <= X"E";
+                wav_ram(30) <= X"D";
+                wav_ram(31) <= X"A";          
+            end if;           
+
+            snd_enable <= '0';
 
         elsif rising_edge(clk) then
             if ce = '1' then
@@ -286,8 +357,9 @@ begin
                 if sq1_freqchange = '1' then
                     sq1_freq <= sq1_fr2;
                 end if;
-
-                if s1_write = '1' then
+                
+                -- write to registers ignored when the apu is off , Wave memory can be read back freely , NR52 power control is always writable 
+                if s1_write = '1' and (snd_enable = '1' or s1_addr = "100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "010001" or  s1_addr = "010110" or s1_addr = "011011" or s1_addr = "100000" ))) then
                     case s1_addr is
                             -- Square 1
                         when "010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
@@ -391,7 +463,7 @@ begin
                             end if;
                             noi_lenchk              <= s1_writedata(6);
 
-                            --									-- Control/Status
+                            -- Control/Status
                         when "100100" => ch_vol <= s1_writedata; -- NR50 FF24
                         when "100101" => ch_map <= s1_writedata; -- NR51 FF25
                             --
@@ -445,6 +517,60 @@ begin
                             wav_ram(30) <= s1_writedata(7 downto 4);
                             wav_ram(31) <= s1_writedata(3 downto 0);
 
+                        -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
+                        when "100110" => 
+                            -- TODO: maybe check if event on poweroff or poweron
+                            snd_enable <= s1_writedata(7);
+                            if s1_writedata(7) = '0' then
+                                -- Reset register values
+                                sq1_swper   <= (others => '0');
+                                sq1_swdir   <= '0';
+                                sq1_swshift <= (others => '0');
+                                sq1_duty    <= (others => '0');
+                                
+                                sq1_svol    <= (others => '0');
+                                sq1_envsgn  <= '0';
+                                sq1_envper  <= (others => '0');
+                                sq1_freq    <= (others => '0');
+                                sq1_lenchk  <= '0';
+                                sq1_trigger <= '0';
+
+                                sq2_duty    <= (others => '0');
+                                sq2_svol    <= (others => '0');
+                                sq2_envsgn  <= '0';
+                                sq2_envper  <= (others => '0');
+                                sq2_freq    <= (others => '0');
+                                sq2_lenchk  <= '0';
+                                sq2_trigger <= '0';
+
+                                wav_enable  <= '0';
+                                wav_volsh   <= (others => '0');
+                                wav_freq    <= (others => '0');
+                                wav_trigger <= '0';
+                                wav_lenchk  <= '0';
+                                wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
+
+                                noi_svol    <= (others     => '0');
+                                noi_envsgn  <= '0';
+                                noi_envper  <= (others => '0');
+                                noi_freqsh  <= (others => '0');
+                                noi_short   <= '0';
+                                noi_div     <= (others => '0');
+                                noi_trigger <= '0';
+                                noi_lenchk  <= '0';
+                                
+                                ch_map      <= (others => '0');
+                                ch_vol      <= (others => '0');
+                                
+                                if is_gbc = '1' then
+                                    sq1_slen    <= (others => '0');
+                                    sq2_slen    <= (others => '0');
+                                    wav_slen    <= (others => '0');
+                                    noi_slen    <= (others => '0');
+                                end if;
+
+                            end if;
+
                         when others =>
                             null;
                     end case;
@@ -453,22 +579,12 @@ begin
 
         end if;
 
-        if reset = '1' then
-            snd_enable <= '0';
-        elsif rising_edge(clk) then
-            if ce = '1' then
-                if s1_write = '1' and s1_addr = "100110" then
-                    -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
-                    snd_enable <= s1_writedata(7);
-                end if;
-            end if;
-        end if;
     end process;
 
     process (s1_addr, sq1_swper, sq1_swdir, sq1_swshift, sq1_duty, sq1_svol, sq1_envsgn, sq1_envper, sq1_lenchk,
         noi_playing, wav_playing, sq2_playing, sq1_playing, wav_enable, wav_volsh, wav_ram, wav_index, wav_access,
         sq2_duty, sq2_svol, sq2_envsgn, sq2_envper, sq2_lenchk, snd_enable, wav_lenchk, noi_svol, noi_envsgn, noi_envper,
-        noi_freqsh, noi_short, noi_div, noi_lenchk, ch_vol, ch_map)
+        noi_freqsh, noi_short, noi_div, noi_lenchk, ch_vol, ch_map, is_gbc)
         variable wave_index_read : std_logic_vector(3 downto 0);
     begin
         case s1_addr is
@@ -629,7 +745,6 @@ begin
             sq1_fr2     <= (others => '0');
             sq1_fcnt  := (others   => '0');
             sq1_phase := 0;
-            sq1_len   := (others => '0');
             sq1_vol <= "0000";
             sq1_envcnt := "0000";
             sq1_swcnt  := "0000";
@@ -639,14 +754,12 @@ begin
             sq2_playing <= '0';
             sq2_fcnt  := (others => '0');
             sq2_phase := 0;
-            sq2_len   := (others => '0');
             sq2_vol <= "0000";
             sq2_envcnt := "0000";
             sq2_out    := '0';
 
             wav_playing <= '0';
             wav_fcnt    := (others => '0');
-            wav_len     := (others => '0');
             wav_shift_r := false;
             wav_index   <= (others => '0');
             wav_access  <= (others => '0');
@@ -654,7 +767,6 @@ begin
             noi_playing <= '0';
             noi_fcnt := (others => '0');
             noi_lfsr := (others => '1');
-            noi_len  := (others => '0');
             noi_vol <= "0000";
             noi_envcnt      := "0000";
             noi_out         := '0';
@@ -667,6 +779,13 @@ begin
             sq2_envoff      := false;
             sq1_envoff      := false;
             noi_envoff      := false;
+
+            if is_gbc = '1' then
+                sq1_len  := (others => '0');
+                sq2_len  := (others => '0');
+                wav_len  := (others => '0');
+                noi_len  := (others => '0');
+            end if;
 
         elsif rising_edge(clk) then
             if ce = '1' then
