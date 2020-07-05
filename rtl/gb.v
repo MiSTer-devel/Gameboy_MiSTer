@@ -236,6 +236,8 @@ gbc_snd audio (
 	.clk				( clk_sys			),
 	.ce            ( ce_2x           ),
 	.reset			( reset				),
+	
+	.is_gbc        ( isGBC           ),
 
 	.s1_read  		( audio_rd  		),
 	.s1_write 		( audio_wr  		),
