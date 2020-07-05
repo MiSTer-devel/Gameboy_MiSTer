@@ -152,7 +152,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXX XXXX  XX
+// XXXXXXXXXXXXXXXX XXXX  XX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -165,7 +165,7 @@ localparam CONF_STR = {
 	"h0OH,Cheats enabled,Yes,No;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
-	"O1,Palette,Auto,Custom;",
+	"O12,Custom Palette,Off,Auto,On;",
 	"h1F2,GBP,Load Palette;",
 	"-;",
 	"h2R9,Load Backup RAM;",
@@ -177,7 +177,7 @@ localparam CONF_STR = {
 	"O5,Stabilize video(buffer),Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
-	"O2,Boot,Normal,Fast;",
+	"OB,Boot,Normal,Fast;",
 	"O6,Link Port,Disabled,Enabled;",
 	"-;",
 	"R0,Reset;",
@@ -260,7 +260,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sav_supported,tint,gg_available}),
+	.status_menumask({sav_supported,|tint,gg_available}),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
 	.forced_scandoubler(forced_scandoubler),
@@ -562,7 +562,7 @@ gb gb (
 	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
-	.fast_boot   ( status[2]  ),
+	.fast_boot   ( status[11]  ),
 
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
@@ -614,7 +614,7 @@ wire video_hs, video_vs;
 wire HBlank, VBlank;
 wire ce_pix;
 wire [8:0] h_cnt, v_cnt;
-wire tint = status[1];
+wire [1:0] tint = status[2:1];
 
 lcd lcd
 (
@@ -627,7 +627,7 @@ lcd lcd
 
 	.isGBC  ( isGBC      ),
 
-	.tint   ( tint  ),
+	.tint   ( |tint       ),
 	.inv    ( status[12]  ),
 	.double_buffer( status[5]),
 
@@ -679,7 +679,7 @@ sgb sgb (
 	.joy_do      ( joy_do_sgb  ),
 
 	.sgb_en      ( ~sgb_en[1] & isSGB_game & ~isGBC ),
-	.tint        ( tint  ),
+	.tint        ( tint[1]     ),
 
 	.lcd_on      ( lcd_on      ),
 	.lcd_clkena  ( lcd_clkena  ),

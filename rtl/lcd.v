@@ -209,12 +209,12 @@ always@(posedge clk_vid) begin
 			r <= r10[8:1];
 			g <= {g10[6:0],1'b0};
 			b <= b10[8:1];
-		end else if (tint) begin
-			{r,g,b} <= (pixel==0) ? pal1 : (pixel==1) ? pal2 : (pixel==2) ? pal3 : pal4;
 		end else if (sgb_pal_en) begin
 			r <= {r5,r5[4:2]};
 			g <= {g5,g5[4:2]};
 			b <= {b5,b5[4:2]};
+		end else if (tint) begin
+			{r,g,b} <= (pixel==0) ? pal1 : (pixel==1) ? pal2 : (pixel==2) ? pal3 : pal4;
 		end else begin
 			{r,g,b} <= {3{grey}};
 		end

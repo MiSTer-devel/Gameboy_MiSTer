@@ -112,14 +112,14 @@ always @(posedge clk_sys) begin
 		old_p15 <= p15;
 		old_p14 <= p14;
 
-		if (old_p15 & old_p14 & sgb_en) begin
+		if (sgb_en) begin
 
 			// Reset pulse
 			if (~p15 & ~p14) begin
 				{cnt, byte_cnt, packet_end} <= 0;
 			end
 
-			if (p15 ^ p14) begin
+			if ( old_p15 & old_p14 & (p15 ^ p14) ) begin
 				if (~packet_end) begin
 					data <= {~p15,data[7:1]};
 					cnt <= cnt + 1'b1;
@@ -127,11 +127,10 @@ always @(posedge clk_sys) begin
 				end
 			end
 
-		end
-
-		// Corrupt packet. p15 and p14 should both go high after one is low.
-		if ( (old_p15 ^ p15) & (old_p15 ^ old_p14) & (p15 ^ p14) ) begin
-			packet_end <= 1'b1;
+			// Corrupt packet. p15 and p14 should both go high after one is low.
+			if ( (old_p15 ^ p15) & (old_p15 ^ old_p14) & (p15 ^ p14) ) begin
+				packet_end <= 1'b1;
+			end
 		end
 
 		trn_start <= 0;
@@ -201,6 +200,7 @@ always @(posedge clk_sys) begin
 						{CMD_PAL23,4'd9},
 						{CMD_PAL03,4'd9}: pal0123_no <= 2'd3;
 					endcase
+
 				end
 				CMD_PAL_SET:
 					case (byte_cnt)
@@ -390,6 +390,7 @@ reg [7:0] pix_x, pix_y;
 reg [8:0] tile_offset;
 reg [6:0] trn_data_h, trn_data_l;
 reg output_border = 0;
+reg pct_trn_done, chr_trn_done;
 
 wire [8:0] tile_number = {tile_offset+pix_x[7:3]};
 
@@ -402,7 +403,10 @@ wire [15:0] trn_data = {trn_data_h,lcd_data[1],trn_data_l,lcd_data[0]};
 
 
 always @(posedge clk_sys) begin
-	if (ce) begin
+	if (reset) begin
+		pct_trn_done <= 0;
+		chr_trn_done <= 0;
+	end else if (ce) begin
 		frame_end <= 0;
 
 		old_lcd_off <= lcd_off;
@@ -430,7 +434,10 @@ always @(posedge clk_sys) begin
 
 			if (pix_x == 8'd159 && pix_y == 8'd103) begin // 256 tiles
 				trn_en <= 0;
-				if (trn_en && cmd == CMD_PCT_TRN) output_border <= 1'b1;
+				if (trn_en) begin
+					if (cmd == CMD_PCT_TRN) pct_trn_done <= 1'b1;
+					if (cmd == CMD_CHR_TRN) chr_trn_done <= 1'b1;
+				end
 			end
 		end
 
@@ -441,10 +448,15 @@ always @(posedge clk_sys) begin
 			trn_wait <= 0;
 			if (trn_wait) begin
 				trn_en <= 1'b1;
-				if (cmd == CMD_CHR_TRN) output_border <= 0;
+				if (cmd == CMD_CHR_TRN || cmd == CMD_PCT_TRN) output_border <= 0;
 			end
 		end
 
+		if (pct_trn_done & chr_trn_done & !mask_en) begin
+			pct_trn_done <= 0;
+			chr_trn_done <= 0;
+			output_border <= 1'b1;
+		end
 	end
 
 end
@@ -488,7 +500,7 @@ dpram_dif #(15,2, 14,4) tile_ram (
 	.clock    ( clk_vid ),
 
 	.address_a  ( {char_trn_tile,tile_addr} ),
-	.wren_a     ( lcd_clkena && trn_en && cmd == CMD_CHR_TRN),
+	.wren_a     ( lcd_clkena && trn_en && cmd == CMD_CHR_TRN && !tile_number[8] ),
 	.data_a     ( lcd_data ),
 	.q_a        (),
 
@@ -525,6 +537,7 @@ always @(posedge clk_sys) begin
 			pal_set_wait <= 0;
 			pal_set_busy <= 1'b1;
 			pal_set_cnt <= 0;
+			pal_set_cnt_r <= 0;
 		end
 
 		sys_pal_data <= sys_pal_ram[{sys_pal_no[pal_set_cnt[3:2]], pal_set_cnt[1:0]}];
@@ -822,10 +835,13 @@ reg [14:0] lcd_data_r;
 reg [1:0] pal_no;
 reg lcd_clkena_r, lcd_on_r;
 reg [1:0] lcd_mode_r;
+reg [1:0] mask_en_r;
 wire [1:0] lcd_data_2 = lcd_data_r[1:0];
 // Lcd pixel output
 always @(posedge clk_sys) begin
 	if (ce) begin
+
+		if (lcd_off) mask_en_r <= mask_en;
 
 		pal_no <= attr_file[tile_number*2 +: 2];
 		lcd_data_r <= lcd_data;
@@ -833,20 +849,20 @@ always @(posedge clk_sys) begin
 		lcd_mode_r <= lcd_mode;
 		lcd_on_r <= lcd_on;
 
-		if (~sgb_en | ((~output_sgb_pal | tint) & !mask_en) ) begin
+		if (~sgb_en | ((~output_sgb_pal | tint) & !mask_en_r) ) begin
 			sgb_lcd_data <= lcd_data_r;
-		end else if (mask_en == 2'd2) begin
+		end else if (mask_en_r == 2'd2) begin
 			sgb_lcd_data <= 0;
-		end else if (!lcd_data_2 || mask_en == 2'd3) begin
+		end else if (!lcd_data_2 || mask_en_r == 2'd3) begin
 			sgb_lcd_data <= palette[0][0:14];
 		end else begin
 			sgb_lcd_data <= palette[pal_no][lcd_data_2*15 +:15];
 		end
 
-		sgb_lcd_clkena <= (mask_en != 2'd1) ? lcd_clkena_r : 1'b0;
+		sgb_lcd_clkena <= (~sgb_en || mask_en_r != 2'd1) ? lcd_clkena_r : 1'b0;
 		sgb_lcd_mode <= lcd_mode_r;
 		sgb_lcd_on <= lcd_on_r;
-		sgb_pal_en <= sgb_en & (output_sgb_pal || |mask_en);
+		sgb_pal_en <= sgb_en & ( (output_sgb_pal & ~tint) || |mask_en_r);
 	end
 
 end
