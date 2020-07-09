@@ -127,6 +127,11 @@ architecture SYN of gbc_snd is
     signal ch_vol            : std_logic_vector(7 downto 0);
     signal framecnt          : integer range 0 to 7 := 0;
 
+    signal sq1_trigger_r     : std_logic;
+    signal sq2_trigger_r     : std_logic;
+    signal wav_trigger_r     : std_logic;
+    -- signal noi_trigger_r     : std_logic;
+
 begin
 
     en_snd2 <= en_snd and en_snden2;
@@ -208,8 +213,8 @@ begin
     end process;
 
     -- Registers
-    registers : process (clk, snd_enable, reset)
-        variable wav_trigger_cnt : unsigned(2 downto 0);
+    registers : process (clk, snd_enable, reset, is_gbc)
+        variable wav_trigger_cnt : unsigned(3 downto 0);
     begin
 
         -- Registers
@@ -328,14 +333,17 @@ begin
 
         elsif rising_edge(clk) then
             if ce = '1' then
+               
+                -- TODO: align sq1,sq2 and noi triggers
+                sq1_trigger <= '0';  
+                sq2_trigger <= '0';
+                if wav_trigger_cnt = "0000" then
+                  wav_trigger <= '0';
+                else
+                  wav_trigger_cnt := wav_trigger_cnt - 1;
+                end if;
+                
                 if en_snd then
-                    sq1_trigger <= '0';
-                    sq2_trigger <= '0';
-                    if wav_trigger_cnt = "000" then
-                        wav_trigger <= '0';
-                    else
-                        wav_trigger_cnt := wav_trigger_cnt - 1;
-                    end if;
                     noi_trigger <= '0';
                 end if;
 
@@ -434,7 +442,7 @@ begin
                         when "011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
                             wav_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
-                                wav_trigger_cnt := "101";
+                                wav_trigger_cnt := "1001";
                             end if;
                             if wav_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 wav_lenquirk <= '1';
@@ -789,6 +797,11 @@ begin
             wav_len  := (others => '0');
             noi_len  := (others => '0');
 
+            sq1_trigger_r   <= '0'; 
+            sq2_trigger_r   <= '0'; 
+            wav_trigger_r   <= '0'; 
+            -- noi_trigger_r   <= '0'; 
+
         elsif rising_edge(clk) then
             if ce = '1' then
 
@@ -807,6 +820,12 @@ begin
                 if wav_lenchange = '1' then
                     wav_len := wav_slen;
                 end if;
+                
+                -- used to detect trigger negedge
+                sq1_trigger_r <= sq1_trigger;
+                sq2_trigger_r <= sq2_trigger;
+                wav_trigger_r <= wav_trigger;
+                -- noi_trigger_r <= noi_trigger;
 
                 if snd_enable = '1' then
 
@@ -821,11 +840,7 @@ begin
                         if sq1_playing = '1' then
                             acc_fcnt := ('0' & sq1_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
-                                if sq1_phase < 7 then
-                                    sq1_phase := sq1_phase + 1;
-                                else
-                                    sq1_phase := 0;
-                                end if;
+                                sq1_phase := sq1_phase + 1;
                                 sq1_fcnt := unsigned(sq1_freq);
                             else
                                 sq1_fcnt := acc_fcnt(sq1_fcnt'range);
@@ -960,7 +975,7 @@ begin
                         end if;
                     end if;
 
-                    if sq1_trigger = '1' or sq1_nr2change = '1' then
+                    if (sq1_trigger_r = '1' and sq1_trigger = '0') or sq1_nr2change = '1' then  -- falling edge of trigger
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(sq1_vol);
@@ -986,7 +1001,10 @@ begin
 
 
                     -- Check sample trigger and start playing
-                    if sq1_trigger = '1' then
+                    if sq1_trigger_r = '1' and sq1_trigger = '0' then -- falling edge of trigger
+                        -- from sameboy:
+                        -- Current sample index remains unchanged when restarting channels 1 or 2. It is only reset by turning the APU off.
+
                         sq1_vol <= sq1_svol;
                         sq1_fr2 <= sq1_freq;                                        -- shadow frequency register for sweep unit
                         sq1_sweep_en := sq1_swper /= "000" or sq1_swshift /= "000"; -- sweep unit enabled ?
@@ -1014,7 +1032,7 @@ begin
                             sq1_envcnt := '0' & sq1_envper; -- set to period
                         end if;
                         sq1_envoff := false;
-                        sq1_phase  := 0;
+                                               
                         if sq1_len = 0 then -- trigger quirks
                             if sq1_lenchk = '1' and en_len_r then
                                 sq1_len := "0111111"; -- 63
@@ -1032,11 +1050,7 @@ begin
                         if sq2_playing = '1' then
                             acc_fcnt := ('0' & sq2_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
-                                if sq2_phase < 7 then
-                                    sq2_phase := sq2_phase + 1;
-                                else
-                                    sq2_phase := 0;
-                                end if;
+                                sq2_phase := sq2_phase + 1;
                                 sq2_fcnt := unsigned(sq2_freq);
                             else
                                 sq2_fcnt := acc_fcnt(sq2_fcnt'range);
@@ -1105,7 +1119,7 @@ begin
                         end if;
                     end if;
 
-                    if sq2_nr2change = '1' or sq2_trigger = '1' then
+                    if (sq2_trigger_r = '1' and sq2_trigger = '0') or sq2_nr2change = '1' then  -- falling edge of trigger
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(sq2_vol);
@@ -1130,7 +1144,11 @@ begin
                     end if;
 
                     -- Check sample trigger and start playing
-                    if sq2_trigger = '1' then
+                    if sq2_trigger_r = '1' and sq2_trigger = '0' then -- falling edge of trigger
+                        
+                        -- from sameboy:
+                        -- Current sample index remains unchanged when restarting channels 1 or 2. It is only reset by turning the APU off.
+
                         sq2_vol <= sq2_svol;
 
                         -- sq2_fr2 <= sq2_freq;
@@ -1148,7 +1166,6 @@ begin
                         end if;
                         sq2_envoff := false;
 
-                        sq2_phase  := 0;
                         if sq2_len = 0 then -- trigger quirks 
                             if sq2_lenchk = '1' and en_len_r then
                                 sq2_len := "0111111"; -- 63
@@ -1233,7 +1250,7 @@ begin
                         end if;
                     end if;
 
-                    if noi_nr2change = '1' or noi_trigger = '1' then
+                    if noi_trigger = '1' or noi_nr2change = '1' then
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(noi_vol);
@@ -1257,7 +1274,7 @@ begin
                         end if;
                     end if;
 
-                    if noi_trigger = '1' or noi_freqchange = '1' then
+                    if noi_trigger = '1'or noi_freqchange = '1' then
 
                         -- Calculate noise frequency
                         case noi_div is
@@ -1318,7 +1335,7 @@ begin
                         end if;
                     end if;
 
-                    if wav_trigger = '1' then
+                    if wav_trigger_r = '1' and wav_trigger = '0' then
                         wav_index <= (others => '0');
                         wav_shift_r := false;
                     else
@@ -1346,7 +1363,7 @@ begin
                     end if;
 
                     -- Check sample trigger and start playing
-                    if wav_trigger = '1' then
+                    if wav_trigger_r = '1' and wav_trigger = '0' then
                         wav_fcnt := unsigned(wav_freq);
                         wav_playing <= '1';
                         if wav_len = 0 then -- trigger quirks 
@@ -1418,6 +1435,11 @@ begin
                         wav_len  := (others => '0');
                         noi_len  := (others => '0');
                     end if;
+
+                    sq1_trigger_r   <= '0'; 
+                    sq2_trigger_r   <= '0'; 
+                    wav_trigger_r   <= '0'; 
+                    --noi_trigger_r   <= '0'; 
                 
                 end if; 
 
