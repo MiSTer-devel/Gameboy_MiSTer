@@ -214,6 +214,8 @@ begin
 
     -- Registers
     registers : process (clk, snd_enable, reset, is_gbc)
+        variable sq1_trigger_cnt : unsigned(3 downto 0);
+        variable sq2_trigger_cnt : unsigned(3 downto 0);
         variable wav_trigger_cnt : unsigned(3 downto 0);
     begin
 
@@ -246,6 +248,8 @@ begin
             wav_freq    <= (others => '0');
             wav_trigger <= '0';
             wav_lenchk  <= '0';
+            sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
+            sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
             wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
             noi_slen    <= (others     => '0');
             noi_svol    <= (others     => '0');
@@ -334,9 +338,19 @@ begin
         elsif rising_edge(clk) then
             if ce = '1' then
                
-                -- TODO: align sq1,sq2 and noi triggers
-                sq1_trigger <= '0';  
-                sq2_trigger <= '0';
+                -- TODO: align sq1,sq2 and noi triggers               
+                if sq1_trigger_cnt = "0000" then
+                    sq1_trigger <= '0';
+                else
+                    sq1_trigger_cnt := sq1_trigger_cnt - 1;
+                end if;
+                
+                if sq2_trigger_cnt = "0000" then
+                    sq2_trigger <= '0';
+                else
+                    sq2_trigger_cnt := sq2_trigger_cnt - 1;
+                end if;
+
                 if wav_trigger_cnt = "0000" then
                   wav_trigger <= '0';
                 else
@@ -396,6 +410,9 @@ begin
                             sq1_freq(7 downto 0) <= s1_writedata;
                         when "0010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
                             sq1_trigger <= s1_writedata(7);
+                            if s1_writedata(7) = '1' then
+                                sq1_trigger_cnt := "1001";
+                            end if;
                             if sq1_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq1_lenquirk <= '1';
                             end if;
@@ -422,6 +439,9 @@ begin
                             sq2_freq(7 downto 0) <= s1_writedata;
                         when "0011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
                             sq2_trigger <= s1_writedata(7);
+                            if s1_writedata(7) = '1' then
+                                sq2_trigger_cnt := "1001";
+                            end if;
                             if sq2_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq2_lenquirk <= '1';
                             end if;
@@ -560,6 +580,9 @@ begin
                                 wav_freq    <= (others => '0');
                                 wav_trigger <= '0';
                                 wav_lenchk  <= '0';
+
+                                sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
+                                sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
                                 wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
 
                                 noi_svol    <= (others     => '0');
@@ -1292,6 +1315,7 @@ begin
                         noi_fcnt   := noi_period;
 
                     end if;
+
                     -- Check sample trigger and start playing
                     if noi_trigger = '1' then
                         noi_vol <= noi_svol;
