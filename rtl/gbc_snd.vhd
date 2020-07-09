@@ -14,7 +14,7 @@ entity gbc_snd is
 
         s1_read      : in std_logic;
         s1_write     : in std_logic;
-        s1_addr      : in std_logic_vector(5 downto 0);
+        s1_addr      : in std_logic_vector(6 downto 0);
         s1_readdata  : out std_logic_vector(7 downto 0);
         s1_writedata : in std_logic_vector(7 downto 0);
 
@@ -367,23 +367,23 @@ begin
                 end if;
                 
                 -- write to registers ignored when the apu is off , Wave memory can be read back freely , NR52 power control is always writable 
-                if s1_write = '1' and (snd_enable = '1' or s1_addr = "100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "010001" or  s1_addr = "010110" or s1_addr = "011011" or s1_addr = "100000" ))) then
+                if s1_write = '1' and (snd_enable = '1' or s1_addr = "0100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "0010001" or  s1_addr = "0010110" or s1_addr = "0011011" or s1_addr = "0100000" ))) then
                     case s1_addr is
                             -- Square 1
-                        when "010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
+                        when "0010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
                             sq1_swper <= s1_writedata(6 downto 4);
                             if s1_writedata(3) = '0' then -- only neg to pos, 1 -> 0
                                 sq1_swdir_change <= '1';
                             end if;
                             sq1_swdir   <= s1_writedata(3);
                             sq1_swshift <= s1_writedata(2 downto 0);
-                        when "010001" => -- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
+                        when "0010001" => -- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
                             if snd_enable = '1' then
                                 sq1_duty      <= s1_writedata(7 downto 6);
                             end if;
                             sq1_slen      <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
                             sq1_lenchange <= '1';
-                        when "010010" => -- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
+                        when "0010010" => -- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
                             -- zombie mode copy old values
                             sq1_envsgn_old <= sq1_envsgn;
                             sq1_envper_old <= sq1_envper;
@@ -392,9 +392,9 @@ begin
                             sq1_svol       <= s1_writedata(7 downto 4);
                             sq1_envsgn     <= s1_writedata(3);
                             sq1_envper     <= s1_writedata(2 downto 0);
-                        when "010011" => -- NR13 FF13 FFFF FFFF Frequency LSB
+                        when "0010011" => -- NR13 FF13 FFFF FFFF Frequency LSB
                             sq1_freq(7 downto 0) <= s1_writedata;
-                        when "010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
+                        when "0010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
                             sq1_trigger <= s1_writedata(7);
                             if sq1_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq1_lenquirk <= '1';
@@ -403,13 +403,13 @@ begin
                             sq1_freq(10 downto 8) <= s1_writedata(2 downto 0);
 
                             -- Square 2
-                        when "010110" => -- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
+                        when "0010110" => -- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
                             if snd_enable = '1' then
                                 sq2_duty      <= s1_writedata(7 downto 6);
                             end if;
                             sq2_slen      <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
                             sq2_lenchange <= '1';
-                        when "010111" => -- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
+                        when "0010111" => -- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
                             -- zombie mode copy old values
                             sq2_envsgn_old <= sq2_envsgn;
                             sq2_envper_old <= sq2_envper;
@@ -418,9 +418,9 @@ begin
                             sq2_nr2change  <= '1';
                             sq2_envsgn     <= s1_writedata(3);
                             sq2_envper     <= s1_writedata(2 downto 0);
-                        when "011000" => -- NR23 FF18 FFFF FFFF Frequency LSB
+                        when "0011000" => -- NR23 FF18 FFFF FFFF Frequency LSB
                             sq2_freq(7 downto 0) <= s1_writedata;
-                        when "011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
+                        when "0011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
                             sq2_trigger <= s1_writedata(7);
                             if sq2_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq2_lenquirk <= '1';
@@ -429,17 +429,17 @@ begin
                             sq2_freq(10 downto 8) <= s1_writedata(2 downto 0);
 
                             -- Wave
-                        when "011010" => -- NR30 FF1A E--- ---- DAC power
+                        when "0011010" => -- NR30 FF1A E--- ---- DAC power
                             wav_enable <= s1_writedata(7);
-                        when "011011" => -- NR31 FF1B LLLL LLLL Length load (256-L)
+                        when "0011011" => -- NR31 FF1B LLLL LLLL Length load (256-L)
                             -- wav_slen <= s1_writedata;
                             wav_slen      <= std_logic_vector("100000000" - unsigned(s1_writedata));
                             wav_lenchange <= '1';
-                        when "011100" => -- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
+                        when "0011100" => -- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
                             wav_volsh <= s1_writedata(6 downto 5);
-                        when "011101" => -- NR33 FF1D FFFF FFFF Frequency LSB
+                        when "0011101" => -- NR33 FF1D FFFF FFFF Frequency LSB
                             wav_freq(7 downto 0) <= s1_writedata;
-                        when "011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
+                        when "0011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
                             wav_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
                                 wav_trigger_cnt := "1001";
@@ -451,10 +451,10 @@ begin
                             wav_freq(10 downto 8) <= s1_writedata(2 downto 0);
 
                             -- Noise
-                        when "100000" => -- NR41 FF20 --LL LLLL Length load (64-L)
+                        when "0100000" => -- NR41 FF20 --LL LLLL Length load (64-L)
                             noi_slen      <= std_logic_vector("1000000" - unsigned(s1_writedata(5 downto 0)));
                             noi_lenchange <= '1';
-                        when "100001" => -- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
+                        when "0100001" => -- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
                             -- zombie mode copy old values
                             noi_envsgn_old <= noi_envsgn;
                             noi_envper_old <= noi_envper;
@@ -463,12 +463,12 @@ begin
                             noi_nr2change  <= '1';
                             noi_envsgn     <= s1_writedata(3);
                             noi_envper     <= s1_writedata(2 downto 0);
-                        when "100010" => -- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
+                        when "0100010" => -- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
                             noi_freqsh     <= s1_writedata(7 downto 4);
                             noi_short      <= s1_writedata(3);
                             noi_div        <= s1_writedata(2 downto 0);
                             noi_freqchange <= '1';
-                        when "100011" => -- NR44 FF23 TL-- ---- Trigger, Length enable
+                        when "0100011" => -- NR44 FF23 TL-- ---- Trigger, Length enable
                             noi_trigger <= s1_writedata(7);
                             if noi_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 noi_lenquirk <= '1';
@@ -476,61 +476,61 @@ begin
                             noi_lenchk              <= s1_writedata(6);
 
                             -- Control/Status
-                        when "100100" => ch_vol <= s1_writedata; -- NR50 FF24
-                        when "100101" => ch_map <= s1_writedata; -- NR51 FF25
+                        when "0100100" => ch_vol <= s1_writedata; -- NR50 FF24
+                        when "0100101" => ch_map <= s1_writedata; -- NR51 FF25
                             --
                             -- Wave Table
-                        when "110000" =>                         --      FF30 0000 1111 Samples 0 and 1
+                        when "0110000" =>                         --      FF30 0000 1111 Samples 0 and 1
                             wav_ram(0) <= s1_writedata(7 downto 4);
                             wav_ram(1) <= s1_writedata(3 downto 0);
-                        when "110001" => --      FF31 0000 1111 Samples 2 and 3
+                        when "0110001" => --      FF31 0000 1111 Samples 2 and 3
                             wav_ram(2) <= s1_writedata(7 downto 4);
                             wav_ram(3) <= s1_writedata(3 downto 0);
-                        when "110010" => --      FF32 0000 1111 Samples 4 and 5
+                        when "0110010" => --      FF32 0000 1111 Samples 4 and 5
                             wav_ram(4) <= s1_writedata(7 downto 4);
                             wav_ram(5) <= s1_writedata(3 downto 0);
-                        when "110011" => --      FF33 0000 1111 Samples 6 and 31
+                        when "0110011" => --      FF33 0000 1111 Samples 6 and 31
                             wav_ram(6) <= s1_writedata(7 downto 4);
                             wav_ram(7) <= s1_writedata(3 downto 0);
-                        when "110100" => --      FF34 0000 1111 Samples 8 and 31
+                        when "0110100" => --      FF34 0000 1111 Samples 8 and 31
                             wav_ram(8) <= s1_writedata(7 downto 4);
                             wav_ram(9) <= s1_writedata(3 downto 0);
-                        when "110101" => --      FF35 0000 1111 Samples 10 and 11
+                        when "0110101" => --      FF35 0000 1111 Samples 10 and 11
                             wav_ram(10) <= s1_writedata(7 downto 4);
                             wav_ram(11) <= s1_writedata(3 downto 0);
-                        when "110110" => --      FF36 0000 1111 Samples 12 and 13
+                        when "0110110" => --      FF36 0000 1111 Samples 12 and 13
                             wav_ram(12) <= s1_writedata(7 downto 4);
                             wav_ram(13) <= s1_writedata(3 downto 0);
-                        when "110111" => --      FF37 0000 1111 Samples 14 and 15
+                        when "0110111" => --      FF37 0000 1111 Samples 14 and 15
                             wav_ram(14) <= s1_writedata(7 downto 4);
                             wav_ram(15) <= s1_writedata(3 downto 0);
-                        when "111000" => --      FF38 0000 1111 Samples 16 and 17
+                        when "0111000" => --      FF38 0000 1111 Samples 16 and 17
                             wav_ram(16) <= s1_writedata(7 downto 4);
                             wav_ram(17) <= s1_writedata(3 downto 0);
-                        when "111001" => --      FF39 0000 1111 Samples 18 and 19
+                        when "0111001" => --      FF39 0000 1111 Samples 18 and 19
                             wav_ram(18) <= s1_writedata(7 downto 4);
                             wav_ram(19) <= s1_writedata(3 downto 0);
-                        when "111010" => --      FF3A 0000 1111 Samples 20 and 21
+                        when "0111010" => --      FF3A 0000 1111 Samples 20 and 21
                             wav_ram(20) <= s1_writedata(7 downto 4);
                             wav_ram(21) <= s1_writedata(3 downto 0);
-                        when "111011" => --      FF3B 0000 1111 Samples 22 and 23
+                        when "0111011" => --      FF3B 0000 1111 Samples 22 and 23
                             wav_ram(22) <= s1_writedata(7 downto 4);
                             wav_ram(23) <= s1_writedata(3 downto 0);
-                        when "111100" => --      FF3C 0000 1111 Samples 24 and 25
+                        when "0111100" => --      FF3C 0000 1111 Samples 24 and 25
                             wav_ram(24) <= s1_writedata(7 downto 4);
                             wav_ram(25) <= s1_writedata(3 downto 0);
-                        when "111101" => --      FF3D 0000 1111 Samples 26 and 27
+                        when "0111101" => --      FF3D 0000 1111 Samples 26 and 27
                             wav_ram(26) <= s1_writedata(7 downto 4);
                             wav_ram(27) <= s1_writedata(3 downto 0);
-                        when "111110" => --      FF3E 0000 1111 Samples 28 and 29
+                        when "0111110" => --      FF3E 0000 1111 Samples 28 and 29
                             wav_ram(28) <= s1_writedata(7 downto 4);
                             wav_ram(29) <= s1_writedata(3 downto 0);
-                        when "111111" => --      FF3F 0000 1111 Samples 30 and 31
+                        when "0111111" => --      FF3F 0000 1111 Samples 30 and 31
                             wav_ram(30) <= s1_writedata(7 downto 4);
                             wav_ram(31) <= s1_writedata(3 downto 0);
 
                         -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
-                        when "100110" => 
+                        when "0100110" => 
                             -- TODO: maybe check if event on poweroff or poweron
                             snd_enable <= s1_writedata(7);
                             if s1_writedata(7) = '0' then
@@ -601,54 +601,54 @@ begin
     begin
         case s1_addr is
                 -- Square 1
-            when "010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
+            when "0010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
                 s1_readdata <= '1' & sq1_swper & sq1_swdir & sq1_swshift;
-            when "010001" => -- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
+            when "0010001" => -- NR11 FF11 DDLL LLLL Duty, Length load (64-L)
                 s1_readdata <= sq1_duty & "111111";
-            when "010010" => -- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
+            when "0010010" => -- NR12 FF12 VVVV APPP Starting volume, Envelope add mode, period
                 s1_readdata <= sq1_svol & sq1_envsgn & sq1_envper;
-            when "010011" => -- NR13 FF13 FFFF FFFF Frequency LSB
+            when "0010011" => -- NR13 FF13 FFFF FFFF Frequency LSB
                 s1_readdata <= X"FF";
-            when "010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
+            when "0010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
                 s1_readdata <= '1' & sq1_lenchk & "111111";
 
                 -- Square 2
-            when "010110" => -- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
+            when "0010110" => -- NR21 FF16 DDLL LLLL Duty, Length load (64-L)
                 s1_readdata <= sq2_duty & "111111";
-            when "010111" => -- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
+            when "0010111" => -- NR22 FF17 VVVV APPP Starting volume, Envelope add mode, period
                 s1_readdata <= sq2_svol & sq2_envsgn & sq2_envper;
-            when "011000" => -- NR23 FF18 FFFF FFFF Frequency LSB
+            when "0011000" => -- NR23 FF18 FFFF FFFF Frequency LSB
                 s1_readdata <= X"FF";
-            when "011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
+            when "0011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
                 s1_readdata <= '1' & sq2_lenchk & "111111";
 
-            when "100110" => -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
+            when "0100110" => -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
                 s1_readdata <= snd_enable & "111" & noi_playing & wav_playing & sq2_playing & sq1_playing;
 
                 -- Wave
-            when "011010" => -- NR30 FF1A E--- ---- DAC power
+            when "0011010" => -- NR30 FF1A E--- ---- DAC power
                 s1_readdata <= wav_enable & "1111111";
-            when "011011" => -- NR31 FF1B LLLL LLLL Length load (256-L)
+            when "0011011" => -- NR31 FF1B LLLL LLLL Length load (256-L)
                 s1_readdata <= X"FF";
-            when "011100" => -- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
+            when "0011100" => -- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
                 s1_readdata <= '1' & wav_volsh & "11111";
-            when "011101" => -- NR33 FF1D FFFF FFFF Frequency LSB
+            when "0011101" => -- NR33 FF1D FFFF FFFF Frequency LSB
                 s1_readdata <= X"FF";
-            when "011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
+            when "0011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
                 s1_readdata <= '1' & wav_lenchk & "111111";
 
                 -- Noise
-            when "100000" => -- NR41 FF20 --LL LLLL Length load (64-L)
+            when "0100000" => -- NR41 FF20 --LL LLLL Length load (64-L)
                 s1_readdata <= X"FF";
-            when "100001" => -- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
+            when "0100001" => -- NR42 FF21 VVVV APPP Starting volume, Envelope add mode, period
                 s1_readdata <= noi_svol & noi_envsgn & noi_envper;
-            when "100010" => -- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
+            when "0100010" => -- NR43 FF22 SSSS WDDD Clock shift, Width mode of LFSR, Divisor code
                 s1_readdata <= noi_freqsh & noi_short & noi_div;
-            when "100011" => -- NR44 FF23 TL-- ---- Trigger, Length enable
+            when "0100011" => -- NR44 FF23 TL-- ---- Trigger, Length enable
                 s1_readdata <= '1' & noi_lenchk & "111111";
 
                 -- Wave Table
-            when "110000" | "110001" | "110010" | "110011" | "110100" | "110101" | "110110" | "110111" | "111000" | "111001" | "111010" | "111011" | "111100" | "111101" | "111110" | "111111" => -- FF30 to FF3F
+            when "0110000" | "0110001" | "0110010" | "0110011" | "0110100" | "0110101" | "0110110" | "0110111" | "0111000" | "0111001" | "0111010" | "0111011" | "0111100" | "0111101" | "0111110" | "0111111" => -- FF30 to FF3F
                 if wav_playing = '1' then
                     wave_index_read := std_logic_vector(wav_index(4 downto 1));
                 else
@@ -695,9 +695,9 @@ begin
                 end if;
 
                 -- Control/Status
-            when "100100" =>
+            when "0100100" =>
                 s1_readdata <= ch_vol; -- NR50 FF24
-            when "100101" =>
+            when "0100101" =>
                 s1_readdata <= ch_map; -- NR51 FF25
             when others =>
                 s1_readdata <= X"FF";

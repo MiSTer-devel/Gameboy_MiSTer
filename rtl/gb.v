@@ -90,8 +90,8 @@ wire sel_if   = cpu_addr == 16'hff0f;                // interupt flag
 wire sel_iram = (cpu_addr[15:14] == 2'b11) && (~&cpu_addr[13:9]); // 8k internal ram at $C000-DFFF. C000-DDFF mirrored to E000-FDFF
 wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram at $ff80
 					 (cpu_addr != 16'hffff);
-wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
-					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001));
+wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f and ff76/ff77 PCM12/PCM34 (undocumented registers)
+					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001) || (cpu_addr[7:0] == 8'h76) || (cpu_addr[7:0] == 8'h77));
 					
 //DMA can select from $0000 to $F100					
 wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
@@ -247,7 +247,7 @@ gbc_snd audio (
 
 	.s1_read  		( audio_rd  		),
 	.s1_write 		( audio_wr  		),
-	.s1_addr    	( cpu_addr[5:0]	),
+	.s1_addr    	( cpu_addr[6:0]	),
    .s1_readdata 	( audio_do        ),
 	.s1_writedata  ( cpu_do       	),
 
