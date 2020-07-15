@@ -159,6 +159,12 @@ begin
             cnt_512 := (others => '0');
             framecnt <= 0;
             en_len_r <= false;
+            en_snden2 <= false;
+            en_snden4 <= false;
+            en_len   <= false;
+            en_env   <= false;
+            en_sweep <= false;
+            en_512 <= false;
 
         elsif rising_edge(clk) then
             if ce = '1' then
@@ -728,7 +734,7 @@ begin
 
     end process;
 
-    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access)
+    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, reset)
         constant duty_0          : std_logic_vector(0 to 7) := "00000001";
         constant duty_1          : std_logic_vector(0 to 7) := "10000001";
         constant duty_2          : std_logic_vector(0 to 7) := "10000111";
@@ -811,9 +817,9 @@ begin
             sweep_negate    := false;
 
             -- zombie mode check if env is still updating
-            sq2_envoff      := false;
-            sq1_envoff      := false;
-            noi_envoff      := false;
+            sq2_envoff      := true;
+            sq1_envoff      := true;
+            noi_envoff      := true;
 
             sq1_len  := (others => '0');
             sq2_len  := (others => '0');
@@ -998,7 +1004,7 @@ begin
                         end if;
                     end if;
 
-                    if (sq1_trigger_r = '1' and sq1_trigger = '0') or sq1_nr2change = '1' then  -- falling edge of trigger
+                    if ((sq1_trigger_r = '1' and sq1_trigger = '0') or sq1_nr2change = '1') and sq1_playing = '1' then  -- falling edge of trigger
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(sq1_vol);
@@ -1142,7 +1148,7 @@ begin
                         end if;
                     end if;
 
-                    if (sq2_trigger_r = '1' and sq2_trigger = '0') or sq2_nr2change = '1' then  -- falling edge of trigger
+                    if ((sq2_trigger_r = '1' and sq2_trigger = '0') or sq2_nr2change = '1') and sq2_playing = '1' then  -- falling edge of trigger
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(sq2_vol);
@@ -1273,7 +1279,7 @@ begin
                         end if;
                     end if;
 
-                    if noi_trigger = '1' or noi_nr2change = '1' then
+                    if (noi_trigger = '1' or noi_nr2change = '1') and noi_playing = '1' then
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(noi_vol);
@@ -1402,12 +1408,9 @@ begin
 
                     if wav_enable = '1' and wav_volsh /= "00" then
                         case wav_volsh is
-                                --				when "01" => wav_wav <= wav_ram(0) & "00";
-                                --				when "10" => wav_wav <= '0' & wav_ram(0) & '0';
-                                --				when "11" => wav_wav <= "00" & wav_ram(0);
                             when "01" => wav_wav   <= wav_ram(to_integer(wav_index)) & "00";
-                            when "10" => wav_wav   <= '0' & wav_ram(to_integer(wav_index)) & '0';
-                            when "11" => wav_wav   <= "00" & wav_ram(to_integer(wav_index));
+                            when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1)) & "00";
+                            when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2)) & "00";
                             when others => wav_wav <= (others => 'X');
                         end case;
                     else
@@ -1449,9 +1452,9 @@ begin
                     sweep_negate    := false;
         
                     -- zombie mode check if env is still updating
-                    sq2_envoff      := false;
-                    sq1_envoff      := false;
-                    noi_envoff      := false;
+                    sq2_envoff      := true;
+                    sq1_envoff      := true;
+                    noi_envoff      := true;
         
                     if is_gbc = '1' then
                         sq1_len  := (others => '0');
