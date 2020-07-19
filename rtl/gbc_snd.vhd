@@ -625,7 +625,7 @@ begin
     process (s1_addr, sq1_swper, sq1_swdir, sq1_swshift, sq1_duty, sq1_svol, sq1_envsgn, sq1_envper, sq1_lenchk,
         noi_playing, wav_playing, sq2_playing, sq1_playing, wav_enable, wav_volsh, wav_ram, wav_index, wav_access,
         sq2_duty, sq2_svol, sq2_envsgn, sq2_envper, sq2_lenchk, snd_enable, wav_lenchk, noi_svol, noi_envsgn, noi_envper,
-        noi_freqsh, noi_short, noi_div, noi_lenchk, ch_vol, ch_map, is_gbc)
+        noi_freqsh, noi_short, noi_div, noi_lenchk, ch_vol, ch_map, is_gbc, sq1_vol, sq2_vol, wav_wav, noi_vol)
         variable wave_index_read : std_logic_vector(3 downto 0);
     begin
         case s1_addr is
@@ -728,6 +728,34 @@ begin
                 s1_readdata <= ch_vol; -- NR50 FF24
             when "0100101" =>
                 s1_readdata <= ch_map; -- NR51 FF25
+            
+                -- Undocumented Registers
+            when "1110110"  =>         -- PCM12 FF76
+                  if is_gbc = '1' then
+                    s1_readdata <= (others => '0');
+                    if  sq2_playing = '1' then
+                        s1_readdata(7 downto 4) <= sq2_vol;
+                    end if;
+                    if  sq1_playing = '1' then
+                        s1_readdata(3 downto 0) <= sq1_vol;
+                    end if;
+                  else
+                    s1_readdata <= X"FF";
+                  end if;
+            when "1110111"  =>         -- PCM34 FF77
+                  if is_gbc = '1' then
+                    s1_readdata <= (others => '0');
+                    if  noi_playing = '1' then
+                        s1_readdata(7 downto 4) <= noi_vol;
+                    end if;
+                    if  wav_playing = '1' then
+                        s1_readdata(3 downto 0) <= wav_wav(5 downto 2);  
+                    end if;
+                  else
+                    s1_readdata <= X"FF";
+                  end if;
+
+            
             when others =>
                 s1_readdata <= X"FF";
         end case;
