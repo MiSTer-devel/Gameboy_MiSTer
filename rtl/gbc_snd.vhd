@@ -229,6 +229,7 @@ begin
         variable sq1_trigger_cnt : unsigned(2 downto 0);
         variable sq2_trigger_cnt : unsigned(2 downto 0);
         variable wav_trigger_cnt : unsigned(3 downto 0);
+        variable wave_index_write : std_logic_vector(3 downto 0);
     begin
 
         -- Registers
@@ -520,56 +521,67 @@ begin
                             -- Control/Status
                         when "0100100" => ch_vol <= s1_writedata; -- NR50 FF24
                         when "0100101" => ch_map <= s1_writedata; -- NR51 FF25
-                            --
+
                             -- Wave Table
-                        when "0110000" =>                         --      FF30 0000 1111 Samples 0 and 1
-                            wav_ram(0) <= s1_writedata(7 downto 4);
-                            wav_ram(1) <= s1_writedata(3 downto 0);
-                        when "0110001" => --      FF31 0000 1111 Samples 2 and 3
-                            wav_ram(2) <= s1_writedata(7 downto 4);
-                            wav_ram(3) <= s1_writedata(3 downto 0);
-                        when "0110010" => --      FF32 0000 1111 Samples 4 and 5
-                            wav_ram(4) <= s1_writedata(7 downto 4);
-                            wav_ram(5) <= s1_writedata(3 downto 0);
-                        when "0110011" => --      FF33 0000 1111 Samples 6 and 31
-                            wav_ram(6) <= s1_writedata(7 downto 4);
-                            wav_ram(7) <= s1_writedata(3 downto 0);
-                        when "0110100" => --      FF34 0000 1111 Samples 8 and 31
-                            wav_ram(8) <= s1_writedata(7 downto 4);
-                            wav_ram(9) <= s1_writedata(3 downto 0);
-                        when "0110101" => --      FF35 0000 1111 Samples 10 and 11
-                            wav_ram(10) <= s1_writedata(7 downto 4);
-                            wav_ram(11) <= s1_writedata(3 downto 0);
-                        when "0110110" => --      FF36 0000 1111 Samples 12 and 13
-                            wav_ram(12) <= s1_writedata(7 downto 4);
-                            wav_ram(13) <= s1_writedata(3 downto 0);
-                        when "0110111" => --      FF37 0000 1111 Samples 14 and 15
-                            wav_ram(14) <= s1_writedata(7 downto 4);
-                            wav_ram(15) <= s1_writedata(3 downto 0);
-                        when "0111000" => --      FF38 0000 1111 Samples 16 and 17
-                            wav_ram(16) <= s1_writedata(7 downto 4);
-                            wav_ram(17) <= s1_writedata(3 downto 0);
-                        when "0111001" => --      FF39 0000 1111 Samples 18 and 19
-                            wav_ram(18) <= s1_writedata(7 downto 4);
-                            wav_ram(19) <= s1_writedata(3 downto 0);
-                        when "0111010" => --      FF3A 0000 1111 Samples 20 and 21
-                            wav_ram(20) <= s1_writedata(7 downto 4);
-                            wav_ram(21) <= s1_writedata(3 downto 0);
-                        when "0111011" => --      FF3B 0000 1111 Samples 22 and 23
-                            wav_ram(22) <= s1_writedata(7 downto 4);
-                            wav_ram(23) <= s1_writedata(3 downto 0);
-                        when "0111100" => --      FF3C 0000 1111 Samples 24 and 25
-                            wav_ram(24) <= s1_writedata(7 downto 4);
-                            wav_ram(25) <= s1_writedata(3 downto 0);
-                        when "0111101" => --      FF3D 0000 1111 Samples 26 and 27
-                            wav_ram(26) <= s1_writedata(7 downto 4);
-                            wav_ram(27) <= s1_writedata(3 downto 0);
-                        when "0111110" => --      FF3E 0000 1111 Samples 28 and 29
-                            wav_ram(28) <= s1_writedata(7 downto 4);
-                            wav_ram(29) <= s1_writedata(3 downto 0);
-                        when "0111111" => --      FF3F 0000 1111 Samples 30 and 31
-                            wav_ram(30) <= s1_writedata(7 downto 4);
-                            wav_ram(31) <= s1_writedata(3 downto 0);
+                        when "0110000" | "0110001" | "0110010" | "0110011" | "0110100" | "0110101" | "0110110" | "0110111" | "0111000" | "0111001" | "0111010" | "0111011" | "0111100" | "0111101" | "0111110" | "0111111" => -- FF30 to FF3F
+                            if wav_playing = '1' then
+                                wave_index_write := std_logic_vector(wav_index(4 downto 1));
+                            else
+                                wave_index_write := s1_addr(3 downto 0);
+                            end if;
+            
+                            if is_gbc = '1' or wav_access > 0 or wav_playing = '0' then
+                                case wave_index_write is
+                                when "0000" => --      FF30 0000 1111 Samples 0 and 1
+                                    wav_ram(0) <= s1_writedata(7 downto 4);
+                                    wav_ram(1) <= s1_writedata(3 downto 0);
+                                when "0001" => --      FF31 0000 1111 Samples 2 and 3
+                                    wav_ram(2) <= s1_writedata(7 downto 4);
+                                    wav_ram(3) <= s1_writedata(3 downto 0);
+                                when "0010" => --      FF32 0000 1111 Samples 4 and 5
+                                    wav_ram(4) <= s1_writedata(7 downto 4);
+                                    wav_ram(5) <= s1_writedata(3 downto 0);
+                                when "0011" => --      FF33 0000 1111 Samples 6 and 31
+                                    wav_ram(6) <= s1_writedata(7 downto 4);
+                                    wav_ram(7) <= s1_writedata(3 downto 0);
+                                when "0100" => --      FF34 0000 1111 Samples 8 and 31
+                                    wav_ram(8) <= s1_writedata(7 downto 4);
+                                    wav_ram(9) <= s1_writedata(3 downto 0);
+                                when "0101" => --      FF35 0000 1111 Samples 10 and 11
+                                    wav_ram(10) <= s1_writedata(7 downto 4);
+                                    wav_ram(11) <= s1_writedata(3 downto 0);
+                                when "0110" => --      FF36 0000 1111 Samples 12 and 13
+                                    wav_ram(12) <= s1_writedata(7 downto 4);
+                                    wav_ram(13) <= s1_writedata(3 downto 0);
+                                when "0111" => --      FF37 0000 1111 Samples 14 and 15
+                                    wav_ram(14) <= s1_writedata(7 downto 4);
+                                    wav_ram(15) <= s1_writedata(3 downto 0);
+                                when "1000" => --      FF38 0000 1111 Samples 16 and 17
+                                    wav_ram(16) <= s1_writedata(7 downto 4);
+                                    wav_ram(17) <= s1_writedata(3 downto 0);
+                                when "1001" => --      FF39 0000 1111 Samples 18 and 19
+                                    wav_ram(18) <= s1_writedata(7 downto 4);
+                                    wav_ram(19) <= s1_writedata(3 downto 0);
+                                when "1010" => --      FF3A 0000 1111 Samples 20 and 21
+                                    wav_ram(20) <= s1_writedata(7 downto 4);
+                                    wav_ram(21) <= s1_writedata(3 downto 0);
+                                when "1011" => --      FF3B 0000 1111 Samples 22 and 23
+                                    wav_ram(22) <= s1_writedata(7 downto 4);
+                                    wav_ram(23) <= s1_writedata(3 downto 0);
+                                when "1100" => --      FF3C 0000 1111 Samples 24 and 25
+                                    wav_ram(24) <= s1_writedata(7 downto 4);
+                                    wav_ram(25) <= s1_writedata(3 downto 0);
+                                when "1101" => --      FF3D 0000 1111 Samples 26 and 27
+                                    wav_ram(26) <= s1_writedata(7 downto 4);
+                                    wav_ram(27) <= s1_writedata(3 downto 0);
+                                when "1110" => --      FF3E 0000 1111 Samples 28 and 29
+                                    wav_ram(28) <= s1_writedata(7 downto 4);
+                                    wav_ram(29) <= s1_writedata(3 downto 0);
+                                when "1111" => --      FF3F 0000 1111 Samples 30 and 31
+                                    wav_ram(30) <= s1_writedata(7 downto 4);
+                                    wav_ram(31) <= s1_writedata(3 downto 0);
+                                end case;
+                            end if;
 
                         -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
                         when "0100110" => 
@@ -641,7 +653,7 @@ begin
     process (s1_addr, sq1_swper, sq1_swdir, sq1_swshift, sq1_duty, sq1_svol, sq1_envsgn, sq1_envper, sq1_lenchk,
         noi_playing, wav_playing, sq2_playing, sq1_playing, wav_enable, wav_volsh, wav_ram, wav_index, wav_access,
         sq2_duty, sq2_svol, sq2_envsgn, sq2_envper, sq2_lenchk, snd_enable, wav_lenchk, noi_svol, noi_envsgn, noi_envper,
-        noi_freqsh, noi_short, noi_div, noi_lenchk, ch_vol, ch_map, is_gbc, sq1_vol, sq2_vol, wav_wav, noi_vol)
+        noi_freqsh, noi_short, noi_div, noi_lenchk, ch_vol, ch_map, is_gbc, sq1_wav, sq2_wav, wav_wav, noi_wav)
         variable wave_index_read : std_logic_vector(3 downto 0);
     begin
         case s1_addr is
@@ -778,7 +790,7 @@ begin
 
     end process;
 
-    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, reset)
+    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, reset)
         constant duty_0          : std_logic_vector(0 to 7) := "00000001";
         constant duty_1          : std_logic_vector(0 to 7) := "10000001";
         constant duty_2          : std_logic_vector(0 to 7) := "10000111";
