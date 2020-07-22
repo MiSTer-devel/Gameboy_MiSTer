@@ -52,6 +52,8 @@ architecture SYN of gbc_snd is
     signal sq1_slen          : std_logic_vector(6 downto 0);  -- Sq1 play length
     signal sq1_svol          : std_logic_vector(3 downto 0);  -- Sq1 initial volume
 
+    signal sq1_out         : std_logic;
+
     signal sq1_envsgn        : std_logic;                     -- Sq1 envelope sign
     signal sq1_envsgn_old    : std_logic;                     -- Sq1 old envelope sign (used in zombie mode)
     signal sq1_envper        : std_logic_vector(2 downto 0);  -- Sq1 envelope period
@@ -70,6 +72,9 @@ architecture SYN of gbc_snd is
 
     signal sq1_playing       : std_logic;                    -- Sq1 channel active
     signal sq1_wav           : std_logic_vector(5 downto 0); -- Sq1 output waveform
+    signal sq1_suppressed    : std_logic;                    -- Sq1 channel 1st sample suppressed when triggered after poweron
+
+    signal sq2_out         : std_logic;
 
     signal sq2_duty          : std_logic_vector(1 downto 0); -- Sq2 duty cycle
     signal sq2_slen          : std_logic_vector(6 downto 0); -- Sq2 play length
@@ -88,7 +93,8 @@ architecture SYN of gbc_snd is
     signal sq2_vol           : std_logic_vector(3 downto 0);  -- Sq2 initial volume
     signal sq2_playing       : std_logic;                     -- Sq2 channel active
     signal sq2_wav           : std_logic_vector(5 downto 0);  -- Sq2 output waveform
-
+    signal sq2_suppressed    : std_logic;                     -- Sq2 channel 1st sample suppressed when triggered after poweron
+    
     signal wav_enable        : std_logic;                     -- Wave enable
     signal wav_slen          : std_logic_vector(8 downto 0);  -- Wave play length
     signal wav_lenchange     : std_logic;
@@ -220,8 +226,8 @@ begin
 
     -- Registers
     registers : process (clk, snd_enable, reset, is_gbc)
-        variable sq1_trigger_cnt : unsigned(3 downto 0);
-        variable sq2_trigger_cnt : unsigned(3 downto 0);
+        variable sq1_trigger_cnt : unsigned(2 downto 0);
+        variable sq2_trigger_cnt : unsigned(2 downto 0);
         variable wav_trigger_cnt : unsigned(3 downto 0);
     begin
 
@@ -254,9 +260,9 @@ begin
             wav_freq    <= (others => '0');
             wav_trigger <= '0';
             wav_lenchk  <= '0';
-            sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
-            sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
-            wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
+            sq1_trigger_cnt := (others => '0'); --counter to delay the trigger
+            sq2_trigger_cnt := (others => '0'); --counter to delay the trigger
+            wav_trigger_cnt := (others => '0'); --counter to delay the trigger
             noi_slen    <= (others     => '0');
             noi_svol    <= (others     => '0');
             noi_envsgn  <= '0';
@@ -343,18 +349,20 @@ begin
 
         elsif rising_edge(clk) then
             if ce = '1' then
-               
-                -- TODO: align sq1,sq2 and noi triggers               
-                if sq1_trigger_cnt = "0000" then
-                    sq1_trigger <= '0';
-                else
-                    sq1_trigger_cnt := sq1_trigger_cnt - 1;
-                end if;
                 
-                if sq2_trigger_cnt = "0000" then
-                    sq2_trigger <= '0';
-                else
-                    sq2_trigger_cnt := sq2_trigger_cnt - 1;
+                -- TODO: align wav and noi triggers                 
+                if en_snd2 then             
+                    if sq1_trigger_cnt = "000" then
+                        sq1_trigger <= '0';
+                    else
+                        sq1_trigger_cnt := sq1_trigger_cnt - 1;
+                    end if;
+                
+                    if sq2_trigger_cnt = "000" then
+                        sq2_trigger <= '0';
+                    else
+                        sq2_trigger_cnt := sq2_trigger_cnt - 1;
+                    end if;
                 end if;
 
                 if wav_trigger_cnt = "0000" then
@@ -415,9 +423,13 @@ begin
                         when "0010011" => -- NR13 FF13 FFFF FFFF Frequency LSB
                             sq1_freq(7 downto 0) <= s1_writedata;
                         when "0010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
+                            -- TODO: 
+                            -- timer quirk 
+                            --according to sameboy :
+                            -- /* Timing quirk: if already active, sound starts 2 (2MHz) ticks earlier.*/
                             sq1_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
-                                sq1_trigger_cnt := "1001";
+                                sq1_trigger_cnt := "100";
                             end if;
                             if sq1_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq1_lenquirk <= '1';
@@ -444,9 +456,13 @@ begin
                         when "0011000" => -- NR23 FF18 FFFF FFFF Frequency LSB
                             sq2_freq(7 downto 0) <= s1_writedata;
                         when "0011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
+                            -- TODO: 
+                            -- timer quirk 
+                            --according to sameboy :
+                            -- /* Timing quirk: if already active, sound starts 2 (2MHz) ticks earlier.*/                        
                             sq2_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
-                                sq2_trigger_cnt := "1001";
+                                    sq2_trigger_cnt := "100";
                             end if;
                             if sq2_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq2_lenquirk <= '1';
@@ -734,10 +750,10 @@ begin
                   if is_gbc = '1' then
                     s1_readdata <= (others => '0');
                     if  sq2_playing = '1' then
-                        s1_readdata(7 downto 4) <= sq2_vol;
+                        s1_readdata(7 downto 4) <= sq2_wav(5 downto 2);
                     end if;
                     if  sq1_playing = '1' then
-                        s1_readdata(3 downto 0) <= sq1_vol;
+                        s1_readdata(3 downto 0) <= sq1_wav(5 downto 2);
                     end if;
                   else
                     s1_readdata <= X"FF";
@@ -746,7 +762,7 @@ begin
                   if is_gbc = '1' then
                     s1_readdata <= (others => '0');
                     if  noi_playing = '1' then
-                        s1_readdata(7 downto 4) <= noi_vol;
+                        s1_readdata(7 downto 4) <= noi_wav(5 downto 2);
                     end if;
                     if  wav_playing = '1' then
                         s1_readdata(3 downto 0) <= wav_wav(5 downto 2);  
@@ -774,7 +790,7 @@ begin
         variable sq1_swcnt       : std_logic_vector(3 downto 0); -- Sq1 sweep timer count
         variable sq1_swoffs      : unsigned(11 downto 0);
         variable sq1_swfr        : unsigned(11 downto 0);
-        variable sq1_out         : std_logic;
+
         variable sq1_sweep_en    : boolean;
         variable sweep_calculate : boolean;
         variable sweep_update    : boolean;
@@ -786,13 +802,11 @@ begin
         variable sq2_len         : std_logic_vector(6 downto 0);
         variable sq2_envcnt      : std_logic_vector(3 downto 0); -- Sq2 envelope timer count
         variable sq2_envoff      : boolean;                      -- check if envelope is on (zombiemode)
-        variable sq2_out         : std_logic;
 
         variable wav_fcnt        : unsigned(10 downto 0);
         variable wav_len         : std_logic_vector(8 downto 0);
         variable wav_shift_r     : boolean;
         variable wav_shift       : boolean;
-        -- variable wav_index	: unsigned(4 downto 0);
 
         variable noi_divisor     : unsigned(10 downto 0); -- Noise frequency divisor
         variable noi_period      : unsigned(10 downto 0); -- Noise period    (calculated)
@@ -808,6 +822,25 @@ begin
 
         variable acc_fcnt        : unsigned(11 downto 0);
     begin
+
+        if sq1_out = '1' and sq1_suppressed = '0' then
+            sq1_wav <= sq1_vol & "00";
+        else
+            sq1_wav <= "000000";
+        end if;
+        
+        if sq2_out = '1' and sq2_suppressed = '0' then
+            sq2_wav <= sq2_vol & "00";
+        else
+            sq2_wav <= "000000";
+        end if;
+
+        if noi_out = '1' then
+            noi_wav <= noi_vol & "00";
+        else
+            noi_wav <= "000000";
+        end if;
+
         -- Sound processing
         if reset = '1' then
             sq1_playing <= '0';
@@ -819,13 +852,16 @@ begin
             sq1_swcnt  := "0000";
             sq1_swoffs := (others => '0');
             sq1_swfr   := (others => '0');
-            sq1_out    := '0';
+            sq1_out    <= '0';
             sq2_playing <= '0';
             sq2_fcnt  := (others => '0');
             sq2_phase := 0;
             sq2_vol <= "0000";
             sq2_envcnt := "0000";
-            sq2_out    := '0';
+            sq2_out    <= '0';
+            
+            sq1_suppressed <= '1';
+            sq2_suppressed <= '1';
 
             wav_playing <= '0';
             wav_fcnt    := (others => '0');
@@ -897,6 +933,7 @@ begin
                         if sq1_playing = '1' then
                             acc_fcnt := ('0' & sq1_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
+                                sq1_suppressed <= '0';
                                 sq1_phase := sq1_phase + 1;
                                 sq1_fcnt := unsigned(sq1_freq);
                             else
@@ -905,18 +942,12 @@ begin
                         end if;
 
                         case sq1_duty is
-                            when "00"   => sq1_out := duty_0(sq1_phase);
-                            when "01"   => sq1_out := duty_1(sq1_phase);
-                            when "10"   => sq1_out := duty_2(sq1_phase);
-                            when "11"   => sq1_out := duty_3(sq1_phase);
+                            when "00"   => sq1_out <= duty_0(sq1_phase);
+                            when "01"   => sq1_out <= duty_1(sq1_phase);
+                            when "10"   => sq1_out <= duty_2(sq1_phase);
+                            when "11"   => sq1_out <= duty_3(sq1_phase);
                             when others => null;
                         end case;
-
-                        if sq1_out = '1' then
-                            sq1_wav <= sq1_vol & "00";
-                        else
-                            sq1_wav <= "000000";
-                        end if;
                     end if;
 
                     -- Length counter
@@ -1062,6 +1093,10 @@ begin
                         -- from sameboy:
                         -- Current sample index remains unchanged when restarting channels 1 or 2. It is only reset by turning the APU off.
 
+                        if sq1_playing = '0' then
+                          sq1_suppressed <= '1';  -- suppress 1st sample if channel wasn't active
+                        end if;
+
                         sq1_vol <= sq1_svol;
                         sq1_fr2 <= sq1_freq;                                        -- shadow frequency register for sweep unit
                         sq1_sweep_en := sq1_swper /= "000" or sq1_swshift /= "000"; -- sweep unit enabled ?
@@ -1107,6 +1142,7 @@ begin
                         if sq2_playing = '1' then
                             acc_fcnt := ('0' & sq2_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
+                                sq2_suppressed <= '0';
                                 sq2_phase := sq2_phase + 1;
                                 sq2_fcnt := unsigned(sq2_freq);
                             else
@@ -1115,18 +1151,12 @@ begin
                         end if;
 
                         case sq2_duty is
-                            when "00"   => sq2_out := duty_0(sq2_phase);
-                            when "01"   => sq2_out := duty_1(sq2_phase);
-                            when "10"   => sq2_out := duty_2(sq2_phase);
-                            when "11"   => sq2_out := duty_3(sq2_phase);
+                            when "00"   => sq2_out <= duty_0(sq2_phase);
+                            when "01"   => sq2_out <= duty_1(sq2_phase);
+                            when "10"   => sq2_out <= duty_2(sq2_phase);
+                            when "11"   => sq2_out <= duty_3(sq2_phase);
                             when others => null;
                         end case;
-
-                        if sq2_out = '1' then
-                            sq2_wav <= sq2_vol & "00";
-                        else
-                            sq2_wav <= "000000";
-                        end if;
                     end if;
 
                     -- Length counter
@@ -1206,6 +1236,10 @@ begin
                         -- from sameboy:
                         -- Current sample index remains unchanged when restarting channels 1 or 2. It is only reset by turning the APU off.
 
+                        if sq2_playing = '0' then
+                            sq2_suppressed <= '1';  -- suppress 1st sample if channel wasn't active
+                        end if;
+
                         sq2_vol <= sq2_svol;
 
                         -- sq2_fr2 <= sq2_freq;
@@ -1251,12 +1285,6 @@ begin
                             else
                                 noi_fcnt := acc_fcnt(noi_fcnt'range);
                             end if;
-                        end if;
-
-                        if noi_out = '1' then
-                            noi_wav <= noi_vol & "00";
-                        else
-                            noi_wav <= "000000";
                         end if;
                     end if;
 
@@ -1454,13 +1482,16 @@ begin
                     sq1_swcnt  := "0000";
                     sq1_swoffs := (others => '0');
                     sq1_swfr   := (others => '0');
-                    sq1_out    := '0';
+                    sq1_out   <= '0';
                     sq2_playing <= '0';
                     sq2_fcnt  := (others => '0');
                     sq2_phase := 0;
                     sq2_vol <= "0000";
                     sq2_envcnt := "0000";
-                    sq2_out    := '0';
+                    sq2_out    <= '0';
+
+                    sq1_suppressed <= '1';
+                    sq2_suppressed <= '1';
         
                     wav_playing <= '0';
                     wav_fcnt    := (others => '0');
