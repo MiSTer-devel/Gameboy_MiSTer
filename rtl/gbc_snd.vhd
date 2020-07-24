@@ -808,12 +808,14 @@ begin
         variable sweep_update    : boolean;
         variable sweep_negate    : boolean;
         variable sq1_envoff      : boolean; -- check if envelope is on (zombiemode)
+        variable sq1_sduty       : std_logic_vector(1 downto 0); -- Sq1 duty cycle shadow register
 
         variable sq2_fcnt        : unsigned(10 downto 0);
         variable sq2_phase       : integer range 0 to 7;
         variable sq2_len         : std_logic_vector(6 downto 0);
         variable sq2_envcnt      : std_logic_vector(3 downto 0); -- Sq2 envelope timer count
         variable sq2_envoff      : boolean;                      -- check if envelope is on (zombiemode)
+        variable sq2_sduty       : std_logic_vector(1 downto 0); -- Sq2 duty cycle shadow register
 
         variable wav_fcnt        : unsigned(10 downto 0);
         variable wav_len         : std_logic_vector(8 downto 0);
@@ -874,6 +876,9 @@ begin
             
             sq1_suppressed <= '1';
             sq2_suppressed <= '1';
+
+            sq1_sduty    := (others => '0');
+            sq2_sduty    := (others => '0');
 
             wav_playing <= '0';
             wav_fcnt    := (others => '0');
@@ -948,12 +953,13 @@ begin
                                 sq1_suppressed <= '0';
                                 sq1_phase := sq1_phase + 1;
                                 sq1_fcnt := unsigned(sq1_freq);
+                                sq1_sduty := sq1_duty; -- only change duty after the sample is finished
                             else
                                 sq1_fcnt := acc_fcnt(sq1_fcnt'range);
                             end if;
                         end if;
 
-                        case sq1_duty is
+                        case sq1_sduty is
                             when "00"   => sq1_out <= duty_0(sq1_phase);
                             when "01"   => sq1_out <= duty_1(sq1_phase);
                             when "10"   => sq1_out <= duty_2(sq1_phase);
@@ -1161,12 +1167,13 @@ begin
                                 sq2_suppressed <= '0';
                                 sq2_phase := sq2_phase + 1;
                                 sq2_fcnt := unsigned(sq2_freq);
+                                sq2_sduty := sq2_duty;  -- only change duty after the sample is finished
                             else
                                 sq2_fcnt := acc_fcnt(sq2_fcnt'range);
                             end if;
                         end if;
 
-                        case sq2_duty is
+                        case sq2_sduty is
                             when "00"   => sq2_out <= duty_0(sq2_phase);
                             when "01"   => sq2_out <= duty_1(sq2_phase);
                             when "10"   => sq2_out <= duty_2(sq2_phase);
@@ -1513,6 +1520,9 @@ begin
 
                     sq1_suppressed <= '1';
                     sq2_suppressed <= '1';
+
+                    sq1_sduty    := (others => '0');
+                    sq2_sduty    := (others => '0');
         
                     wav_playing <= '0';
                     wav_fcnt    := (others => '0');
