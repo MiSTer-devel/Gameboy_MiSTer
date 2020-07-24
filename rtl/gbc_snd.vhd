@@ -423,14 +423,14 @@ begin
                             sq1_envper     <= s1_writedata(2 downto 0);
                         when "0010011" => -- NR13 FF13 FFFF FFFF Frequency LSB
                             sq1_freq(7 downto 0) <= s1_writedata;
-                        when "0010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB
-                            -- TODO: 
-                            -- timer quirk 
-                            --according to sameboy :
-                            -- /* Timing quirk: if already active, sound starts 2 (2MHz) ticks earlier.*/
+                        when "0010100" => -- NR14 FF14 TL-- -FFF Trigger, Length enable, Frequency MSB                           
                             sq1_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
-                                sq1_trigger_cnt := "100";
+                                if sq1_playing = '1' then
+                                    sq1_trigger_cnt := "010";  -- --according to sameboy : Timing quirk: if already active, sound starts 2 (2MHz) ticks earlier.
+                                else
+                                    sq1_trigger_cnt := "100";
+                                end if;
                             end if;
                             if sq1_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq1_lenquirk <= '1';
@@ -456,14 +456,14 @@ begin
                             sq2_envper     <= s1_writedata(2 downto 0);
                         when "0011000" => -- NR23 FF18 FFFF FFFF Frequency LSB
                             sq2_freq(7 downto 0) <= s1_writedata;
-                        when "0011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB
-                            -- TODO: 
-                            -- timer quirk 
-                            --according to sameboy :
-                            -- /* Timing quirk: if already active, sound starts 2 (2MHz) ticks earlier.*/                        
+                        when "0011001" => -- NR24 FF19 TL-- -FFF Trigger, Length enable, Frequency MSB                                                   
                             sq2_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
+                                if sq2_playing = '1' then
+                                    sq2_trigger_cnt := "010"; -- according to sameboy : Timing quirk: if already active, sound starts 2 (2MHz) ticks earlier.
+                                else
                                     sq2_trigger_cnt := "100";
+                                end if;
                             end if;
                             if sq2_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 sq2_lenquirk <= '1';
@@ -1099,6 +1099,10 @@ begin
                         end if;
                     end if;
 
+                    -- if sound was triggered and already playing reset/stop frequency counter
+                    if sq1_trigger = '1' and sq1_playing = '1' then
+                        sq1_fcnt  := (others   => '0');
+                    end if;
 
                     -- Check sample trigger and start playing
                     if sq1_trigger_r = '1' and sq1_trigger = '0' then -- falling edge of trigger
@@ -1240,6 +1244,11 @@ begin
                         if sq2_svol = "00000" and sq2_envsgn = '0' then -- dac disabled
                             sq2_playing <= '0';
                         end if;
+                    end if;
+
+                    -- if sound was triggered and already playing reset/stop frequency counter
+                    if sq2_trigger = '1' and sq2_playing = '1' then
+                        sq2_fcnt  := (others   => '0');
                     end if;
 
                     -- Check sample trigger and start playing
