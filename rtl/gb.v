@@ -90,8 +90,8 @@ wire sel_if   = cpu_addr == 16'hff0f;                // interupt flag
 wire sel_iram = (cpu_addr[15:14] == 2'b11) && (~&cpu_addr[13:9]); // 8k internal ram at $C000-DFFF. C000-DDFF mirrored to E000-FDFF
 wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram at $ff80
 					 (cpu_addr != 16'hffff);
-wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f
-					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001));
+wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f and ff76/ff77 PCM12/PCM34 (undocumented registers)
+					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001) || (cpu_addr[7:0] == 8'h76) || (cpu_addr[7:0] == 8'h77));
 					
 //DMA can select from $0000 to $F100					
 wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
@@ -155,13 +155,19 @@ wire ce_cpu = cpu_speed ? ce_2x:ce;
 wire clk_cpu = clk_sys & ce_cpu;
 
 wire cpu_clken = !(isGBC && hdma_active) && ce_cpu;  //when hdma is enabled stop CPU (GBC)
+reg reset_r = 1;
+
+//sync reset with clock
+always  @ (posedge clk) begin
+	reset_r <= reset;
+end
 
 
 wire cpu_stop;
 
 	
 GBse cpu (
-	.RESET_n    ( !reset        ),
+	.RESET_n    ( !reset_r        ),
 	.CLK_n      ( clk_sys       ),
 	.CLKEN      ( cpu_clken     ),
 	.WAIT_n     ( 1'b1          ),
@@ -210,7 +216,7 @@ reg prepare_switch; // set to 1 to toggle speed
 assign speed = cpu_speed;
 
 always @(posedge clk_sys) begin
-   if(reset) begin
+   if(reset_r) begin
 		cpu_speed <= 1'b0;
 		prepare_switch <= 1'b0;
 	end
@@ -235,13 +241,13 @@ wire [7:0] audio_do;
 gbc_snd audio (
 	.clk				( clk_sys			),
 	.ce            ( ce_2x           ),
-	.reset			( reset				),
+	.reset			( reset_r				),
 	
 	.is_gbc        ( isGBC           ),
 
 	.s1_read  		( audio_rd  		),
 	.s1_write 		( audio_wr  		),
-	.s1_addr    	( cpu_addr[5:0]	),
+	.s1_addr    	( cpu_addr[6:0]	),
    .s1_readdata 	( audio_do        ),
 	.s1_writedata  ( cpu_do       	),
 
@@ -268,7 +274,7 @@ assign sc_int_clock2 = sc_shiftclock;
 
 link link (
   .clk(clk_cpu),
-  .rst(reset),
+  .rst(reset_r),
 
   .sel_sc(sel_sc),
   .sel_sb(sel_sb),
@@ -299,7 +305,7 @@ always @(posedge clk_cpu) begin
 	reg [8:0] serial_clk_div; //8192Hz
 
 	serial_irq_f <= 1'b0;
-   if(reset) begin
+   if(reset_r) begin
 		  sc_start_f <= 1'b0;
 		  sc_shiftclock_f <= 1'b0;
 	end else if (sel_sc && !cpu_wr_n) begin	 //cpu write
@@ -334,7 +340,7 @@ end
 reg  [1:0] p54;
 
 always @(posedge clk_cpu) begin
-	if(reset) p54 <= 2'b11;
+	if(reset_r) p54 <= 2'b11;
 	else if(sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
 
@@ -374,7 +380,7 @@ reg old_vblank_irq, old_video_irq, old_timer_irq, old_serial_irq;
 always @(negedge clk_cpu) begin //negedge to trigger interrupt earlier
 	reg old_ack = 0;
 	
-	if(reset) begin
+	if(reset_r) begin
 		ie_r <= 5'h00;
 		if_r <= 5'h00;
 	end
@@ -430,7 +436,7 @@ end
 wire timer_irq;
 wire [7:0] timer_do;
 timer timer (
-	.reset	    ( reset         ),
+	.reset	    ( reset_r         ),
 	.clk		    ( clk_cpu       ), //2x in fast mode
 
 	.irq         ( timer_irq     ),
@@ -456,7 +462,7 @@ wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?(isGBC&&vram_bank)?vram1
 
 
 video video (
-	.reset       ( reset         ),
+	.reset       ( reset_r         ),
 	.clk         ( clk_sys       ),
 	.ce          ( ce            ),   // 4Mhz
 	.ce_cpu      ( ce_cpu        ),   //can be 2x in cgb double speed mode
@@ -547,7 +553,7 @@ wire hdma_rd;
 wire hdma_active;
 
 hdma hdma(
-	.reset	          ( reset         ),
+	.reset	          ( reset_r         ),
 	.clk		          ( clk_sys       ),
 	.ce                ( ce_cpu         ),
 	.speed				 ( cpu_speed     ),
@@ -614,7 +620,7 @@ spram #(15) iram (
 
 //GBC WRAM banking
 always @(posedge clk_cpu) begin
-	if(reset)
+	if(reset_r)
 		iram_bank <= 3'd1;
 	else if((cpu_addr == 16'hff70) && !cpu_wr_n && isGBC) begin
 		if (cpu_do[2:0]==3'd0) // 0 -> 1;
@@ -631,7 +637,7 @@ end
 // writing 01(GB) or 11(GBC) to $ff50 disables the internal rom
 reg boot_rom_enabled;
 always @(posedge clk) begin
-	if(reset)
+	if(reset_r)
 		boot_rom_enabled <= 1'b1;
 	else if((cpu_addr == 16'hff50) && !cpu_wr_n)
           if ((isGBC && cpu_do[7:0]==8'h11) || (!isGBC && cpu_do[0]))
