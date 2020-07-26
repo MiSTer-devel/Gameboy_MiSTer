@@ -136,7 +136,7 @@ architecture SYN of gbc_snd is
     signal sq1_trigger_r     : std_logic;
     signal sq2_trigger_r     : std_logic;
     signal wav_trigger_r     : std_logic;
-    -- signal noi_trigger_r     : std_logic;
+    signal noi_trigger_r     : std_logic;
 
 begin
 
@@ -228,6 +228,7 @@ begin
     registers : process (clk, snd_enable, reset, is_gbc)
         variable sq1_trigger_cnt : unsigned(2 downto 0);
         variable sq2_trigger_cnt : unsigned(2 downto 0);
+        variable noi_trigger_cnt : unsigned(2 downto 0);
         variable wav_trigger_cnt : unsigned(3 downto 0);
         variable wave_index_write : std_logic_vector(3 downto 0);
     begin
@@ -364,6 +365,12 @@ begin
                     else
                         sq2_trigger_cnt := sq2_trigger_cnt - 1;
                     end if;
+
+                    if noi_trigger_cnt = "000" then
+                        noi_trigger <= '0';
+                    else
+                        noi_trigger_cnt := noi_trigger_cnt - 1;
+                    end if;
                 end if;
 
                 if wav_trigger_cnt = "0000" then
@@ -372,10 +379,6 @@ begin
                   wav_trigger_cnt := wav_trigger_cnt - 1;
                 end if;
                 
-                if en_snd then
-                    noi_trigger <= '0';
-                end if;
-
                 sq2_nr2change    <= '0';
                 sq1_nr2change    <= '0';
                 noi_nr2change    <= '0';
@@ -513,6 +516,13 @@ begin
                             noi_freqchange <= '1';
                         when "0100011" => -- NR44 FF23 TL-- ---- Trigger, Length enable
                             noi_trigger <= s1_writedata(7);
+                            if s1_writedata(7) = '1' then
+                                if noi_playing = '0' then
+                                    noi_trigger_cnt := "010";
+                                else
+                                    noi_trigger_cnt := "100"; --noi seems to start later instead of early if already playing
+                                end if;
+                            end if;
                             if noi_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 noi_lenquirk <= '1';
                             end if;
@@ -910,7 +920,7 @@ begin
             sq1_trigger_r   <= '0'; 
             sq2_trigger_r   <= '0'; 
             wav_trigger_r   <= '0'; 
-            -- noi_trigger_r   <= '0'; 
+            noi_trigger_r   <= '0'; 
 
         elsif rising_edge(clk) then
             if ce = '1' then
@@ -935,7 +945,7 @@ begin
                 sq1_trigger_r <= sq1_trigger;
                 sq2_trigger_r <= sq2_trigger;
                 wav_trigger_r <= wav_trigger;
-                -- noi_trigger_r <= noi_trigger;
+                noi_trigger_r <= noi_trigger;
 
                 if snd_enable = '1' then
 
@@ -1363,7 +1373,7 @@ begin
                         end if;
                     end if;
 
-                    if (noi_trigger = '1' or noi_nr2change = '1') and noi_playing = '1' then
+                    if ((noi_trigger = '0' and noi_trigger_r = '1') or noi_nr2change = '1') and noi_playing = '1' then
 
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(noi_vol);
@@ -1407,7 +1417,7 @@ begin
                     end if;
 
                     -- Check sample trigger and start playing
-                    if noi_trigger = '1' then
+                    if noi_trigger_r = '1' and noi_trigger = '0' then -- falling edge of trigger
                         noi_vol <= noi_svol;
 
                         noi_lfsr := (others => '1');
@@ -1556,7 +1566,7 @@ begin
                     sq1_trigger_r   <= '0'; 
                     sq2_trigger_r   <= '0'; 
                     wav_trigger_r   <= '0'; 
-                    --noi_trigger_r   <= '0'; 
+                    noi_trigger_r   <= '0'; 
                 
                 end if; 
 
