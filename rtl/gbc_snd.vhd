@@ -101,6 +101,7 @@ architecture SYN of gbc_snd is
     signal wav_lenquirk      : std_logic;
     signal wav_volsh         : std_logic_vector(1 downto 0);  -- Wave volume shift
     signal wav_freq          : std_logic_vector(10 downto 0); -- Wave frequency
+    signal wav_freq_old      : std_logic_vector(10 downto 0); -- Wave frequency old value
     signal wav_trigger       : std_logic;                     -- Wave trigger play note
     signal wav_lenchk        : std_logic;                     -- Wave length check enable
     signal wav_index         : unsigned(4 downto 0);          -- Wave current sample index
@@ -108,6 +109,8 @@ architecture SYN of gbc_snd is
     signal wav_playing       : std_logic;
     signal wav_wav           : std_logic_vector(5 downto 0); -- Wave output waveform
     signal wav_ram           : wav_arr_t;                    -- Wave table
+    signal wav_suppressed    : std_logic;                    -- wav channel 1st sample suppressed when triggered after poweron
+    signal wav_wav_r         : std_logic_vector(5 downto 0); -- Wave output waveform when suppressed
 
     signal noi_slen          : std_logic_vector(6 downto 0);
     signal noi_lenchange     : std_logic;
@@ -229,7 +232,7 @@ begin
         variable sq1_trigger_cnt : unsigned(2 downto 0);
         variable sq2_trigger_cnt : unsigned(2 downto 0);
         variable noi_trigger_cnt : unsigned(2 downto 0);
-        variable wav_trigger_cnt : unsigned(3 downto 0);
+        variable wav_trigger_cnt : unsigned(1 downto 0);
         variable wave_index_write : std_logic_vector(3 downto 0);
     begin
 
@@ -260,6 +263,7 @@ begin
             wav_enable  <= '0';
             wav_volsh   <= (others => '0');
             wav_freq    <= (others => '0');
+            wav_freq_old    <= (others => '0');
             wav_trigger <= '0';
             wav_lenchk  <= '0';
             sq1_trigger_cnt := (others => '0'); --counter to delay the trigger
@@ -352,18 +356,23 @@ begin
         elsif rising_edge(clk) then
             if ce = '1' then
                 
-                -- TODO: align wav and noi triggers                 
-                if en_snd2 then             
+                if en_snd2 then                            
                     if sq1_trigger_cnt = "000" then
                         sq1_trigger <= '0';
                     else
                         sq1_trigger_cnt := sq1_trigger_cnt - 1;
                     end if;
-                
+
                     if sq2_trigger_cnt = "000" then
                         sq2_trigger <= '0';
                     else
                         sq2_trigger_cnt := sq2_trigger_cnt - 1;
+                    end if;
+
+                    if wav_trigger_cnt = "00" then
+                        wav_trigger <= '0';
+                      else
+                        wav_trigger_cnt := wav_trigger_cnt - 1;
                     end if;
 
                     if noi_trigger_cnt = "000" then
@@ -373,12 +382,7 @@ begin
                     end if;
                 end if;
 
-                if wav_trigger_cnt = "0000" then
-                  wav_trigger <= '0';
-                else
-                  wav_trigger_cnt := wav_trigger_cnt - 1;
-                end if;
-                
+               
                 sq2_nr2change    <= '0';
                 sq1_nr2change    <= '0';
                 noi_nr2change    <= '0';
@@ -484,16 +488,18 @@ begin
                         when "0011100" => -- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
                             wav_volsh <= s1_writedata(6 downto 5);
                         when "0011101" => -- NR33 FF1D FFFF FFFF Frequency LSB
+                            wav_freq_old(7 downto 0) <= wav_freq(7 downto 0);
                             wav_freq(7 downto 0) <= s1_writedata;
                         when "0011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
                             wav_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
-                                wav_trigger_cnt := "1001";
+                                wav_trigger_cnt := "10";
                             end if;
                             if wav_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 wav_lenquirk <= '1';
                             end if;
                             wav_lenchk            <= s1_writedata(6);
+                            wav_freq_old(10 downto 8) <= wav_freq(10 downto 8);
                             wav_freq(10 downto 8) <= s1_writedata(2 downto 0);
 
                             -- Noise
@@ -595,7 +601,6 @@ begin
 
                         -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
                         when "0100110" => 
-                            -- TODO: maybe check if event on poweroff or poweron
                             snd_enable <= s1_writedata(7);
                             if s1_writedata(7) = '0' then
                                 -- Reset register values
@@ -619,11 +624,12 @@ begin
                                 sq2_lenchk  <= '0';
                                 sq2_trigger <= '0';
 
-                                wav_enable  <= '0';
-                                wav_volsh   <= (others => '0');
-                                wav_freq    <= (others => '0');
-                                wav_trigger <= '0';
-                                wav_lenchk  <= '0';
+                                wav_enable      <= '0';
+                                wav_volsh       <= (others => '0');
+                                wav_freq        <= (others => '0');
+                                wav_freq_old    <= (others => '0');
+                                wav_trigger     <= '0';
+                                wav_lenchk      <= '0';
 
                                 sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
                                 sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
@@ -800,7 +806,7 @@ begin
 
     end process;
 
-    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, reset)
+    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, wav_suppressed, wav_enable, wav_volsh, wav_wav_r, wav_ram, wav_index, reset)
         constant duty_0          : std_logic_vector(0 to 7) := "00000001";
         constant duty_1          : std_logic_vector(0 to 7) := "10000001";
         constant duty_2          : std_logic_vector(0 to 7) := "10000111";
@@ -859,6 +865,17 @@ begin
             sq2_wav <= "000000";
         end if;
 
+        if wav_enable = '1' and wav_volsh /= "00" and wav_suppressed = '0' then
+            case wav_volsh is
+                when "01" => wav_wav   <= wav_ram(to_integer(wav_index)) & "00";
+                when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1)) & "00";
+                when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2)) & "00";
+                when others => wav_wav <= (others => 'X');
+            end case;
+        else
+            wav_wav <= wav_wav_r;  --when suppressed or triggered while playing
+        end if;       
+
         if noi_out = '1' then
             noi_wav <= noi_vol & "00";
         else
@@ -886,6 +903,8 @@ begin
             
             sq1_suppressed <= '1';
             sq2_suppressed <= '1';
+            wav_suppressed <= '1';
+            wav_wav_r <= "000000";
 
             sq1_sduty    := (others => '0');
             sq2_sduty    := (others => '0');
@@ -1451,6 +1470,7 @@ begin
                         if wav_playing = '1' then
                             acc_fcnt := ('0' & wav_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
+                                wav_suppressed <= '0';
                                 wav_shift := true;
                                 wav_fcnt  := unsigned(wav_freq);
                             else
@@ -1482,13 +1502,22 @@ begin
                         -- Check for end of playing conditions
                         if (wav_lenchk = '1' and wav_len = 0) or wav_enable = '0' then
                             wav_playing <= '0';
-                            wav_wav     <= "000000";
                         end if;
                     end if;
 
                     -- Check sample trigger and start playing
                     if wav_trigger_r = '1' and wav_trigger = '0' then
-                        wav_fcnt := unsigned(wav_freq);
+
+                        wav_suppressed <= '1';          -- suppress 1st sample if channel wasn't active or keep playing the current one if enabled
+                        
+                        if wav_playing = '0' then
+                            wav_fcnt := unsigned(wav_freq); -- initialise frequency if the channel  wasn't active
+                            wav_wav_r <= "000000";          -- suppress 1st sample if channel wasn't active
+                        else
+                            wav_fcnt := unsigned(wav_freq_old);  -- only change frequency after the current sample is played
+                            wav_wav_r <= wav_wav;                -- and keep playing the current sample
+                        end if;
+                        
                         wav_playing <= '1';
                         if wav_len = 0 then -- trigger quirks 
                             if wav_lenchk = '1' and en_len_r then
@@ -1497,18 +1526,6 @@ begin
                                 wav_len := "100000000"; -- 256
                             end if;
                         end if;
-
-                    end if;
-
-                    if wav_enable = '1' and wav_volsh /= "00" then
-                        case wav_volsh is
-                            when "01" => wav_wav   <= wav_ram(to_integer(wav_index)) & "00";
-                            when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1)) & "00";
-                            when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2)) & "00";
-                            when others => wav_wav <= (others => 'X');
-                        end case;
-                    else
-                        wav_wav <= "000000";
                     end if;
                 else  -- snd_enable = '0'
                     sq1_playing <= '0';
@@ -1530,6 +1547,8 @@ begin
 
                     sq1_suppressed <= '1';
                     sq2_suppressed <= '1';
+                    wav_suppressed <= '1';
+                    wav_wav_r <= "000000";
 
                     sq1_sduty    := (others => '0');
                     sq2_sduty    := (others => '0');
