@@ -263,7 +263,7 @@ begin
             wav_enable  <= '0';
             wav_volsh   <= (others => '0');
             wav_freq    <= (others => '0');
-            wav_freq_old    <= (others => '0');
+            wav_freq_old<= (others => '0');
             wav_trigger <= '0';
             wav_lenchk  <= '0';
             sq1_trigger_cnt := (others => '0'); --counter to delay the trigger
@@ -631,9 +631,10 @@ begin
                                 wav_trigger     <= '0';
                                 wav_lenchk      <= '0';
 
-                                sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
-                                sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
-                                wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
+                                sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
+                                sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
+                                wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
+                                noi_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
 
                                 noi_svol    <= (others     => '0');
                                 noi_envsgn  <= '0';
@@ -1464,9 +1465,9 @@ begin
 
                     ----------------------------- Wave channel -----------------------------------	
 
+                    wav_shift := false;
                     if en_snd2 then
                         -- Wave frequency timer Frequency = 4194304/(64*(2048-x)) Hz = 65536/(2048-x) Hz
-                        wav_shift := false;
                         if wav_playing = '1' then
                             acc_fcnt := ('0' & wav_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
