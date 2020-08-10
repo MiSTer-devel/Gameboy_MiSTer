@@ -101,7 +101,6 @@ architecture SYN of gbc_snd is
     signal wav_lenquirk      : std_logic;
     signal wav_volsh         : std_logic_vector(1 downto 0);  -- Wave volume shift
     signal wav_freq          : std_logic_vector(10 downto 0); -- Wave frequency
-    signal wav_freq_old      : std_logic_vector(10 downto 0); -- Wave frequency old value
     signal wav_trigger       : std_logic;                     -- Wave trigger play note
     signal wav_lenchk        : std_logic;                     -- Wave length check enable
     signal wav_index         : unsigned(4 downto 0);          -- Wave current sample index
@@ -140,6 +139,7 @@ architecture SYN of gbc_snd is
     signal sq2_trigger_r     : std_logic;
     signal wav_trigger_r     : std_logic;
     signal noi_trigger_r     : std_logic;
+    signal s1_write_r        : std_logic;
 
 begin
 
@@ -263,12 +263,12 @@ begin
             wav_enable  <= '0';
             wav_volsh   <= (others => '0');
             wav_freq    <= (others => '0');
-            wav_freq_old<= (others => '0');
             wav_trigger <= '0';
             wav_lenchk  <= '0';
             sq1_trigger_cnt := (others => '0'); --counter to delay the trigger
             sq2_trigger_cnt := (others => '0'); --counter to delay the trigger
             wav_trigger_cnt := (others => '0'); --counter to delay the trigger
+            noi_trigger_cnt := (others => '0'); --counter to delay the trigger
             noi_slen    <= (others     => '0');
             noi_svol    <= (others     => '0');
             noi_envsgn  <= '0';
@@ -282,6 +282,7 @@ begin
             ch_map      <= (others => '0');
             ch_vol      <= (others => '0');
 
+            s1_write_r <= '0';
             --      Wave table   https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware#Power_Control
             if is_gbc = '1' then
                 wav_ram(0) <=  X"0";
@@ -401,9 +402,11 @@ begin
                 if sq1_freqchange = '1' then
                     sq1_freq <= sq1_fr2;
                 end if;
+
+                s1_write_r <= s1_write;  -- check posedge
                 
                 -- write to registers ignored when the apu is off , Wave memory can be read back freely , NR52 power control is always writable 
-                if s1_write = '1' and (snd_enable = '1' or s1_addr = "0100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "0010001" or  s1_addr = "0010110" or s1_addr = "0011011" or s1_addr = "0100000" ))) then
+                if s1_write = '1' and s1_write_r = '0' and (snd_enable = '1' or s1_addr = "0100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "0010001" or  s1_addr = "0010110" or s1_addr = "0011011" or s1_addr = "0100000" ))) then
                     case s1_addr is
                             -- Square 1
                         when "0010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
@@ -488,7 +491,6 @@ begin
                         when "0011100" => -- NR32 FF1C -VV- ---- Volume code (00=0%, 01=100%, 10=50%, 11=25%)
                             wav_volsh <= s1_writedata(6 downto 5);
                         when "0011101" => -- NR33 FF1D FFFF FFFF Frequency LSB
-                            wav_freq_old(7 downto 0) <= wav_freq(7 downto 0);
                             wav_freq(7 downto 0) <= s1_writedata;
                         when "0011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
                             wav_trigger <= s1_writedata(7);
@@ -499,7 +501,6 @@ begin
                                 wav_lenquirk <= '1';
                             end if;
                             wav_lenchk            <= s1_writedata(6);
-                            wav_freq_old(10 downto 8) <= wav_freq(10 downto 8);
                             wav_freq(10 downto 8) <= s1_writedata(2 downto 0);
 
                             -- Noise
@@ -627,7 +628,6 @@ begin
                                 wav_enable      <= '0';
                                 wav_volsh       <= (others => '0');
                                 wav_freq        <= (others => '0');
-                                wav_freq_old    <= (others => '0');
                                 wav_trigger     <= '0';
                                 wav_lenchk      <= '0';
 
@@ -647,6 +647,7 @@ begin
                                 
                                 ch_map      <= (others => '0');
                                 ch_vol      <= (others => '0');
+                                s1_write_r  <= '0';
                                 
                                 if is_gbc = '1' then
                                     sq1_slen    <= (others => '0');
@@ -852,6 +853,11 @@ begin
         variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 
         variable acc_fcnt        : unsigned(11 downto 0);
+
+        variable sq1_trigger_freq : std_logic_vector(10 downto 0);
+        variable sq2_trigger_freq : std_logic_vector(10 downto 0);
+        -- variable noi_trigger_freq : std_logic_vector(10 downto 0); --TODO: implement this correctly
+        variable wav_trigger_freq : std_logic_vector(10 downto 0);
     begin
 
         if sq1_out = '1' and sq1_suppressed = '0' then
@@ -941,6 +947,11 @@ begin
             sq2_trigger_r   <= '0'; 
             wav_trigger_r   <= '0'; 
             noi_trigger_r   <= '0'; 
+
+            sq1_trigger_freq  := (others => '0');
+            sq2_trigger_freq  := (others => '0');
+            wav_trigger_freq  := (others => '0');
+            --noi_trigger_freq  := (others => '0');            
 
         elsif rising_edge(clk) then
             if ce = '1' then
@@ -1140,6 +1151,10 @@ begin
                         sq1_fcnt  := (others   => '0');
                     end if;
 
+                    if sq1_trigger_r = '0' and sq1_trigger = '1' then -- rising edge of trigger
+                        sq1_trigger_freq := sq1_freq;   -- keep copy of frequency to avoid change while delaying trigger
+                    end if;
+
                     -- Check sample trigger and start playing
                     if sq1_trigger_r = '1' and sq1_trigger = '0' then -- falling edge of trigger
                         -- from sameboy:
@@ -1164,7 +1179,8 @@ begin
                         sweep_negate := false;
                         ---- sweep quirks ---
 
-                        sq1_fcnt     := unsigned(sq1_freq);
+                        sq1_fcnt := unsigned(sq1_trigger_freq);
+
                         if not (sq1_svol = "00000" and sq1_envsgn = '0') then -- dac enabled
                             sq1_playing <= '1';
                         end if;
@@ -1288,6 +1304,10 @@ begin
                         sq2_fcnt  := (others   => '0');
                     end if;
 
+                    if sq2_trigger_r = '0' and sq2_trigger = '1' then -- rising edge of trigger
+                        sq2_trigger_freq := sq2_freq;   -- keep copy of frequency to avoid change while delaying trigger
+                    end if;
+
                     -- Check sample trigger and start playing
                     if sq2_trigger_r = '1' and sq2_trigger = '0' then -- falling edge of trigger
                         
@@ -1299,9 +1319,7 @@ begin
                         end if;
 
                         sq2_vol <= sq2_svol;
-
-                        -- sq2_fr2 <= sq2_freq;
-                        sq2_fcnt := unsigned(sq2_freq);
+                        sq2_fcnt := unsigned(sq2_trigger_freq);
 
                         if not (sq2_svol = "00000" and sq2_envsgn = '0') then -- dac enabled
                             sq2_playing <= '1';
@@ -1389,7 +1407,6 @@ begin
                             then
                             noi_playing <= '0';
                             noi_envcnt := "0000";
-                            --sq2_wav <= "000000";
                         end if;
                     end if;
 
@@ -1506,18 +1523,22 @@ begin
                         end if;
                     end if;
 
+                    if wav_trigger_r = '0' and wav_trigger = '1' then -- rising edge of trigger
+                        wav_trigger_freq := wav_freq;   -- keep copy of frequency to avoid change while delaying trigger
+                    end if;
+
                     -- Check sample trigger and start playing
                     if wav_trigger_r = '1' and wav_trigger = '0' then
 
-                        wav_suppressed <= '1';          -- suppress 1st sample if channel wasn't active or keep playing the current one if enabled
-                        
+                        wav_suppressed <= '1';      -- suppress 1st sample if channel wasn't active or keep playing the current one if enabled
+
                         if wav_playing = '0' then
-                            wav_fcnt := unsigned(wav_freq); -- initialise frequency if the channel  wasn't active
-                            wav_wav_r <= "000000";          -- suppress 1st sample if channel wasn't active
+                            wav_wav_r <= "000000";  -- suppress 1st sample if channel wasn't active 
                         else
-                            wav_fcnt := unsigned(wav_freq_old);  -- only change frequency after the current sample is played
-                            wav_wav_r <= wav_wav;                -- and keep playing the current sample
+                            wav_wav_r <= wav_wav;   -- keep playing the current sample if it was active
                         end if;
+
+                        wav_fcnt := unsigned(wav_trigger_freq);
                         
                         wav_playing <= '1';
                         if wav_len = 0 then -- trigger quirks 
