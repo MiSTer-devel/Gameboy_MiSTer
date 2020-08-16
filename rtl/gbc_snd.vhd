@@ -108,6 +108,8 @@ architecture SYN of gbc_snd is
     signal wav_playing       : std_logic;
     signal wav_wav           : std_logic_vector(5 downto 0); -- Wave output waveform
     signal wav_ram           : wav_arr_t;                    -- Wave table
+    signal wav_suppressed    : std_logic;                    -- wav channel 1st sample suppressed when triggered after poweron
+    signal wav_wav_r         : std_logic_vector(5 downto 0); -- Wave output waveform when suppressed
 
     signal noi_slen          : std_logic_vector(6 downto 0);
     signal noi_lenchange     : std_logic;
@@ -136,7 +138,8 @@ architecture SYN of gbc_snd is
     signal sq1_trigger_r     : std_logic;
     signal sq2_trigger_r     : std_logic;
     signal wav_trigger_r     : std_logic;
-    -- signal noi_trigger_r     : std_logic;
+    signal noi_trigger_r     : std_logic;
+    signal s1_write_r        : std_logic;
 
 begin
 
@@ -228,7 +231,8 @@ begin
     registers : process (clk, snd_enable, reset, is_gbc)
         variable sq1_trigger_cnt : unsigned(2 downto 0);
         variable sq2_trigger_cnt : unsigned(2 downto 0);
-        variable wav_trigger_cnt : unsigned(3 downto 0);
+        variable noi_trigger_cnt : unsigned(2 downto 0);
+        variable wav_trigger_cnt : unsigned(1 downto 0);
         variable wave_index_write : std_logic_vector(3 downto 0);
     begin
 
@@ -264,6 +268,7 @@ begin
             sq1_trigger_cnt := (others => '0'); --counter to delay the trigger
             sq2_trigger_cnt := (others => '0'); --counter to delay the trigger
             wav_trigger_cnt := (others => '0'); --counter to delay the trigger
+            noi_trigger_cnt := (others => '0'); --counter to delay the trigger
             noi_slen    <= (others     => '0');
             noi_svol    <= (others     => '0');
             noi_envsgn  <= '0';
@@ -277,6 +282,7 @@ begin
             ch_map      <= (others => '0');
             ch_vol      <= (others => '0');
 
+            s1_write_r <= '0';
             --      Wave table   https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware#Power_Control
             if is_gbc = '1' then
                 wav_ram(0) <=  X"0";
@@ -351,31 +357,33 @@ begin
         elsif rising_edge(clk) then
             if ce = '1' then
                 
-                -- TODO: align wav and noi triggers                 
-                if en_snd2 then             
+                if en_snd2 then                            
                     if sq1_trigger_cnt = "000" then
                         sq1_trigger <= '0';
                     else
                         sq1_trigger_cnt := sq1_trigger_cnt - 1;
                     end if;
-                
+
                     if sq2_trigger_cnt = "000" then
                         sq2_trigger <= '0';
                     else
                         sq2_trigger_cnt := sq2_trigger_cnt - 1;
                     end if;
+
+                    if wav_trigger_cnt = "00" then
+                        wav_trigger <= '0';
+                      else
+                        wav_trigger_cnt := wav_trigger_cnt - 1;
+                    end if;
+
+                    if noi_trigger_cnt = "000" then
+                        noi_trigger <= '0';
+                    else
+                        noi_trigger_cnt := noi_trigger_cnt - 1;
+                    end if;
                 end if;
 
-                if wav_trigger_cnt = "0000" then
-                  wav_trigger <= '0';
-                else
-                  wav_trigger_cnt := wav_trigger_cnt - 1;
-                end if;
-                
-                if en_snd then
-                    noi_trigger <= '0';
-                end if;
-
+               
                 sq2_nr2change    <= '0';
                 sq1_nr2change    <= '0';
                 noi_nr2change    <= '0';
@@ -394,9 +402,11 @@ begin
                 if sq1_freqchange = '1' then
                     sq1_freq <= sq1_fr2;
                 end if;
+
+                s1_write_r <= s1_write;  -- check posedge
                 
                 -- write to registers ignored when the apu is off , Wave memory can be read back freely , NR52 power control is always writable 
-                if s1_write = '1' and (snd_enable = '1' or s1_addr = "0100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "0010001" or  s1_addr = "0010110" or s1_addr = "0011011" or s1_addr = "0100000" ))) then
+                if s1_write = '1' and s1_write_r = '0' and (snd_enable = '1' or s1_addr = "0100110" or s1_addr(5 downto 4) = "11" or (is_gbc = '0' and (s1_addr = "0010001" or  s1_addr = "0010110" or s1_addr = "0011011" or s1_addr = "0100000" ))) then
                     case s1_addr is
                             -- Square 1
                         when "0010000" => -- NR10 FF10 -PPP NSSS Sweep period, negate, shift
@@ -485,7 +495,7 @@ begin
                         when "0011110" => -- NR34 FF1E TL-- -FFF Trigger, Length enable, Frequency MSB
                             wav_trigger <= s1_writedata(7);
                             if s1_writedata(7) = '1' then
-                                wav_trigger_cnt := "1001";
+                                wav_trigger_cnt := "10";
                             end if;
                             if wav_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 wav_lenquirk <= '1';
@@ -513,6 +523,13 @@ begin
                             noi_freqchange <= '1';
                         when "0100011" => -- NR44 FF23 TL-- ---- Trigger, Length enable
                             noi_trigger <= s1_writedata(7);
+                            if s1_writedata(7) = '1' then
+                                if noi_playing = '0' then
+                                    noi_trigger_cnt := "010";
+                                else
+                                    noi_trigger_cnt := "100"; --noi seems to start later instead of early if already playing
+                                end if;
+                            end if;
                             if noi_lenchk = '0' and s1_writedata(6) = '1' and en_len_r then
                                 noi_lenquirk <= '1';
                             end if;
@@ -585,7 +602,6 @@ begin
 
                         -- NR52 FF26 P--- NW21 Power control/status, Channel length statuses
                         when "0100110" => 
-                            -- TODO: maybe check if event on poweroff or poweron
                             snd_enable <= s1_writedata(7);
                             if s1_writedata(7) = '0' then
                                 -- Reset register values
@@ -609,15 +625,16 @@ begin
                                 sq2_lenchk  <= '0';
                                 sq2_trigger <= '0';
 
-                                wav_enable  <= '0';
-                                wav_volsh   <= (others => '0');
-                                wav_freq    <= (others => '0');
-                                wav_trigger <= '0';
-                                wav_lenchk  <= '0';
+                                wav_enable      <= '0';
+                                wav_volsh       <= (others => '0');
+                                wav_freq        <= (others => '0');
+                                wav_trigger     <= '0';
+                                wav_lenchk      <= '0';
 
-                                sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
-                                sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
-                                wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for 6 cycles
+                                sq1_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
+                                sq2_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
+                                wav_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
+                                noi_trigger_cnt := (others => '0'); --counter to leave the trigger high for a few cycles
 
                                 noi_svol    <= (others     => '0');
                                 noi_envsgn  <= '0';
@@ -630,6 +647,7 @@ begin
                                 
                                 ch_map      <= (others => '0');
                                 ch_vol      <= (others => '0');
+                                s1_write_r  <= '0';
                                 
                                 if is_gbc = '1' then
                                     sq1_slen    <= (others => '0');
@@ -790,7 +808,7 @@ begin
 
     end process;
 
-    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, reset)
+    sound : process (clk, snd_enable, en_snd, en_len, en_env, en_sweep, wav_access, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, wav_suppressed, wav_enable, wav_volsh, wav_wav_r, wav_ram, wav_index, reset)
         constant duty_0          : std_logic_vector(0 to 7) := "00000001";
         constant duty_1          : std_logic_vector(0 to 7) := "10000001";
         constant duty_2          : std_logic_vector(0 to 7) := "10000111";
@@ -807,14 +825,12 @@ begin
         variable sweep_calculate : boolean;
         variable sweep_update    : boolean;
         variable sweep_negate    : boolean;
-        variable sq1_envoff      : boolean; -- check if envelope is on (zombiemode)
         variable sq1_sduty       : std_logic_vector(1 downto 0); -- Sq1 duty cycle shadow register
 
         variable sq2_fcnt        : unsigned(10 downto 0);
         variable sq2_phase       : integer range 0 to 7;
         variable sq2_len         : std_logic_vector(6 downto 0);
         variable sq2_envcnt      : std_logic_vector(3 downto 0); -- Sq2 envelope timer count
-        variable sq2_envoff      : boolean;                      -- check if envelope is on (zombiemode)
         variable sq2_sduty       : std_logic_vector(1 downto 0); -- Sq2 duty cycle shadow register
 
         variable wav_fcnt        : unsigned(10 downto 0);
@@ -828,13 +844,17 @@ begin
         variable noi_lfsr        : unsigned(14 downto 0); -- 15 bits
         variable noi_len         : std_logic_vector(6 downto 0);
         variable noi_envcnt      : std_logic_vector(3 downto 0); -- Noise envelope timer count
-        variable noi_envoff      : boolean;                      -- check if envelope is on (zombiemode)
         variable noi_out         : std_logic;
         variable noi_xor         : std_logic;
 
         variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 
         variable acc_fcnt        : unsigned(11 downto 0);
+
+        variable sq1_trigger_freq : std_logic_vector(10 downto 0);
+        variable sq2_trigger_freq : std_logic_vector(10 downto 0);
+        -- variable noi_trigger_freq : std_logic_vector(10 downto 0); --TODO: implement this correctly
+        variable wav_trigger_freq : std_logic_vector(10 downto 0);
     begin
 
         if sq1_out = '1' and sq1_suppressed = '0' then
@@ -848,6 +868,17 @@ begin
         else
             sq2_wav <= "000000";
         end if;
+
+        if wav_enable = '1' and wav_volsh /= "00" and wav_suppressed = '0' then
+            case wav_volsh is
+                when "01" => wav_wav   <= wav_ram(to_integer(wav_index)) & "00";
+                when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1)) & "00";
+                when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2)) & "00";
+                when others => wav_wav <= (others => 'X');
+            end case;
+        else
+            wav_wav <= wav_wav_r;  --when suppressed or triggered while playing
+        end if;       
 
         if noi_out = '1' then
             noi_wav <= noi_vol & "00";
@@ -876,6 +907,8 @@ begin
             
             sq1_suppressed <= '1';
             sq2_suppressed <= '1';
+            wav_suppressed <= '1';
+            wav_wav_r <= "000000";
 
             sq1_sduty    := (others => '0');
             sq2_sduty    := (others => '0');
@@ -897,11 +930,6 @@ begin
             sq1_sweep_en    := false;
             sweep_negate    := false;
 
-            -- zombie mode check if env is still updating
-            sq2_envoff      := true;
-            sq1_envoff      := true;
-            noi_envoff      := true;
-
             sq1_len  := (others => '0');
             sq2_len  := (others => '0');
             wav_len  := (others => '0');
@@ -910,7 +938,12 @@ begin
             sq1_trigger_r   <= '0'; 
             sq2_trigger_r   <= '0'; 
             wav_trigger_r   <= '0'; 
-            -- noi_trigger_r   <= '0'; 
+            noi_trigger_r   <= '0'; 
+
+            sq1_trigger_freq  := (others => '0');
+            sq2_trigger_freq  := (others => '0');
+            wav_trigger_freq  := (others => '0');
+            --noi_trigger_freq  := (others => '0');            
 
         elsif rising_edge(clk) then
             if ce = '1' then
@@ -935,7 +968,7 @@ begin
                 sq1_trigger_r <= sq1_trigger;
                 sq2_trigger_r <= sq2_trigger;
                 wav_trigger_r <= wav_trigger;
-                -- noi_trigger_r <= noi_trigger;
+                noi_trigger_r <= noi_trigger;
 
                 if snd_enable = '1' then
 
@@ -1047,14 +1080,10 @@ begin
                                 if sq1_envsgn = '1' then
                                     if sq1_vol /= "1111" then -- sq1_vol < 15
                                         sq1_vol <= std_logic_vector(unsigned(sq1_vol) + 1);
-                                    else
-                                        sq1_envoff := true; -- envelope done
                                     end if;
                                 else
                                     if sq1_vol /= "0000" then -- sq1_vol > 
                                         sq1_vol <= std_logic_vector(unsigned(sq1_vol) - 1);
-                                    else
-                                        sq1_envoff := true; -- envelope done
                                     end if;
                                 end if;
 
@@ -1083,21 +1112,28 @@ begin
 
                     if ((sq1_trigger_r = '1' and sq1_trigger = '0') or sq1_nr2change = '1') and sq1_playing = '1' then  -- falling edge of trigger
 
+                        -- using sameboy's logic
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(sq1_vol);
-                        if sq1_envper_old = "000" and not sq1_envoff then
-                            tmp_volume := "0000" & unsigned(sq1_vol) + 1;
-                        else
-                            if sq1_envsgn_old = '0' then
-                                tmp_volume := "0000" & unsigned(sq1_vol) + 2;
-                            end if;
+
+                        if sq1_envsgn = '1' then 
+                            tmp_volume :=  tmp_volume  + 1;
                         end if;
 
                         if (sq1_envsgn xor sq1_envsgn_old) = '1' then
                             tmp_volume := X"10" - tmp_volume;
                         end if;
 
+                        if (sq1_envper /=  "000") and (sq1_envper_old = "000") and (tmp_volume /= "00000000") and (sq1_envsgn = '0') then 
+                            tmp_volume := tmp_volume - 1;
+                        end if;
+
+                        if (sq1_envper_old /= "000") and sq1_envsgn = '1' then 
+                            tmp_volume := tmp_volume - 1;
+                        end if;
+
                         sq1_vol <= std_logic_vector(tmp_volume(3 downto 0));
+                        -- "zombie" mode
 
                         -- check if dac is enabled
                         if sq1_svol = "00000" and sq1_envsgn = '0' then -- dac disabled
@@ -1108,6 +1144,10 @@ begin
                     -- if sound was triggered and already playing reset/stop frequency counter
                     if sq1_trigger = '1' and sq1_playing = '1' then
                         sq1_fcnt  := (others   => '0');
+                    end if;
+
+                    if sq1_trigger_r = '0' and sq1_trigger = '1' then -- rising edge of trigger
+                        sq1_trigger_freq := sq1_freq;   -- keep copy of frequency to avoid change while delaying trigger
                     end if;
 
                     -- Check sample trigger and start playing
@@ -1134,7 +1174,8 @@ begin
                         sweep_negate := false;
                         ---- sweep quirks ---
 
-                        sq1_fcnt     := unsigned(sq1_freq);
+                        sq1_fcnt := unsigned(sq1_trigger_freq);
+
                         if not (sq1_svol = "00000" and sq1_envsgn = '0') then -- dac enabled
                             sq1_playing <= '1';
                         end if;
@@ -1145,7 +1186,6 @@ begin
                         else
                             sq1_envcnt := '0' & sq1_envper; -- set to period
                         end if;
-                        sq1_envoff := false;
                                                
                         if sq1_len = 0 then -- trigger quirks
                             if sq1_lenchk = '1' and en_len_r then
@@ -1200,14 +1240,10 @@ begin
                                 if sq2_envsgn = '1' then
                                     if sq2_vol /= "1111" then -- sq2_vol < 15
                                         sq2_vol <= std_logic_vector(unsigned(sq2_vol) + 1);
-                                    else
-                                        sq2_envoff := true;
                                     end if;
                                 else
                                     if sq2_vol /= "0000" then -- sq2_vol > 0
                                         sq2_vol <= std_logic_vector(unsigned(sq2_vol) - 1);
-                                    else
-                                        sq2_envoff := true;
                                     end if;
                                 end if;
 
@@ -1231,21 +1267,28 @@ begin
 
                     if ((sq2_trigger_r = '1' and sq2_trigger = '0') or sq2_nr2change = '1') and sq2_playing = '1' then  -- falling edge of trigger
 
+                        -- using sameboy's logic
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(sq2_vol);
-                        if sq2_envper_old = "000" and not sq2_envoff then
-                            tmp_volume := "0000" & unsigned(sq2_vol) + 1;
-                        else
-                            if sq2_envsgn_old = '0' then
-                                tmp_volume := "0000" & unsigned(sq2_vol) + 2;
-                            end if;
+
+                        if sq2_envsgn = '1' then 
+                            tmp_volume :=  tmp_volume  + 1;
                         end if;
 
                         if (sq2_envsgn xor sq2_envsgn_old) = '1' then
                             tmp_volume := X"10" - tmp_volume;
                         end if;
 
+                        if (sq2_envper /=  "000") and (sq2_envper_old = "000") and (tmp_volume /= "00000000") and (sq2_envsgn = '0') then 
+                            tmp_volume := tmp_volume - 1;
+                        end if;
+
+                        if (sq2_envper_old /= "000") and sq2_envsgn = '1' then 
+                            tmp_volume := tmp_volume - 1;
+                        end if;
+
                         sq2_vol <= std_logic_vector(tmp_volume(3 downto 0));
+                        -- "zombie" mode
 
                         -- check if dac is enabled
                         if sq2_svol = "00000" and sq2_envsgn = '0' then -- dac disabled
@@ -1256,6 +1299,10 @@ begin
                     -- if sound was triggered and already playing reset/stop frequency counter
                     if sq2_trigger = '1' and sq2_playing = '1' then
                         sq2_fcnt  := (others   => '0');
+                    end if;
+
+                    if sq2_trigger_r = '0' and sq2_trigger = '1' then -- rising edge of trigger
+                        sq2_trigger_freq := sq2_freq;   -- keep copy of frequency to avoid change while delaying trigger
                     end if;
 
                     -- Check sample trigger and start playing
@@ -1269,9 +1316,7 @@ begin
                         end if;
 
                         sq2_vol <= sq2_svol;
-
-                        -- sq2_fr2 <= sq2_freq;
-                        sq2_fcnt := unsigned(sq2_freq);
+                        sq2_fcnt := unsigned(sq2_trigger_freq);
 
                         if not (sq2_svol = "00000" and sq2_envsgn = '0') then -- dac enabled
                             sq2_playing <= '1';
@@ -1283,7 +1328,6 @@ begin
                         else
                             sq2_envcnt := '0' & sq2_envper; -- set to period
                         end if;
-                        sq2_envoff := false;
 
                         if sq2_len = 0 then -- trigger quirks 
                             if sq2_lenchk = '1' and en_len_r then
@@ -1334,14 +1378,10 @@ begin
                                 if noi_envsgn = '1' then
                                     if noi_vol /= "1111" then -- noi_vol < 15
                                         noi_vol <= std_logic_vector(unsigned(noi_vol) + 1);
-                                    else
-                                        noi_envoff := true;
                                     end if;
                                 else
                                     if noi_vol /= "0000" then -- noi_vol > 0
                                         noi_vol <= std_logic_vector(unsigned(noi_vol) - 1);
-                                    else
-                                        noi_envoff := true;
                                     end if;
                                 end if;
 
@@ -1359,27 +1399,33 @@ begin
                             then
                             noi_playing <= '0';
                             noi_envcnt := "0000";
-                            --sq2_wav <= "000000";
                         end if;
                     end if;
 
-                    if (noi_trigger = '1' or noi_nr2change = '1') and noi_playing = '1' then
+                    if ((noi_trigger = '0' and noi_trigger_r = '1') or noi_nr2change = '1') and noi_playing = '1' then
 
+                        -- using sameboy's logic
                         -- "zombie" mode
                         tmp_volume := "0000" & unsigned(noi_vol);
-                        if noi_envper_old = "000" and not noi_envoff then
-                            tmp_volume := "0000" & unsigned(noi_vol) + 1;
-                        else
-                            if noi_envsgn_old = '0' then
-                                tmp_volume := "0000" & unsigned(noi_vol) + 2;
-                            end if;
+
+                        if noi_envsgn = '1' then 
+                            tmp_volume :=  tmp_volume  + 1;
                         end if;
 
                         if (noi_envsgn xor noi_envsgn_old) = '1' then
                             tmp_volume := X"10" - tmp_volume;
                         end if;
 
+                        if (noi_envper /=  "000") and (noi_envper_old = "000") and (tmp_volume /= "00000000") and (noi_envsgn = '0') then 
+                            tmp_volume := tmp_volume - 1;
+                        end if;
+
+                        if (noi_envper_old /= "000") and noi_envsgn = '1' then 
+                            tmp_volume := tmp_volume - 1;
+                        end if;
+
                         noi_vol <= std_logic_vector(tmp_volume(3 downto 0));
+                        -- "zombie" mode
 
                         -- check if dac is enabled
                         if noi_svol = "00000" and noi_envsgn = '0' then -- dac disabled
@@ -1407,7 +1453,7 @@ begin
                     end if;
 
                     -- Check sample trigger and start playing
-                    if noi_trigger = '1' then
+                    if noi_trigger_r = '1' and noi_trigger = '0' then -- falling edge of trigger
                         noi_vol <= noi_svol;
 
                         noi_lfsr := (others => '1');
@@ -1418,7 +1464,6 @@ begin
                         else
                             noi_envcnt := '0' & noi_envper; -- set to period
                         end if;
-                        noi_envoff := false;
 
                         if not (noi_svol = "00000" and noi_envsgn = '0') then -- dac enabled
                             noi_playing <= '1';
@@ -1435,12 +1480,13 @@ begin
 
                     ----------------------------- Wave channel -----------------------------------	
 
+                    wav_shift := false;
                     if en_snd2 then
                         -- Wave frequency timer Frequency = 4194304/(64*(2048-x)) Hz = 65536/(2048-x) Hz
-                        wav_shift := false;
                         if wav_playing = '1' then
                             acc_fcnt := ('0' & wav_fcnt) + to_unsigned(1, acc_fcnt'length);
                             if acc_fcnt(acc_fcnt'high) = '1' then
+                                wav_suppressed <= '0';
                                 wav_shift := true;
                                 wav_fcnt  := unsigned(wav_freq);
                             else
@@ -1472,13 +1518,26 @@ begin
                         -- Check for end of playing conditions
                         if (wav_lenchk = '1' and wav_len = 0) or wav_enable = '0' then
                             wav_playing <= '0';
-                            wav_wav     <= "000000";
                         end if;
+                    end if;
+
+                    if wav_trigger_r = '0' and wav_trigger = '1' then -- rising edge of trigger
+                        wav_trigger_freq := wav_freq;   -- keep copy of frequency to avoid change while delaying trigger
                     end if;
 
                     -- Check sample trigger and start playing
                     if wav_trigger_r = '1' and wav_trigger = '0' then
-                        wav_fcnt := unsigned(wav_freq);
+
+                        wav_suppressed <= '1';      -- suppress 1st sample if channel wasn't active or keep playing the current one if enabled
+
+                        if wav_playing = '0' then
+                            wav_wav_r <= "000000";  -- suppress 1st sample if channel wasn't active 
+                        else
+                            wav_wav_r <= wav_wav;   -- keep playing the current sample if it was active
+                        end if;
+
+                        wav_fcnt := unsigned(wav_trigger_freq);
+                        
                         wav_playing <= '1';
                         if wav_len = 0 then -- trigger quirks 
                             if wav_lenchk = '1' and en_len_r then
@@ -1487,18 +1546,6 @@ begin
                                 wav_len := "100000000"; -- 256
                             end if;
                         end if;
-
-                    end if;
-
-                    if wav_enable = '1' and wav_volsh /= "00" then
-                        case wav_volsh is
-                            when "01" => wav_wav   <= wav_ram(to_integer(wav_index)) & "00";
-                            when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1)) & "00";
-                            when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2)) & "00";
-                            when others => wav_wav <= (others => 'X');
-                        end case;
-                    else
-                        wav_wav <= "000000";
                     end if;
                 else  -- snd_enable = '0'
                     sq1_playing <= '0';
@@ -1520,6 +1567,8 @@ begin
 
                     sq1_suppressed <= '1';
                     sq2_suppressed <= '1';
+                    wav_suppressed <= '1';
+                    wav_wav_r <= "000000";
 
                     sq1_sduty    := (others => '0');
                     sq2_sduty    := (others => '0');
@@ -1540,12 +1589,7 @@ begin
                     sweep_update    := false;
                     sq1_sweep_en    := false;
                     sweep_negate    := false;
-        
-                    -- zombie mode check if env is still updating
-                    sq2_envoff      := true;
-                    sq1_envoff      := true;
-                    noi_envoff      := true;
-        
+
                     if is_gbc = '1' then
                         sq1_len  := (others => '0');
                         sq2_len  := (others => '0');
@@ -1556,7 +1600,7 @@ begin
                     sq1_trigger_r   <= '0'; 
                     sq2_trigger_r   <= '0'; 
                     wav_trigger_r   <= '0'; 
-                    --noi_trigger_r   <= '0'; 
+                    noi_trigger_r   <= '0'; 
                 
                 end if; 
 
