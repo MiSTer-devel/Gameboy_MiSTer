@@ -71,8 +71,8 @@ sprites sprites (
 	.ce       ( ce           ),
 	.ce_cpu   ( ce_cpu       ),
 	.size16   ( lcdc_spr_siz ),
-	.isGBC_game ( isGBC&&isGBC_game ),
-
+	.isGBC    ( isGBC        ),
+	.sprite_en( lcdc_spr_ena ),
 	.lcd_on   ( lcd_on       ),
 
 	.v_cnt    ( v_cnt        ),

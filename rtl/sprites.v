@@ -24,7 +24,8 @@ module sprites (
 	input ce,
 	input ce_cpu,
 	input size16,
-	input isGBC_game,
+	input isGBC,
+	input sprite_en,
 
 	input lcd_on,
 
@@ -163,7 +164,7 @@ wire [0:9] sprite_x_matches = {
 		sprite_x[9] == h_cnt
 };
 
-assign sprite_fetch = |sprite_x_matches & oam_fetch;
+assign sprite_fetch = |sprite_x_matches & oam_fetch & (isGBC | sprite_en);
 
 wire [3:0] active_sprite =
 		sprite_x_matches[0] ? 4'd0 :
