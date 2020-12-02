@@ -95,56 +95,64 @@ assign oam_eval_end = (spr_index == 6'd40);
 
 reg old_fetch_done;
 always @(posedge clk) begin
-	if (!lcd_on) begin
-		sprite_cnt <= 0;
-		spr_index <= 0;
-		sprite_cycle <= 0;
-		oam_spr_addr <= 0;
-	end else if (ce) begin
-		if (oam_eval) begin
+	if (ce) begin
 
-			if (spr_index < 6'd40) begin
-				if (sprite_cycle) spr_index <= spr_index + 1'b1;
-
-				if (sprite_cnt < SPRITES_PER_LINE) begin
-					if (~sprite_cycle) begin
-						spr_y <= oam_do;
-						oam_spr_addr <= {spr_index,2'b01};
-					end else begin
-						if (sprite_on_line) begin
-							sprite_no[sprite_cnt] <= spr_index;
-							sprite_x[sprite_cnt] <= oam_do;
-							sprite_y[sprite_cnt] <= v_cnt[3:0] - spr_y[3:0];
-							sprite_cnt <= sprite_cnt + 1'b1;
-						end
-						oam_spr_addr <= {spr_index+1'b1, 2'b00};
-					end
-				end
-			end
-
-			sprite_cycle <= ~sprite_cycle;
-		end
-
-		if (oam_eval_reset) begin
+		if (oam_eval_reset | ~lcd_on) begin
 			sprite_cnt <= 0;
 			spr_index <= 0;
 			sprite_cycle <= 0;
 			oam_spr_addr <= 0;
-		end
+			sprite_x[0] <= 8'hFF;
+			sprite_x[1] <= 8'hFF;
+			sprite_x[2] <= 8'hFF;
+			sprite_x[3] <= 8'hFF;
+			sprite_x[4] <= 8'hFF;
+			sprite_x[5] <= 8'hFF;
+			sprite_x[6] <= 8'hFF;
+			sprite_x[7] <= 8'hFF;
+			sprite_x[8] <= 8'hFF;
+			sprite_x[9] <= 8'hFF;
+		end else begin
 
-		// Set X-position to FF after fetching the sprite to prevent fetching it again.
-		old_fetch_done <= sprite_fetch_done;
-		if (~old_fetch_done & sprite_fetch_done) begin
-			if (sprite_x_matches[0]) sprite_x[0] <= 8'hFF;
-			else if (sprite_x_matches[1]) sprite_x[1] <= 8'hFF;
-			else if (sprite_x_matches[2]) sprite_x[2] <= 8'hFF;
-			else if (sprite_x_matches[3]) sprite_x[3] <= 8'hFF;
-			else if (sprite_x_matches[4]) sprite_x[4] <= 8'hFF;
-			else if (sprite_x_matches[5]) sprite_x[5] <= 8'hFF;
-			else if (sprite_x_matches[6]) sprite_x[6] <= 8'hFF;
-			else if (sprite_x_matches[7]) sprite_x[7] <= 8'hFF;
-			else if (sprite_x_matches[8]) sprite_x[8] <= 8'hFF;
-			else if (sprite_x_matches[9]) sprite_x[9] <= 8'hFF;
+			if (oam_eval) begin
+
+				if (spr_index < 6'd40) begin
+					if (sprite_cycle) spr_index <= spr_index + 1'b1;
+
+					if (sprite_cnt < SPRITES_PER_LINE) begin
+						if (~sprite_cycle) begin
+							spr_y <= oam_do;
+							oam_spr_addr <= {spr_index,2'b01};
+						end else begin
+							if (sprite_on_line) begin
+								sprite_no[sprite_cnt] <= spr_index;
+								sprite_x[sprite_cnt] <= oam_do;
+								sprite_y[sprite_cnt] <= v_cnt[3:0] - spr_y[3:0];
+								sprite_cnt <= sprite_cnt + 1'b1;
+							end
+							oam_spr_addr <= {spr_index+1'b1, 2'b00};
+						end
+					end
+				end
+
+				sprite_cycle <= ~sprite_cycle;
+			end
+
+			// Set X-position to FF after fetching the sprite to prevent fetching it again.
+			old_fetch_done <= sprite_fetch_done;
+			if (~old_fetch_done & sprite_fetch_done) begin
+				if (sprite_x_matches[0]) sprite_x[0] <= 8'hFF;
+				else if (sprite_x_matches[1]) sprite_x[1] <= 8'hFF;
+				else if (sprite_x_matches[2]) sprite_x[2] <= 8'hFF;
+				else if (sprite_x_matches[3]) sprite_x[3] <= 8'hFF;
+				else if (sprite_x_matches[4]) sprite_x[4] <= 8'hFF;
+				else if (sprite_x_matches[5]) sprite_x[5] <= 8'hFF;
+				else if (sprite_x_matches[6]) sprite_x[6] <= 8'hFF;
+				else if (sprite_x_matches[7]) sprite_x[7] <= 8'hFF;
+				else if (sprite_x_matches[8]) sprite_x[8] <= 8'hFF;
+				else if (sprite_x_matches[9]) sprite_x[9] <= 8'hFF;
+			end
+
 		end
 	end
 end
