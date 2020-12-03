@@ -6,7 +6,10 @@
 module lcd
 (
 	input        clk_sys,
-	input        pix_wr,
+	input        ce,
+	input        lcd_clkena,
+	input        lcd_vs,
+
 	input [14:0] data,
 
 	input  [1:0] mode,
@@ -45,22 +48,54 @@ module lcd
 reg [14:0] vbuffer_inptr;
 reg vbuffer_in_bank;
 reg lcd_off;
+reg blank_de, blank_output;
+reg [14:0] blank_data;
+
+wire pix_wr = ce & (lcd_clkena | blank_de);
 always @(posedge clk_sys) begin
-	reg old_lcd_off;
+	reg old_lcd_off, old_on, old_lcd_vs;
+	reg [8:0] blank_hcnt,blank_vcnt;
 
 	lcd_off <= !on || (mode == 2'd01);
+	blank_de <= (!on && blank_output && blank_hcnt < 160 && blank_vcnt < 144);
 
-	if (pix_wr & ~lcd_off) vbuffer_inptr <= vbuffer_inptr + 1'd1;
+	if (pix_wr) vbuffer_inptr <= vbuffer_inptr + 1'd1;
 
 	old_lcd_off <= lcd_off;
-	if(~old_lcd_off & lcd_off) begin  //lcd disabled or vsync restart pointer
+	if(old_lcd_off ^ lcd_off) begin
 		vbuffer_inptr <= 0;
-		vbuffer_in_bank <= ~vbuffer_in_bank;
+		if (lcd_off) vbuffer_in_bank <= ~vbuffer_in_bank; //LCD disabled or VBlank
 	end
+
+	old_on <= on;
+	if (old_on & ~on & ~blank_output) begin // LCD disabled, start blank output
+		blank_output <= 1'b1;
+		{blank_hcnt,blank_vcnt} <= 0;
+	end
+
+	// Regenerate LCD timings for filling with blank color when LCD is off
+	if (ce & ~on & blank_output) begin
+		blank_data <= data;
+		blank_hcnt <= blank_hcnt + 1'b1;
+		if (blank_hcnt == 9'd455) begin
+			blank_hcnt <= 0;
+			blank_vcnt <= blank_vcnt + 1'b1;
+			if (blank_vcnt == 9'd153) begin
+				blank_vcnt <= 0;
+				vbuffer_inptr <= 0;
+				vbuffer_in_bank <= ~vbuffer_in_bank;
+			end
+		end
+	end
+
+	// Output 1 blank frame until VSync after LCD is enabled
+	old_lcd_vs <= lcd_vs;
+	if (~old_lcd_vs & lcd_vs & blank_output)
+		blank_output <= 0;
 end
 
 reg [14:0] vbuffer[65536];
-always @(posedge clk_sys) if(pix_wr) vbuffer[{vbuffer_in_bank, vbuffer_inptr}] <= data;
+always @(posedge clk_sys) if(pix_wr) vbuffer[{vbuffer_in_bank, vbuffer_inptr}] <= (on & blank_output) ? blank_data : data;
 
 
 // Mode 00:  h-blank

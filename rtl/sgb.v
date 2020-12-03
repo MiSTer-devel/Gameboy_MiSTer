@@ -13,6 +13,7 @@ module sgb (
 	input [14:0] lcd_data,
 	input [1:0]  lcd_mode,
 	input        lcd_on,
+	input        lcd_vsync,
 
 	input [8:0]  h_cnt,
 	input [8:0]  v_cnt,
@@ -31,7 +32,8 @@ module sgb (
 	output reg [14:0] sgb_lcd_data,
 	output reg        sgb_lcd_clkena,
 	output reg [1:0]  sgb_lcd_mode,
-	output reg        sgb_lcd_on
+	output reg        sgb_lcd_on,
+	output reg        sgb_lcd_vsync
 );
 
 localparam CMD_PAL01    = 5'h00;
@@ -833,7 +835,7 @@ end
 
 reg [14:0] lcd_data_r;
 reg [1:0] pal_no;
-reg lcd_clkena_r, lcd_on_r;
+reg lcd_clkena_r, lcd_on_r, lcd_vsync_r;
 reg [1:0] lcd_mode_r;
 reg [1:0] mask_en_r;
 wire [1:0] lcd_data_2 = lcd_data_r[1:0];
@@ -848,6 +850,7 @@ always @(posedge clk_sys) begin
 		lcd_clkena_r <= lcd_clkena;
 		lcd_mode_r <= lcd_mode;
 		lcd_on_r <= lcd_on;
+		lcd_vsync_r <= lcd_vsync;
 
 		if (~sgb_en | ((~output_sgb_pal | tint) & !mask_en_r) ) begin
 			sgb_lcd_data <= lcd_data_r;
@@ -863,6 +866,7 @@ always @(posedge clk_sys) begin
 		sgb_lcd_mode <= lcd_mode_r;
 		sgb_lcd_on <= lcd_on_r;
 		sgb_pal_en <= sgb_en & ( (output_sgb_pal & ~tint) || |mask_en_r);
+		sgb_lcd_vsync <= lcd_vsync_r;
 	end
 
 end

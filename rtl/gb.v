@@ -52,6 +52,7 @@ module gb (
 	output [14:0] lcd_data,
 	output [1:0] lcd_mode,
 	output lcd_on,
+	output lcd_vsync,
 
 	output [1:0] joy_p54,
 	input  [3:0] joy_din,
@@ -484,7 +485,8 @@ video video (
 	.lcd_clkena  ( lcd_clkena    ),
 	.lcd_data    ( lcd_data      ),
 	.mode        ( lcd_mode      ),
-	
+	.lcd_vsync   ( lcd_vsync     ),
+
 	.vram_rd     ( video_rd      ),
 	.vram_addr   ( video_addr    ),
 	.vram_data   ( vram_do       ),
