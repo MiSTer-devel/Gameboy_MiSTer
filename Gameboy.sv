@@ -542,6 +542,7 @@ wire lcd_clkena;
 wire [14:0] lcd_data;
 wire [1:0] lcd_mode;
 wire lcd_on;
+wire lcd_vsync;
 
 assign AUDIO_S = 0;
 
@@ -590,6 +591,7 @@ gb gb (
 	.lcd_data    ( lcd_data   ),
 	.lcd_mode    ( lcd_mode   ),
 	.lcd_on      ( lcd_on     ),
+	.lcd_vsync   ( lcd_vsync  ),
 	.speed       ( speed      ),
 	
 	// serial port
@@ -620,10 +622,13 @@ lcd lcd
 (
 	// serial interface
 	.clk_sys( clk_sys    ),
-	.pix_wr ( sgb_lcd_clkena & ce_cpu ),
+	.ce     ( ce_cpu         ),
+
+	.lcd_clkena ( sgb_lcd_clkena ),
 	.data   ( sgb_lcd_data   ),
 	.mode   ( sgb_lcd_mode   ),  // used to detect begin of new lines and frames
 	.on     ( sgb_lcd_on     ),
+	.lcd_vs ( sgb_lcd_vsync  ),
 
 	.isGBC  ( isGBC      ),
 
@@ -658,7 +663,7 @@ wire [1:0] joy_p54;
 wire [3:0] joy_do_sgb;
 wire [14:0] sgb_lcd_data;
 wire [15:0] sgb_border_pix;
-wire sgb_lcd_clkena, sgb_lcd_on;
+wire sgb_lcd_clkena, sgb_lcd_on, sgb_lcd_vsync;
 wire [1:0] sgb_lcd_mode;
 wire sgb_pal_en;
 wire [1:0] sgb_en = {~status[24] ^ status[23], status[23]};
@@ -685,6 +690,7 @@ sgb sgb (
 	.lcd_clkena  ( lcd_clkena  ),
 	.lcd_data    ( lcd_data    ),
 	.lcd_mode    ( lcd_mode    ),
+	.lcd_vsync   ( lcd_vsync   ),
 
 	.h_cnt       ( h_cnt      ),
 	.v_cnt       ( v_cnt      ),
@@ -694,7 +700,8 @@ sgb sgb (
 	.sgb_lcd_data    ( sgb_lcd_data    ),
 	.sgb_lcd_on      ( sgb_lcd_on      ),
 	.sgb_lcd_clkena  ( sgb_lcd_clkena  ),
-	.sgb_lcd_mode    ( sgb_lcd_mode    )
+	.sgb_lcd_mode    ( sgb_lcd_mode    ),
+	.sgb_lcd_vsync   ( sgb_lcd_vsync   )
 );
 
 reg hs_o, vs_o;

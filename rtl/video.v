@@ -39,6 +39,7 @@ module video (
 	output lcd_on,
 	output lcd_clkena,
 	output [14:0] lcd_data,
+	output lcd_vsync,
 
 	output irq,
 	output vblank_irq,
@@ -404,12 +405,14 @@ reg [7:0] v_cnt;            // max 153
 // This results in v_cnt 0 lasting for almost 2 lines.
 wire line153 = (v_cnt == 8'd153);
 reg vcnt_reset;
+reg vsync;
 always @(posedge clk) begin
 	if (!lcdc_on) begin
 		v_cnt <= 8'd0;
 		vcnt_reset <= 1'b0;
+		vsync <= 1'b0;
 	end else if (ce) begin
-		if (~vcnt_reset && h_cnt == 9'd455) begin
+		if (~vcnt_reset && h455) begin
 			v_cnt <= v_cnt + 1'b1;
 		end
 
@@ -419,8 +422,14 @@ always @(posedge clk) begin
 				v_cnt <= 8'd0;
 			end
 		end
+
+		// VSync goes high on line 0 but it takes a full frame after the LCD is enabled
+		// because the first line where end_of_line is high after LCD is enabled is line 1.
+		if (end_of_line) vsync <= !v_cnt;
 	end
 end
+
+assign lcd_vsync = vsync;
 
 // line inside the background currently being drawn
 wire [7:0] bg_line = v_cnt + scy;
@@ -750,6 +759,9 @@ always @(posedge clk) begin
 		if (lcd_clk) begin
 			lcd_data_out <= (sprite_pixel_visible) ? sprite_pix : pix_rgb_data;
 		end
+
+		// Output blank pixels if lcd is off.
+		if (~lcd_on) lcd_data_out <= isGBC ? 15'h7FFF : 15'd0;
 	end
 end
 
