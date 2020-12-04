@@ -40,8 +40,8 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output  [7:0] VIDEO_ARX,
-	output  [7:0] VIDEO_ARY,
+	output [11:0] VIDEO_ARX,
+	output [11:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -51,6 +51,7 @@ module emu
 	output        VGA_DE,    // = ~(VBlank | HBlank)
 	output        VGA_F1,
 	output  [1:0] VGA_SL,
+	output        VGA_SCALER, // Force VGA scaler
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -137,14 +138,12 @@ assign LED_USER  = ioctl_download | sav_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
+assign VGA_SCALER= 0;
 
-assign VIDEO_ARX = status[4:3] == 2'b10 ? 8'd16:
-						 status[4:3] == 2'b01 ? 8'd10:
-						 8'd4;
-						 
-assign VIDEO_ARY = status[4:3] == 2'b10 ? 8'd9:
-						 status[4:3] == 2'b01 ? 8'd9:
-						 8'd3;
+wire [1:0] ar = status[4:3];
+
+assign VIDEO_ARX = (!ar) ? 12'd10 : (ar - 1'd1);
+assign VIDEO_ARY = (!ar) ? 12'd9  : 12'd0;
 
 assign AUDIO_MIX = status[8:7];
 
@@ -172,7 +171,7 @@ localparam CONF_STR = {
 	"h2RA,Save Backup RAM;",
 	"OD,Autosave,Off,On;",
 	"-;",
-	"O34,Aspect ratio,4:3,10:9,16:9;",
+	"O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O5,Stabilize video(buffer),Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
