@@ -223,7 +223,7 @@ always @(posedge clk) begin
 	if (reset) begin
 		lyc_match_l <= 1'b0; // lyc_match does not reset when lcd is off
 	end else if (ce) begin
-		if (h_cnt[1:0] == 2'b10) begin
+		if (h_cnt[1:0] == 2'b11) begin
 			lyc_match_l <= lyc_match;
 		end
 	end
