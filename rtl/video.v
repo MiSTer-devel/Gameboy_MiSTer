@@ -197,11 +197,12 @@ end
 wire h455 = (h_cnt == 9'd455);
 wire vblank  = (v_cnt >= 144);
 
-reg vblank_l, end_of_line, lyc_match_l;
+reg vblank_l, end_of_line, end_of_line_l, lyc_match_l;
 always @(posedge clk) begin
 	if (!lcd_on) begin
 		vblank_l <= 1'b0;
 		end_of_line <= 1'b0;
+		end_of_line_l <= 1'b0;
 	end else if (ce) begin
 		if (h455) end_of_line <= 1'b1;
 		else if (end_of_line) begin
@@ -216,6 +217,8 @@ always @(posedge clk) begin
 				end_of_line <= 1'b0;
 			end
 		end
+
+		end_of_line_l <= end_of_line;
 	end
 end
 
@@ -244,7 +247,7 @@ always @(posedge clk) begin
 end
 
 wire int_lyc = (stat[6] & lyc_match_l);
-wire int_oam = (stat[5] & end_of_line & ~vblank_l);
+wire int_oam = (stat[5] & end_of_line_l & ~vblank_l);
 wire int_vbl = (stat[4] & vblank_l);
 wire int_hbl = (stat[3] & mode3_end & ~vblank_l);
 
