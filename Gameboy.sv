@@ -599,7 +599,6 @@ gb gb (
 	.serial_data_in(ser_data_in),
 	.serial_clk_out(ser_clk_out),
 	.serial_data_out(ser_data_out),
-	.serial_ena(status[6]),
 	
 	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
 	// so clear the cheats and disable second option (chheats enable/disable)
@@ -808,12 +807,13 @@ wire ser_data_in;
 wire ser_data_out;
 wire ser_clk_in;
 wire ser_clk_out;
+wire serial_ena = status[6];
 
-assign ser_data_in = USER_IN[2];	
-assign USER_OUT[1] = ser_data_out;
+assign ser_data_in = serial_ena ? USER_IN[2] : 1'b1;
+assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
 
-assign ser_clk_in = USER_IN[0];
-assign USER_OUT[0] = sc_int_clock_out?ser_clk_out:1'b1;
+assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;
+assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
 
 
 
