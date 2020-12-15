@@ -56,18 +56,19 @@ module sprites (
 
 localparam SPRITES_PER_LINE = 10;
 
+reg [7:0] oam_spr_addr;
+wire [7:0] oam_fetch_addr;
+reg [7:0] oam_q;
 
 wire [7:0] oam_addr = dma_active ? oam_addr_in :
 						oam_eval ? oam_spr_addr :
 						oam_fetch ? oam_fetch_addr :
 						oam_addr_in;
-
-reg [7:0] oam_spr_addr;
+                  
 wire valid_oam_addr = (oam_addr[7:4] < 4'hA); // $FEA0 - $FEFF unused range
 assign oam_do = dma_active ? 8'hFF : valid_oam_addr ? oam_q : 8'd0;
 
 reg [7:0] oam_data[0:159];
-reg [7:0] oam_q;
 always @(posedge clk) begin
 	if (ce_cpu) begin
 		if(oam_wr && valid_oam_addr) begin
@@ -92,6 +93,8 @@ wire [7:0] spr_height = size16 ? 8'd16 : 8'd8;
 wire sprite_on_line = (v_cnt + 8'd16 >= spr_y) && (v_cnt + 8'd16 < spr_y + spr_height);
 
 assign oam_eval_end = (spr_index == 6'd40);
+
+wire [0:9] sprite_x_matches;
 
 reg old_fetch_done;
 always @(posedge clk) begin
@@ -159,7 +162,7 @@ end
 
 
 // Sprite fetching
-wire [0:9] sprite_x_matches = {
+assign sprite_x_matches = {
 		sprite_x[0] == h_cnt,
 		sprite_x[1] == h_cnt,
 		sprite_x[2] == h_cnt,
@@ -192,7 +195,7 @@ wire [5:0] oam_fetch_index = sprite_no[active_sprite];
 reg [3:0] row;
 reg [7:0] tile_no;
 reg oam_fetch_cycle;
-wire [7:0] oam_fetch_addr = {oam_fetch_index, 1'b1, oam_fetch_cycle};
+assign oam_fetch_addr = {oam_fetch_index, 1'b1, oam_fetch_cycle};
 assign sprite_addr = size16 ? {tile_no[7:1],row} : {tile_no,row[2:0]};
 
 always @(posedge clk) begin

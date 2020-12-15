@@ -24,11 +24,10 @@ module link #(
   output reg sc_int_clock
 );
 
+reg [7:0] sb_r = 0;
 assign sb = sb_r;
 
 reg [3:0] serial_counter;
-
-reg [7:0] sb_r = 0;
 
 reg serial_out_r = 0;
 assign serial_data_out = serial_out_r;
@@ -36,8 +35,8 @@ assign serial_data_out = serial_out_r;
 reg serial_clk_out_r = 1;
 assign serial_clk_out = serial_clk_out_r;
 
-assign serial_irq = serial_irq_r;
 reg serial_irq_r;
+assign serial_irq = serial_irq_r;
 
 reg [8:0] serial_clk_div; //8192Hz
 

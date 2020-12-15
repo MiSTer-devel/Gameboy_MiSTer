@@ -602,6 +602,7 @@ begin
 											  when "1111" => --      FF3F 0000 1111 Samples 30 and 31
 													wav_ram(30) <= s1_writedata(7 downto 4);
 													wav_ram(31) <= s1_writedata(3 downto 0);
+											  when others => null;
 											  end case;
 										 end if;
 
@@ -770,6 +771,7 @@ begin
                             s1_readdata <= wav_ram(28) & wav_ram(29);
                         when "1111" => --      FF3F 0000 1111 Samples 30 and 31
                             s1_readdata <= wav_ram(30) & wav_ram(31);
+                        when others => null;
                     end case;
                 else
                     s1_readdata <= X"FF";
@@ -991,7 +993,7 @@ begin
 										 acc_fcnt := ('0' & sq1_fcnt) + to_unsigned(1, acc_fcnt'length);
 										 if acc_fcnt(acc_fcnt'high) = '1' then
 											  sq1_suppressed <= '0';
-											  sq1_phase := sq1_phase + 1;
+											  if (sq1_phase < 7) then sq1_phase := sq1_phase + 1; else sq1_phase := 0; end if;
 											  sq1_fcnt := unsigned(sq1_freq);
 											  sq1_sduty := sq1_duty; -- only change duty after the sample is finished
 										 else
@@ -1212,7 +1214,7 @@ begin
 										 acc_fcnt := ('0' & sq2_fcnt) + to_unsigned(1, acc_fcnt'length);
 										 if acc_fcnt(acc_fcnt'high) = '1' then
 											  sq2_suppressed <= '0';
-											  sq2_phase := sq2_phase + 1;
+											  if (sq2_phase < 7) then sq2_phase := sq2_phase + 1; else sq2_phase := 0; end if;
 											  sq2_fcnt := unsigned(sq2_freq);
 											  sq2_sduty := sq2_duty;  -- only change duty after the sample is finished
 										 else
