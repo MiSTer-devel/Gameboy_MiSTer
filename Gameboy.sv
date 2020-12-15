@@ -151,7 +151,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXX XXXX  XX
+// XXXXXXXXXXXXXXXXXXXXX  XX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -174,6 +174,7 @@ localparam CONF_STR = {
 	"O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O5,Stabilize video(buffer),Off,On;",
+	"OG,Frame blend,Off,On;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
 	"OB,Boot,Normal,Fast;",
@@ -599,7 +600,6 @@ gb gb (
 	.serial_data_in(ser_data_in),
 	.serial_clk_out(ser_clk_out),
 	.serial_data_out(ser_data_out),
-	.serial_ena(status[6]),
 	
 	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
 	// so clear the cheats and disable second option (chheats enable/disable)
@@ -634,6 +634,7 @@ lcd lcd
 	.tint   ( |tint       ),
 	.inv    ( status[12]  ),
 	.double_buffer( status[5]),
+	.frame_blend( status[16] ),
 
 	// Palettes
 	.pal1   (palette[127:104]),
@@ -808,12 +809,13 @@ wire ser_data_in;
 wire ser_data_out;
 wire ser_clk_in;
 wire ser_clk_out;
+wire serial_ena = status[6];
 
-assign ser_data_in = USER_IN[2];	
-assign USER_OUT[1] = ser_data_out;
+assign ser_data_in = serial_ena ? USER_IN[2] : 1'b1;
+assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
 
-assign ser_clk_in = USER_IN[0];
-assign USER_OUT[0] = sc_int_clock_out?ser_clk_out:1'b1;
+assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;
+assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
 
 
 

@@ -28,6 +28,7 @@ module lcd
 
 	input        tint,
 	input        inv,
+	input        frame_blend,
 
 	input        on,
 
@@ -123,12 +124,14 @@ parameter VTOTAL   = 264;
 // We need 4256 cycles per line so 1 pixel clock cycle needs to be 6 cycles longer.
 // 424x10 + 1x16 cycles
 reg [3:0] pix_div_cnt;
+reg ce_pix_n;
 always @(posedge clk_vid) begin
 	pix_div_cnt <= pix_div_cnt + 1'd1;
 	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd9) // Longer cycle at the last pixel
 		pix_div_cnt <= 0;
 
 	ce_pix <= !pix_div_cnt;
+	ce_pix_n <= (pix_div_cnt == 4'd5);
 end
 
 reg [14:0] vbuffer_outptr;
@@ -144,7 +147,7 @@ always @(posedge clk_vid) begin
 	inptr1 <= inptr2;
 	if(inptr1 == inptr2) inptr <= inptr1;
 
-	if (!pix_div_cnt) begin
+	if (ce_pix_n) begin
 		// generate positive hsync signal
 		if(h_cnt == H_START+H+HFP+HS) hs <= 0;
 		if(h_cnt == H_START+H+HFP)    begin
@@ -213,11 +216,26 @@ end
 reg [14:0] pixel_reg;
 always @(posedge clk_vid) pixel_reg <= vbuffer[{vbuffer_out_bank, vbuffer_outptr}];
 
-wire [1:0] pixel = (pixel_reg[1:0] ^ {inv,inv}); //invert gb only
+// Previous frame data for frame blend
+reg [14:0] prev_vbuffer[160*144];
+reg [14:0] prev_pixel_reg;
+always @(posedge clk_vid) begin
+	if(ce_pix & ~gb_hb & ~gb_vb) prev_vbuffer[vbuffer_outptr] <= pixel_reg;
+	prev_pixel_reg <= prev_vbuffer[vbuffer_outptr];
+end
 
-wire  [4:0] r5 = pixel_reg[4:0];
-wire  [4:0] g5 = pixel_reg[9:5];
-wire  [4:0] b5 = pixel_reg[14:10];
+// Current pixel_reg latched at ce_pix_n so it is ready at ce_pix
+reg [14:0] pixel_out;
+always@(posedge clk_vid) begin
+	if (ce_pix_n) pixel_out <= pixel_reg;
+	else if (ce_pix) pixel_out <= prev_pixel_reg;
+end
+
+wire [1:0] pixel = (pixel_out[1:0] ^ {inv,inv}); //invert gb only
+
+wire  [4:0] r5 = pixel_out[4:0];
+wire  [4:0] g5 = pixel_out[9:5];
+wire  [4:0] b5 = pixel_out[14:10];
 
 wire [31:0] r10 = (r5 * 13) + (g5 * 2) +b5;
 wire [31:0] g10 = (g5 * 3) + b5;
@@ -229,35 +247,69 @@ wire [7:0] grey = (pixel==0) ? 8'd252 : (pixel==1) ? 8'd168 : (pixel==2) ? 8'd96
 // sgb_border_pix contains backdrop color when sgb_border_pix[15] is low.
 wire sgb_border = sgb_border_pix[15] & sgb_en;
 
-always@(posedge clk_vid) begin
-	if(ce_pix) begin
-		// visible area?
-		hbl <= sgb_en ? hb : gb_hb;
-		vbl <= sgb_en ? vb : gb_vb;
+function [7:0] blend;
+	input [7:0] a,b;
+	reg [8:0] sum;
+	begin
+		sum = a + b;
+		blend = sum[8:1];
+	end
+endfunction
 
-		// Allow backdrop color in border area and the border to overlap game area.
-		if (((gb_hb|gb_vb) & sgb_en) | sgb_border) begin
-			r <= {sgb_border_pix[4:0],sgb_border_pix[4:2]};
-			g <= {sgb_border_pix[9:5],sgb_border_pix[9:7]};
-			b <= {sgb_border_pix[14:10],sgb_border_pix[14:12]};
-		end else if (isGBC) begin
-			r <= r10[8:1];
-			g <= {g10[6:0],1'b0};
-			b <= b10[8:1];
-		end else if (sgb_pal_en) begin
-			r <= {r5,r5[4:2]};
-			g <= {g5,g5[4:2]};
-			b <= {b5,b5[4:2]};
-		end else if (tint) begin
-			{r,g,b} <= (pixel==0) ? pal1 : (pixel==1) ? pal2 : (pixel==2) ? pal3 : pal4;
-		end else begin
-			{r,g,b} <= {3{grey}};
-		end
-
+reg [7:0] r_tmp, g_tmp, b_tmp;
+always@(*) begin
+	if (isGBC) begin
+		r_tmp = r10[8:1];
+		g_tmp = {g10[6:0],1'b0};
+		b_tmp = b10[8:1];
+	end else if (sgb_pal_en) begin
+		r_tmp = {r5,r5[4:2]};
+		g_tmp = {g5,g5[4:2]};
+		b_tmp = {b5,b5[4:2]};
+	end else if (tint) begin
+		{r_tmp,g_tmp,b_tmp} = (pixel==0) ? pal1 : (pixel==1) ? pal2 : (pixel==2) ? pal3 : pal4;
+	end else begin
+		{r_tmp,g_tmp,b_tmp} = {3{grey}};
 	end
 end
 
+reg [7:0] r_prev, g_prev, b_prev;
+reg [7:0] r_cur, g_cur, b_cur;
+reg [14:0] sgb_border_d;
+reg hbl_l, vbl_l;
+reg border_en;
+always@(posedge clk_vid) begin
 
+	if (ce_pix)
+		{r_cur, g_cur, b_cur} <= {r_tmp, g_tmp, b_tmp};
 
+	if (ce_pix_n)
+		{r_prev, g_prev, b_prev} <= {r_tmp, g_tmp, b_tmp};
+
+	if (ce_pix) begin
+		// visible area?
+		hbl_l <= sgb_en ? hb : gb_hb;
+		vbl_l <= sgb_en ? vb : gb_vb;
+		hbl <= hbl_l;
+		vbl <= vbl_l;
+
+		// Allow backdrop color in border area and the border to overlap game area.
+		border_en <= ((gb_hb|gb_vb) & sgb_en) | sgb_border;
+		sgb_border_d <= sgb_border_pix[14:0];
+
+		if (border_en) begin
+			r <= {sgb_border_d[4:0],sgb_border_d[4:2]};
+			g <= {sgb_border_d[9:5],sgb_border_d[9:7]};
+			b <= {sgb_border_d[14:10],sgb_border_d[14:12]};
+		end else if (frame_blend) begin
+			r <= blend(r_cur, r_prev);
+			g <= blend(g_cur, g_prev);
+			b <= blend(b_cur, b_prev);
+		end else begin
+			{r,g,b} <= {r_cur, g_cur, b_cur};
+		end
+	end
+
+end
 
 endmodule

@@ -69,7 +69,7 @@ always @(posedge clk) begin
          serial_clk_div <= serial_clk_div - 9'd1;
 
          if (serial_counter != 0) begin
-            if (serial_clk_div == {1'b0,CLK_DIV[8:1]+1'd1}) begin
+            if (serial_clk_div == CLK_DIV/2+1) begin
                serial_clk_out_r <= ~serial_clk_out_r;
                serial_out_r <= sb[7];
             end else if (!serial_clk_div) begin
