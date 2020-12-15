@@ -9,6 +9,7 @@ set_global_assignment -name VERILOG_FILE rtl/timer.v
 set_global_assignment -name VERILOG_FILE rtl/sprites.v
 set_global_assignment -name VERILOG_FILE rtl/lcd.v
 set_global_assignment -name VHDL_FILE rtl/gbc_snd.vhd
+set_global_assignment -name VHDL_FILE rtl/speedcontrol.vhd
 set_global_assignment -name VERILOG_FILE rtl/gb.v
 set_global_assignment -name VERILOG_FILE rtl/hdma.v
 set_global_assignment -name VERILOG_FILE rtl/link.v

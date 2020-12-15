@@ -151,7 +151,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXX  XX
+// XXXXXXXXXXXXXXXXXXXXX  XXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -180,8 +180,11 @@ localparam CONF_STR = {
 	"OB,Boot,Normal,Fast;",
 	"O6,Link Port,Disabled,Enabled;",
 	"-;",
+	"OPQ,FastForward Sound,Normal,Hack,Off;",
+   "OR,Pause when OSD is open,Off,On;",
+	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start;",
+	"J1,A,B,Select,Start,FastForward;",
 	"V,v",`BUILD_DATE
 };
 
@@ -555,6 +558,9 @@ always @(posedge clk_sys) if(reset) begin
 	else if(cart_download) isGBC <= !filetype[7:4];
 end
 
+wire [15:0] GB_AUDIO_L;
+wire [15:0] GB_AUDIO_R;
+
 // the gameboy itself
 gb gb (
 	.reset	    ( reset      ),
@@ -562,6 +568,7 @@ gb gb (
 	.clk_sys     ( clk_sys    ),
 	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
+	.ce_sound    ( ce_sound   ),   // ~8Mhz if not fastforward
 	
 	.fast_boot   ( status[11]  ),
 
@@ -583,8 +590,8 @@ gb gb (
 	.gbc_bios_do     ( bios_do    ),
 
 	// audio
-	.audio_l 	 ( AUDIO_L	  ),
-	.audio_r 	 ( AUDIO_R	  ),
+	.audio_l 	 ( GB_AUDIO_L ),
+	.audio_r 	 ( GB_AUDIO_R ),
 	
 	// interface to the lcd
 	.lcd_clkena  ( lcd_clkena ),
@@ -608,6 +615,9 @@ gb gb (
 	.gg_code(gg_code),
 	.gg_available(gg_available)
 );
+
+assign AUDIO_L = (joystick_0[8] && status[26]) ? 16'd0 : GB_AUDIO_L;
+assign AUDIO_R = (joystick_0[8] && status[26]) ? 16'd0 : GB_AUDIO_R;
 
 // the lcd to vga converter
 wire [7:0] video_r, video_g, video_b;
@@ -739,14 +749,22 @@ video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 
 //////////////////////////////// CE ////////////////////////////////////
 
-reg ce_cpu, ce_cpu2x;
-always @(negedge clk_sys) begin
-	reg [2:0] div = 0;
 
-	div      <= div + 1'd1;
-	ce_cpu2x <= !div[1:0];
-	ce_cpu   <= !div[2:0];
-end
+wire ce_cpu, ce_cpu2x, ce_sound, ce_soundhack;
+wire cart_act = cart_wr | cart_rd;
+
+speedcontrol speedcontrol
+(
+	.clk_sys     (clk_sys),
+   .pause       (status[27] && OSD_STATUS && !ioctl_download),
+	.speedup     (joystick_0[8] && !ioctl_download && !OSD_STATUS),
+	.cart_act    (cart_act),
+	.ce          (ce_cpu),
+	.ce_2x       (ce_cpu2x),
+   .ce_2xNormal (ce_soundhack)
+);
+
+assign ce_sound = status[25] ? ce_soundhack : ce_cpu2x;
 
 ///////////////////////////// GBC BIOS /////////////////////////////////
 
