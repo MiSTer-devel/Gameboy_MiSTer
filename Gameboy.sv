@@ -343,49 +343,45 @@ end
 // ----------------------------- MBC1 ----------------------------
 // ---------------------------------------------------------------
 
-wire [9:0] mbc1_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{2'b00, mbc1_rom_bank, cart_addr[13]}: 	// 16k ROM Bank 1-127
-	9'd0;
-	
-wire [9:0] mbc2_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{2'b00, mbc2_rom_bank, cart_addr[13]}:	// 16k ROM Bank 1-15
-	9'd0;
-	
-wire [9:0] mbc3_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{2'b00,mbc3_rom_bank, cart_addr[13]}:  	// 16k ROM Bank 1-127
-	9'd0;
+wire [9:0] mbc1_addr = {2'b00, mbc1_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-127 or MBC1M Bank 0-63
 
-wire [9:0] mbc5_addr = 
-	(cart_addr[15:14] == 2'b00)?{9'd0, cart_addr[13]}:        				// 16k ROM Bank 0
-	(cart_addr[15:14] == 2'b01)?{mbc5_rom_bank, cart_addr[13]}:       	// 16k ROM Bank 0-480 (0h-1E0h)
-	9'd0;
-	
+wire [9:0] mbc2_addr = {2'b00, mbc2_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-15
+
+wire [9:0] mbc3_addr = {2'b00, mbc3_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-127
+
+wire [9:0] mbc5_addr = {       mbc5_rom_bank, cart_addr[13]};	// 16k ROM Bank 0-480 (0h-1E0h)
+
+// https://forums.nesdev.com/viewtopic.php?p=168940#p168940
+// https://gekkio.fi/files/gb-docs/gbctr.pdf
+// MBC1 $6000 Mode register:
+// 0: Bank2 ANDed with CPU A14. Bank2 affects ROM 0x4000-0x7FFF only
+// 1: Passthrough. Bank2 affects ROM 0x0000-0x3FFF, 0x4000-0x7FFF, RAM 0xA000-0xBFFF
+wire [1:0] mbc1_bank2 = mbc_ram_bank_reg[1:0] & {2{cart_addr[14] | mbc1_mode}};
+
 // -------------------------- RAM banking ------------------------
 
-// in mode 0 (16/8 mode) the ram is not banked 
-// in mode 1 (4/32 mode) four ram banks are used
-wire [1:0] mbc1_ram_bank = (mbc1_mode?mbc_ram_bank_reg[1:0]:2'b00) & ram_mask[1:0];
+wire [1:0] mbc1_ram_bank = mbc1_bank2 & ram_mask[1:0];
 wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg[1:0] & ram_mask[1:0];
 wire [3:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
 
 // -------------------------- ROM banking ------------------------
    
-// in mode 0 (16/8 mode) the ram bank select signals are the upper rom address lines 
-// in mode 1 (4/32 mode) the upper two rom address lines are 2'b00
-wire [6:0] mbc1_rom_bank_mode = { mbc1_mode?2'b00:mbc_ram_bank_reg[1:0], mbc_rom_bank_reg[4:0]};
+// 0x0000-0x3FFF = Bank 0
+wire [8:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 9'd0 : mbc_rom_bank_reg;
+
+// MBC1: 4x32 16KByte banks, MBC1M: 4x16 16KByte banks
+wire [6:0] mbc1_rom_bank_mode = mbc1m ? { 1'b0, mbc1_bank2, mbc_rom_bank[3:0] }
+                                      : {       mbc1_bank2, mbc_rom_bank[4:0] };
 
 // in mode 0 map memory at A000-BFFF
 // in mode 1 map rtc register at A000-BFFF
 //wire [6:0] mbc3_ram_bank_addr = { mbc3_mode?2'b00:mbc3_ram_bank_reg, mbc3_rom_bank_reg};
 
 // mask address lines to enable proper mirroring
-wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask[6:0];		 //128
-wire [6:0] mbc2_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //16
-wire [6:0] mbc3_rom_bank = mbc_rom_bank_reg[6:0] & rom_mask[6:0];  //128
-wire [8:0] mbc5_rom_bank = mbc_rom_bank_reg & rom_mask;  //480
+wire [6:0] mbc1_rom_bank = mbc1_rom_bank_mode & rom_mask[6:0];	 //128
+wire [6:0] mbc2_rom_bank = mbc_rom_bank[6:0] & rom_mask[6:0];  //16
+wire [6:0] mbc3_rom_bank = mbc_rom_bank[6:0] & rom_mask[6:0];  //128
+wire [8:0] mbc5_rom_bank = mbc_rom_bank & rom_mask;  //480
 
 wire mbc_battery = (cart_mbc_type == 8'h03) || (cart_mbc_type == 8'h06) || (cart_mbc_type == 8'h09) || (cart_mbc_type == 8'h0D) ||
 	(cart_mbc_type == 8'h10) || (cart_mbc_type == 8'h13) || (cart_mbc_type == 8'h1B) || (cart_mbc_type == 8'h1E) ||
@@ -456,6 +452,7 @@ reg [7:0] cart_ram_size;
 reg [7:0] cart_cgb_flag;
 reg [7:0] cart_sgb_flag;
 reg [7:0] cart_old_licensee;
+reg [15:0] cart_logo_data[0:7];
 
 // RAM size
 wire [3:0] ram_mask =               	// 0 - no ram
@@ -505,21 +502,39 @@ wire isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 
+// MBC1M detect
+reg [7:0] cart_logo_check;
+reg [2:0] cart_logo_idx;
+wire mbc1m = &cart_logo_check;
+
 always @(posedge clk_sys) begin
-	if(!pll_locked) begin
-		cart_mbc_type <= 8'h00;
-		cart_rom_size <= 8'h00;
-		cart_ram_size <= 8'h00;
-	end else begin
-		if(cart_download & ioctl_wr) begin
-			case(ioctl_addr)
-				'h142: cart_cgb_flag <= ioctl_dout[15:8];
-				'h146: {cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
-				'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
-				'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
-			endcase
-		end 
+	if(~old_downloading & downloading) begin
+		cart_logo_idx <= 3'd0;
+		cart_logo_check <= 8'd0;
 	end
+
+	if(cart_download & ioctl_wr) begin
+		case(ioctl_addr)
+			'h142: cart_cgb_flag <= ioctl_dout[15:8];
+			'h146: {cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
+			'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
+			'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
+		endcase
+
+		//Store cart logo data
+		if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
+			cart_logo_data[cart_logo_idx] <= ioctl_dout;
+			cart_logo_idx <= cart_logo_idx + 1'b1;
+		end
+
+		// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank
+		if (ioctl_addr >= 'h40104 && ioctl_addr <= 'h40112) begin
+			cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
+			cart_logo_idx <= cart_logo_idx + 1'b1;
+		end
+
+	end
+
 	if (palette_download & ioctl_wr) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
