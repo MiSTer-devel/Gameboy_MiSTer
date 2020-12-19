@@ -24,12 +24,15 @@ architecture arch of etb is
  
    signal reset       : std_logic := '1';
    signal clksys      : std_logic := '1';
+   signal clkram      : std_logic := '1';
    
    signal clkdiv      : unsigned(2 downto 0) := (others => '0');
    signal nextdiv     : unsigned(2 downto 0) := (others => '0');
    
    signal ce          : std_logic := '1';
    signal ce_2x       : std_logic := '1';
+   
+   signal speed       : std_logic;
    
    signal command_in  : std_logic;
    signal command_out : std_logic;
@@ -62,6 +65,8 @@ architecture arch of etb is
    signal pixel_out_we   : std_logic := '0';       
    
    
+   signal is_CGB         : std_logic := '1';
+   
    -- settings
    signal GB_on            : std_logic_vector(Reg_GB_on.upper             downto Reg_GB_on.lower)             := (others => '0');
 
@@ -69,7 +74,8 @@ architecture arch of etb is
 begin
 
    reset  <= not GB_on(0);
-   clksys <= not clksys after 15 ns;
+   clksys <= not clksys after 14 ns;
+   clkram <= not clkram after 7 ns;
    
    clk100 <= not clk100 after 5 ns;
    
@@ -82,6 +88,7 @@ begin
    port map
    (
       clk_sys  => clksys,
+      speed    => speed,
       pause    => '0',
       speedup  => '1',
       cart_act => cart_act,
@@ -89,23 +96,14 @@ begin
       ce_2x    => ce_2x
    );
    
-   
    isdram_model : entity tb.sdram_model
    port map
    (
-      clk       => clksys,      
+      clk       => clkram,      
       cart_addr => cart_addr,
       cart_rd   => cart_rd,  
       cart_do   => cart_do  
    );
-   
-   --itetris : entity gameboy.tetris
-   --port map
-   --(
-   --   clk     => clksys,
-   --   address => cart_addr(14 downto 0),
-   --   data    => cart_do
-   --);
    
    igb : entity gameboy.gb
    port map
@@ -115,12 +113,11 @@ begin
       clk_sys           => clksys,
       ce                => ce,
       ce_2x             => ce_2x,
-      --ce_sound          => ce_2x,
          
       fast_boot         => '1',
       joystick          => x"00",
-      isGBC             => '0',
-      isGBC_game        => '0',
+      isGBC             => is_CGB,
+      isGBC_game        => is_CGB,
    
       -- cartridge interface
       -- can adress up to 1MB ROM
@@ -148,7 +145,7 @@ begin
       joy_p54           => open,
       joy_din           => "0000",
          
-      speed             => open,   --GBC
+      speed             => speed,   --GBC
          
       gg_reset          => reset,
       gg_en             => '0',
@@ -167,7 +164,7 @@ begin
    port map
    (
       clk     => clksys,
-      address => gbc_bios_addr(7 downto 0),
+      address => gbc_bios_addr,
       data    => gbc_bios_do
    );
    
@@ -195,13 +192,17 @@ begin
             end if;
          end if;
          
-         case (lcd_data(1 downto 0)) is
-            when "00"   => pixel_out_data <= "11111" & "11111" & "11111";
-            when "01"   => pixel_out_data <= "10000" & "10000" & "10000";
-            when "10"   => pixel_out_data <= "01000" & "01000" & "01000";
-            when "11"   => pixel_out_data <= "00000" & "00000" & "00000";
-            when others => pixel_out_data <= "00000" & "00000" & "11111";
-         end case;
+         if (is_CGB = '0') then
+            case (lcd_data(1 downto 0)) is
+               when "00"   => pixel_out_data <= "11111" & "11111" & "11111";
+               when "01"   => pixel_out_data <= "10000" & "10000" & "10000";
+               when "10"   => pixel_out_data <= "01000" & "01000" & "01000";
+               when "11"   => pixel_out_data <= "00000" & "00000" & "00000";
+               when others => pixel_out_data <= "00000" & "00000" & "11111";
+            end case;
+         else
+            pixel_out_data <= lcd_data;
+         end if;
          
       end if;
    end process;

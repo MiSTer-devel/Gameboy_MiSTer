@@ -151,7 +151,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXX  XXXXX
+// XXXXXXXXXXXXXXXXXXXXX  XXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -180,8 +180,8 @@ localparam CONF_STR = {
 	"OB,Boot,Normal,Fast;",
 	"O6,Link Port,Disabled,Enabled;",
 	"-;",
-	"OPQ,FastForward Sound,Normal,Hack,Off;",
-   "OR,Pause when OSD is open,Off,On;",
+	"OP,FastForward Sound,On,Off;",
+	"OQ,Pause when OSD is open,Off,On;",
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FastForward;",
@@ -286,6 +286,8 @@ wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
 wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_bank, cart_addr[12:1]};
 wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
 wire sdram_we = cart_download & dn_write;
+wire sdram_refresh_force;
+wire sdram_autorefresh = !fastforward;
 
 assign SDRAM_CKE = 1;
 
@@ -312,6 +314,8 @@ sdram sdram (
    .ds             ( sdram_ds                  ),
    .we             ( sdram_we                  ),
    .oe             ( sdram_oe                  ),
+   .autorefresh    ( sdram_autorefresh         ),
+   .refresh        ( sdram_refresh_force       ),
    .dout           ( sdram_do                  )
 );
 
@@ -583,7 +587,6 @@ gb gb (
 	.clk_sys     ( clk_sys    ),
 	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
-	.ce_sound    ( ce_sound   ),   // ~8Mhz if not fastforward
 	
 	.fast_boot   ( status[11]  ),
 
@@ -631,8 +634,8 @@ gb gb (
 	.gg_available(gg_available)
 );
 
-assign AUDIO_L = (joystick_0[8] && status[26]) ? 16'd0 : GB_AUDIO_L;
-assign AUDIO_R = (joystick_0[8] && status[26]) ? 16'd0 : GB_AUDIO_R;
+assign AUDIO_L = (joystick_0[8] && status[25]) ? 16'd0 : GB_AUDIO_L;
+assign AUDIO_R = (joystick_0[8] && status[25]) ? 16'd0 : GB_AUDIO_R;
 
 // the lcd to vga converter
 wire [7:0] video_r, video_g, video_b;
@@ -765,21 +768,27 @@ video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 //////////////////////////////// CE ////////////////////////////////////
 
 
-wire ce_cpu, ce_cpu2x, ce_sound, ce_soundhack;
+wire ce_cpu, ce_cpu2x;
 wire cart_act = cart_wr | cart_rd;
+
+wire fastforward = joystick_0[8] && !ioctl_download && !OSD_STATUS;
+
+reg paused;
+always_ff @(posedge clk_sys) begin
+   paused <= status[26] && OSD_STATUS && !ioctl_download && !reset;
+end
 
 speedcontrol speedcontrol
 (
 	.clk_sys     (clk_sys),
-   .pause       (status[27] && OSD_STATUS && !ioctl_download),
-	.speedup     (joystick_0[8] && !ioctl_download && !OSD_STATUS),
+	.speed       (speed),
+	.pause       (paused),
+	.speedup     (fastforward),
 	.cart_act    (cart_act),
 	.ce          (ce_cpu),
 	.ce_2x       (ce_cpu2x),
-   .ce_2xNormal (ce_soundhack)
+	.refresh     (sdram_refresh_force)
 );
-
-assign ce_sound = status[25] ? ce_soundhack : ce_cpu2x;
 
 ///////////////////////////// GBC BIOS /////////////////////////////////
 
