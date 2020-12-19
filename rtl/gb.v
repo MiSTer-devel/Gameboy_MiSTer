@@ -25,7 +25,6 @@ module gb (
 	input clk_sys,
 	input ce,
 	input ce_2x,
-	input ce_sound,
 
 	input fast_boot,
 	input [7:0] joystick,
@@ -268,7 +267,7 @@ wire audio_wr = !cpu_wr_n && sel_audio;
 
 gbc_snd audio (
 	.clk				( clk_sys			),
-	.ce            ( ce_sound        ),
+	.ce            ( ce_2x           ),
 	.reset			( reset_r			),
 	
 	.is_gbc        ( isGBC           ),

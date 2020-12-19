@@ -3,6 +3,7 @@ vcom -93 -quiet -work  sim/tb ^
 src/tb/globals.vhd
 
 vcom -93 -quiet -work  sim/mem ^
+src/mem/SyncRamDualByteEnable.vhd ^
 src/mem/SyncFifo.vhd 
 
 vcom -quiet -work  sim/rs232 ^

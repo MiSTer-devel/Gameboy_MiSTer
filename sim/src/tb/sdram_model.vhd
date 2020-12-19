@@ -65,7 +65,6 @@ begin
       wait until rising_edge(clk);
       
       if (cart_rd = '1') then 
-         cart_do       <= x"FF";
          wait until rising_edge(clk);
          wait until rising_edge(clk);
          wait until rising_edge(clk);
