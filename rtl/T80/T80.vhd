@@ -168,6 +168,7 @@ architecture rtl of T80 is
 	signal ClkEn                : std_logic;
 	signal NMI_s                : std_logic;
 	signal INT_s                : std_logic;
+	signal INT_d                : std_logic;
 	signal IStatus              : std_logic_vector(1 downto 0);
 
 	signal DI_Reg               : std_logic_vector(7 downto 0);
@@ -509,7 +510,8 @@ begin
 					elsif MCycle = MCycles and NMICycle = '1' then
 						A <= "0000000001100110";
 						PC <= "0000000001100110";
-					elsif MCycle = "011" and IntCycle = '1' and IStatus = "10" then
+					elsif ((Mode /= 3 and MCycle = "011") or (Mode = 3 and MCycle = "100")) 
+							and IntCycle = '1' and IStatus = "10" then
             A(15 downto 8) <= I;
             A(7 downto 0) <= TmpAddr(7 downto 0);
             PC(15 downto 8) <= unsigned(I);
@@ -1034,13 +1036,13 @@ begin
 	begin
 		if RESET_n = '0' then
 			BusReq_s <= '0';
-			INT_s <= '0';
+			INT_d <= '0';
 			NMI_s <= '0';
 			OldNMI_n := '0';
 		elsif CLK_n'event and CLK_n = '1' then
 			if CEN = '1' then
 			BusReq_s <= not BUSRQ_n;
-			INT_s <= not INT_n;
+			INT_d <= not INT_n;
 			if NMICycle = '1' then
 				NMI_s <= '0';
 			elsif NMI_n = '0' and OldNMI_n = '1' then
@@ -1050,6 +1052,8 @@ begin
 			end if;
 		end if;
 	end process;
+
+	INT_s <= not INT_n when Mode = 3 else INT_d; -- GB: No delay on INT_n signal
 
 -------------------------------------------------------------------------
 --
@@ -1112,6 +1116,13 @@ begin
 						BusAck <= '1';
 					else
 						TState <= "001";
+						if (IntCycle = '1' and Mode = 3) then -- GB: read interrupt at MCycle 3
+							if (MCycle = "010") then
+								M1_n <= '0';
+							else
+								M1_n <= '1';
+							end if;
+						end if;
 						if NextIs_XY_Fetch = '1' then
 							MCycle <= "110";
 							Pre_XY_F_M <= MCycle;

@@ -169,12 +169,13 @@ end
 wire h455 = (h_cnt == 9'd455);
 wire vblank  = (v_cnt >= 144);
 
-reg vblank_l, end_of_line, end_of_line_l, lyc_match_l;
+reg vblank_l, end_of_line, end_of_line_l, end_of_line_ll, lyc_match_l;
 always @(posedge clk) begin
 	if (!lcd_on) begin
 		vblank_l <= 1'b0;
 		end_of_line <= 1'b0;
 		end_of_line_l <= 1'b0;
+		end_of_line_ll <= 1'b0;
 	end else if (ce) begin
 		if (h455) end_of_line <= 1'b1;
 		else if (end_of_line) begin
@@ -191,6 +192,7 @@ always @(posedge clk) begin
 		end
 
 		end_of_line_l <= end_of_line;
+		end_of_line_ll <= end_of_line_l;
 	end
 end
 
@@ -212,7 +214,7 @@ always @(posedge clk) begin
 	if (!lcd_on) begin
 		mode3_end_l <= 1'b0;
 	end else if (ce) begin
-		if (end_of_line & ~vblank)
+		if (pcnt_reset)
 			mode3_end_l <= 1'b0;
 		else
 			mode3_end_l <= mode3_end;
@@ -220,7 +222,7 @@ always @(posedge clk) begin
 end
 
 wire int_lyc = (stat[6] & lyc_match_l);
-wire int_oam = (stat[5] & end_of_line_l & ~vblank_l);
+wire int_oam = (stat[5] & end_of_line_ll & ~vblank_l);
 wire int_vbl = (stat[4] & vblank_l);
 wire int_hbl = (stat[3] & mode3_end & ~vblank_l);
 
@@ -231,7 +233,7 @@ assign vblank_irq = vblank_l;
 // OAM evaluation starts at cycle 4.
 // Except on the first line when the LCD is enabled after being disabled
 // where it starts at cycle 0.
-wire oam     = lcd_on & ~end_of_line & ~oam_eval_end;
+wire oam     = lcd_on & ~oam_eval_end;
 wire mode3   = lcd_on & (isGBC ? ~mode3_end : ~mode3_end_l) & oam_eval_end;
 
 assign mode = 
@@ -342,7 +344,7 @@ wire sprite_fetch_hold;
 wire bg_shift_empty;
 
 assign pcnt_end = ( pcnt == (isGBC ? 8'd168 : 8'd167) );
-wire pcnt_reset = end_of_line & ~vblank;
+wire pcnt_reset = (h_cnt[1:0] == 2'b11) & end_of_line & ~vblank;
 always @(posedge clk) begin
 	if (!lcd_on) begin
 		skip_en <= 1'b0;
@@ -669,7 +671,7 @@ sprites sprites (
 
 	.oam_eval  ( oam ),
 	.oam_fetch ( mode3 ),
-	.oam_eval_reset ( end_of_line & ~vblank ),
+	.oam_eval_reset ( pcnt_reset ),
 	.oam_eval_end ( oam_eval_end ),
 
 	.sprite_fetch (sprite_found),

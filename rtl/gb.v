@@ -346,7 +346,7 @@ assign irq_vec =
 			if_r[2]&&ie_r[2]?8'h50:   // timer
 			if_r[3]&&ie_r[3]?8'h58:   // serial
 			if_r[4]&&ie_r[4]?8'h60:   // input
-			8'h55;
+			8'h00;
 
 //wire vs = (lcd_mode == 2'b01);
 //reg vsD, vsD2;
