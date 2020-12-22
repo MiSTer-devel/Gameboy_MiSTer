@@ -847,21 +847,22 @@ begin
 				end case;
 			elsif IntCycle = '1' then
 				-- INT (IM 2)
-				if mode = 3 then
+				if Mode = 3 then
 				 MCycles <= "100";
 				 case to_integer(unsigned(MCycle)) is
 					when 1 =>
-						LDZ <= '1';
 						TStates <= "110";
 						IncDec_16 <= "1111";
 						Set_Addr_To <= aSP;
 						Set_BusB_To <= "1101";
 					when 2 =>
 						Write <= '1';
+					when 3 => -- GB: interrupt is acknowledged on MCycle 3
+						LDZ <= '1';
 						IncDec_16 <= "1111";
 						Set_Addr_To <= aSP;
 						Set_BusB_To <= "1100";
-					when 3 =>
+					when 4 =>
 						Write <= '1';
 					when others => null;
 					end case;

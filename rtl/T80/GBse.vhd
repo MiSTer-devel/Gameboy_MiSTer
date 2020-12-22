@@ -168,10 +168,13 @@ begin
 					if TState = "001" or (TState = "010" and Wait_n = '0') then
 						RD_n <= not IntCycle_n;
 						MREQ_n <= not IntCycle_n;
-						IORQ_n <= IntCycle_n;
 					end if;
 					if TState = "011" then
 						MREQ_n <= '0';
+					end if;
+				elsif MCycle = "011" and IntCycle_n = '0' then
+					if TState = "001" or TState = "010" then
+						IORQ_n <= '0'; -- Acknowledge IRQ
 					end if;
 				else
 					if (TState = "001" or (TState = "010" and Wait_n = '0')) and NoRead = '0' and Write = '0' then
