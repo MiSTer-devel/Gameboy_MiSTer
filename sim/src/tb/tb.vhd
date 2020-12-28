@@ -17,10 +17,8 @@ end entity;
 
 architecture arch of etb is
 
-   constant clk_speed : integer := 100000000;
-   constant baud      : integer := 25000000;
- 
-   signal clk100      : std_logic := '1';
+   constant clk_speed : integer := 32000000;
+   constant baud      : integer := 1000000;
  
    signal reset       : std_logic := '1';
    signal clksys      : std_logic := '1';
@@ -41,9 +39,9 @@ architecture arch of etb is
    signal proc_bus_in : proc_bus_type;
    
    signal lcd_clkena   : std_logic;
-   signal lcd_clkena_1 : std_logic := '0';
    signal lcd_data     : std_logic_vector(14 downto 0);
    signal lcd_mode     : std_logic_vector(1 downto 0);
+   signal lcd_mode_1   : std_logic_vector(1 downto 0);
    signal lcd_on       : std_logic;
    signal lcd_vsync    : std_logic;
    signal lcd_vsync_1  : std_logic := '0';
@@ -64,11 +62,40 @@ architecture arch of etb is
    signal pixel_out_data : std_logic_vector(14 downto 0);  
    signal pixel_out_we   : std_logic := '0';       
    
+   signal is_CGB         : std_logic := '0';
    
-   signal is_CGB         : std_logic := '1';
+   signal sleep_savestate : std_logic;
+
+   -- ddrram
+   signal DDRAM_CLK        : std_logic;
+   signal DDRAM_BUSY       : std_logic;
+   signal DDRAM_BURSTCNT   : std_logic_vector(7 downto 0);
+   signal DDRAM_ADDR       : std_logic_vector(28 downto 0);
+   signal DDRAM_DOUT       : std_logic_vector(63 downto 0);
+   signal DDRAM_DOUT_READY : std_logic;
+   signal DDRAM_RD         : std_logic;
+   signal DDRAM_DIN        : std_logic_vector(63 downto 0);
+   signal DDRAM_BE         : std_logic_vector(7 downto 0);
+   signal DDRAM_WE         : std_logic;
+   
+   signal ch1_addr         : std_logic_vector(27 downto 1);
+   signal ch1_dout         : std_logic_vector(63 downto 0);
+   signal ch1_din          : std_logic_vector(63 downto 0);
+   signal ch1_req          : std_logic;
+   signal ch1_rnw          : std_logic;
+   signal ch1_ready        : std_logic;
+   
+   signal SAVE_out_Din     : std_logic_vector(63 downto 0);
+   signal SAVE_out_Dout    : std_logic_vector(63 downto 0);
+   signal SAVE_out_Adr     : std_logic_vector(25 downto 0);
+   signal SAVE_out_rnw     : std_logic;                    
+   signal SAVE_out_ena     : std_logic;                                    
+   signal SAVE_out_done    : std_logic; 
    
    -- settings
-   signal GB_on            : std_logic_vector(Reg_GB_on.upper             downto Reg_GB_on.lower)             := (others => '0');
+   signal GB_on          : std_logic_vector(Reg_GB_on.upper             downto Reg_GB_on.lower)             := (others => '0');
+   signal GB_SaveState   : std_logic_vector(Reg_GB_SaveState.upper      downto Reg_GB_SaveState.lower)      := (others => '0');
+   signal GB_LoadState   : std_logic_vector(Reg_GB_LoadState.upper      downto Reg_GB_LoadState.lower)      := (others => '0');
 
    
 begin
@@ -77,10 +104,10 @@ begin
    clksys <= not clksys after 14 ns;
    clkram <= not clkram after 7 ns;
    
-   clk100 <= not clk100 after 5 ns;
-   
    -- registers
-   iReg_GBA_on            : entity procbus.eProcReg generic map (Reg_GB_on      )   port map (clk100, proc_bus_in, GB_on, GB_on);      
+   iReg_GBA_on        : entity procbus.eProcReg generic map (Reg_GB_on       )   port map (clksys, proc_bus_in, GB_on       , GB_on       );      
+   iReg_GB_SaveState  : entity procbus.eProcReg generic map (Reg_GB_SaveState)   port map (clksys, proc_bus_in, GB_SaveState, GB_SaveState);      
+   iReg_GB_LoadState  : entity procbus.eProcReg generic map (Reg_GB_LoadState)   port map (clksys, proc_bus_in, GB_LoadState, GB_LoadState);      
    
    cart_act <= cart_rd or cart_wr;
    
@@ -89,7 +116,7 @@ begin
    (
       clk_sys  => clksys,
       speed    => speed,
-      pause    => '0',
+      pause    => sleep_savestate,
       speedup  => '1',
       cart_act => cart_act,
       ce       => ce,
@@ -108,56 +135,121 @@ begin
    igb : entity gameboy.gb
    port map
    (
-      reset             => reset,
-            
-      clk_sys           => clksys,
-      ce                => ce,
-      ce_2x             => ce_2x,
-         
-      fast_boot         => '1',
-      joystick          => x"00",
-      isGBC             => is_CGB,
-      isGBC_game        => is_CGB,
+      reset                   => reset,
+                  
+      clk_sys                 => clksys,
+      ce                      => ce,
+      ce_2x                   => ce_2x,
+               
+      fast_boot               => '1',
+      joystick                => x"FF",
+      isGBC                   => is_CGB,
+      isGBC_game              => is_CGB,
    
       -- cartridge interface
       -- can adress up to 1MB ROM
-      cart_addr         => cart_addr,
-      cart_rd           => cart_rd,  
-      cart_wr           => cart_wr, 
-      cart_do           => cart_do,  
-      cart_di           => cart_di,  
+      cart_addr               => cart_addr,
+      cart_rd                 => cart_rd,  
+      cart_wr                 => cart_wr, 
+      cart_do                 => cart_do,  
+      cart_di                 => cart_di,  
       
       --gbc bios interface
-      gbc_bios_addr     => gbc_bios_addr,
-      gbc_bios_do       => gbc_bios_do,
-      
-      -- audio
-      audio_l           => open,
-      audio_r           => open,
-      
-      -- lcd interface
-      lcd_clkena        => lcd_clkena,
-      lcd_data          => lcd_data,  
-      lcd_mode          => lcd_mode,  
-      lcd_on            => lcd_on,    
-      lcd_vsync         => lcd_vsync, 
-   
-      joy_p54           => open,
-      joy_din           => "0000",
+      gbc_bios_addr           => gbc_bios_addr,
+      gbc_bios_do             => gbc_bios_do,
+            
+      -- audio    
+      audio_l                 => open,
+      audio_r                 => open,
+            
+      -- lcd interface     
+      lcd_clkena              => lcd_clkena,
+      lcd_data                => lcd_data,  
+      lcd_mode                => lcd_mode,  
+      lcd_on                  => lcd_on,    
+      lcd_vsync               => lcd_vsync, 
          
-      speed             => speed,   --GBC
+      joy_p54                 => open,
+      joy_din                 => "1111",
+               
+      speed                   => speed,   --GBC
+               
+      gg_reset                => reset,
+      gg_en                   => '0',
+      gg_code                 => (128 downto 0 => '0'),
+      gg_available            => open,
          
-      gg_reset          => reset,
-      gg_en             => '0',
-      gg_code           => (128 downto 0 => '0'),
-      gg_available      => open,
+      --serial port     
+      sc_int_clock2           => open,
+      serial_clk_in           => '0',
+      serial_clk_out          => open,
+      serial_data_in          => '0',
+      serial_data_out         => open,
+            
+      save_state              => GB_SaveState,
+      load_state              => GB_LoadState,
+      sleep_savestate         => sleep_savestate,
+            
+      SaveStateExt_Din        => open,
+      SaveStateExt_Adr        => open,
+      SaveStateExt_wren       => open,
+      SaveStateExt_rst        => open,
+      SaveStateExt_Dout       => (63 downto 0 => '0'),
+      
+      Savestate_CRAMReadData  => (7 downto 0 => '0'),
+      
+      SAVE_out_Din            => SAVE_out_Din,   
+      SAVE_out_Dout           => SAVE_out_Dout,  
+      SAVE_out_Adr            => SAVE_out_Adr,   
+      SAVE_out_rnw            => SAVE_out_rnw,   
+      SAVE_out_ena            => SAVE_out_ena,   
+      SAVE_out_done           => SAVE_out_done,
+            
+      rewind_on               => '0',
+      rewind_active           => '0'
+   );
    
-      --serial port
-      sc_int_clock2     => open,
-      serial_clk_in     => '0',
-      serial_clk_out    => open,
-      serial_data_in    => '0',
-      serial_data_out   => open
+   ch1_addr <= SAVE_out_Adr(25 downto 0) & "0";
+   ch1_din  <= SAVE_out_Din;
+   ch1_req  <= SAVE_out_ena;
+   ch1_rnw  <= SAVE_out_rnw;
+   SAVE_out_Dout <= ch1_dout;
+   SAVE_out_done <= ch1_ready;
+   
+   iddrram : entity tb.ddram
+   port map (
+      DDRAM_CLK        => clksys,      
+      DDRAM_BUSY       => DDRAM_BUSY,      
+      DDRAM_BURSTCNT   => DDRAM_BURSTCNT,  
+      DDRAM_ADDR       => DDRAM_ADDR,      
+      DDRAM_DOUT       => DDRAM_DOUT,      
+      DDRAM_DOUT_READY => DDRAM_DOUT_READY,
+      DDRAM_RD         => DDRAM_RD,        
+      DDRAM_DIN        => DDRAM_DIN,       
+      DDRAM_BE         => DDRAM_BE,        
+      DDRAM_WE         => DDRAM_WE,                
+                                   
+      ch1_addr         => ch1_addr,        
+      ch1_dout         => ch1_dout,        
+      ch1_din          => ch1_din,         
+      ch1_req          => ch1_req,         
+      ch1_rnw          => ch1_rnw,         
+      ch1_ready        => ch1_ready
+   );
+   
+   iddrram_model : entity tb.ddrram_model
+   port map
+   (
+      DDRAM_CLK        => clksys,      
+      DDRAM_BUSY       => DDRAM_BUSY,      
+      DDRAM_BURSTCNT   => DDRAM_BURSTCNT,  
+      DDRAM_ADDR       => DDRAM_ADDR,      
+      DDRAM_DOUT       => DDRAM_DOUT,      
+      DDRAM_DOUT_READY => DDRAM_DOUT_READY,
+      DDRAM_RD         => DDRAM_RD,        
+      DDRAM_DIN        => DDRAM_DIN,       
+      DDRAM_BE         => DDRAM_BE,        
+      DDRAM_WE         => DDRAM_WE        
    );
    
    igb_bios : entity tb.gb_bios
@@ -173,14 +265,13 @@ begin
       if rising_edge(clksys) then
          pixel_out_we <= '0';
          lcd_vsync_1   <= lcd_vsync;
-         lcd_clkena_1 <= lcd_clkena;
+         lcd_mode_1    <= lcd_mode;
          if (lcd_on = '1') then
             if (lcd_vsync = '1' and lcd_vsync_1 = '0') then
                pixel_out_x <= 0;
                pixel_out_y <= 0;
-            elsif (lcd_clkena_1 = '1' and lcd_clkena = '0') then
+            elsif (lcd_mode_1 /= "11" and lcd_mode = "11") then
                pixel_out_x  <= 0;
-               pixel_out_we <= '1';
                if (pixel_out_y < 143) then
                   pixel_out_y <= pixel_out_y + 1;
                end if;
@@ -232,7 +323,7 @@ begin
    )
    port map 
    (
-      clk               => clk100,
+      clk               => clksys,
       bootloader        => '0',
       debugaccess       => '1',
       command_in        => command_in,
@@ -254,7 +345,7 @@ begin
    )
    port map
    (
-      clk         => clk100,
+      clk         => clksys,
       command_in  => command_in, 
       command_out => command_out_filter
    );

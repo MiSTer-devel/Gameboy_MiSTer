@@ -17,9 +17,22 @@ module hdma(
 	output reg hdma_rd,
 	output reg hdma_active,
 	output [15:0] hdma_source_addr,
-	output [15:0] hdma_target_addr
+	output [15:0] hdma_target_addr,
 
+	// savestates              
+	input  [63:0] SaveStateBus_Din, 
+	input  [9:0]  SaveStateBus_Adr, 
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst, 
+	output [63:0] SaveStateBus_Dout
 );
+
+// savestates
+wire [44:0] SS_HDMA;
+wire [44:0] SS_HDMA_BACK;
+
+eReg_SavestateV #(0, 7, 44, 0, 64'h0000000001FFFFF0) iREG_SAVESTATE_HDMA (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_HDMA_BACK, SS_HDMA);  
+
 
 //"The preparation time (4 clocks) is the same in single and double speed mode"
 localparam START_DELAY = 3'd4;
@@ -49,16 +62,35 @@ reg [2:0] dma_delay;
 reg [1:0] hdma_state;
 parameter active=2'd0,blocksent=2'd1,wait_h=2'd2;
 
+
+assign SS_HDMA_BACK[    0] = hdma_active ;
+assign SS_HDMA_BACK[ 2: 1] = hdma_state  ;
+assign SS_HDMA_BACK[    3] = hdma_enabled;
+assign SS_HDMA_BACK[15: 4] = hdma_source ;
+assign SS_HDMA_BACK[24:16] = hdma_target ;
+assign SS_HDMA_BACK[27:25] = dma_delay   ;
+assign SS_HDMA_BACK[   28] = hdma_rd     ;
+assign SS_HDMA_BACK[   29] = hdma_end    ;
+assign SS_HDMA_BACK[   30] = hdma_mode   ;
+assign SS_HDMA_BACK[38:31] = hdma_length ;
+assign SS_HDMA_BACK[42:39] = byte_cnt    ;
+assign SS_HDMA_BACK[44:43] = hdma_cnt    ;
+
+
 always @(posedge clk) begin
 	if(reset) begin
-		hdma_active <= 1'b0;
-		hdma_state <= wait_h;
-		hdma_enabled <= 1'b0;
-		hdma_source <= 12'hFFF;
-		hdma_target <= 9'h1FF;
-		dma_delay <= 3'd0;
-		hdma_rd <= 0;
-		hdma_end <= 0;
+		hdma_active  <= SS_HDMA[    0]; // 1'b0;
+		hdma_state   <= SS_HDMA[ 2: 1]; // wait_h;
+		hdma_enabled <= SS_HDMA[    3]; // 1'b0;
+		hdma_source  <= SS_HDMA[15: 4]; // 12'hFFF;
+		hdma_target  <= SS_HDMA[24:16]; // 9'h1FF;
+		dma_delay    <= SS_HDMA[27:25]; // 3'd0;
+		hdma_rd      <= SS_HDMA[   28]; // 0;
+		hdma_end     <= SS_HDMA[   29]; // 0;
+		hdma_mode    <= SS_HDMA[   30]; // 1'b0;
+		hdma_length  <= SS_HDMA[38:31]; // 8'd0;
+		byte_cnt     <= SS_HDMA[42:39]; // 4'd0;
+		hdma_cnt     <= SS_HDMA[44:43]; // 2'd0;
 	end
 	else if(ce) begin
 	   if(sel_reg && wr) begin

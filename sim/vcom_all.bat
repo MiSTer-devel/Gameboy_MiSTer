@@ -20,6 +20,12 @@ vcom -quiet -work sim/reg_map ^
 src/reg_map/reg_gameboy.vhd
 
 vcom -quiet -work sim/gameboy ^
+../rtl/bus_savestates.vhd ^
+../rtl/reg_savestates.vhd ^
+../rtl/gb_statemanager.vhd ^
+../rtl/gb_savestates.vhd
+
+vcom -quiet -work sim/gameboy ^
 ../rtl/T80/T80_Pack.vhd ^
 ../rtl/T80/T80_Reg.vhd ^
 ../rtl/T80/T80_MCode.vhd ^
@@ -29,9 +35,9 @@ vcom -quiet -work sim/gameboy ^
 
 vcom -quiet -work sim/gameboy ^
 ../rtl/gbc_snd.vhd ^
-../rtl/boot_rom.vhd ^
 ../rtl/speedcontrol.vhd ^
-../rtl/spram.vhd
+../rtl/dpram.vhd ^
+../rtl/spram.vhd 
 
 vlog -sv -quiet -work sim/gameboy ^
 ../rtl/sprites.v ^
@@ -40,11 +46,17 @@ vlog -sv -quiet -work sim/gameboy ^
 ../rtl/link.v ^
 ../rtl/hdma.v
 
-vlog -sv -O0 -quiet -work sim/gameboy ^
+vlog -sv -quiet -work sim/gameboy ^
 ../rtl/gb.v
 
 vlog -sv -quiet -work sim/gameboy ^
 src/gameboy/cheatcodes.sv
+
+vcom -quiet -work sim/gameboy ^
+src/gameboy/boot_rom.vhd
+
+vlog -sv -quiet -work sim/tb ^
+../rtl/ddram.sv
 
 vcom -quiet -work sim/tb ^
 src/tb/stringprocessor.vhd ^
@@ -52,5 +64,5 @@ src/tb/tb_interpreter.vhd ^
 src/tb/framebuffer.vhd ^
 src/tb/gb_bios.vhd ^
 src/tb/sdram_model.vhd ^
+src/tb/ddrram_model.vhd ^
 src/tb/tb.vhd
-

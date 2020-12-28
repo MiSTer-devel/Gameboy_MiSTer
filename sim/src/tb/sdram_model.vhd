@@ -74,8 +74,8 @@ begin
          cart_do       <= std_logic_vector(to_unsigned(data(to_integer(unsigned(cart_addr))), 8));
       end if;  
       
-      COMMAND_FILE_ACK <= '0';
-      if COMMAND_FILE_START = '1' then
+      COMMAND_FILE_ACK_1 <= '0';
+      if COMMAND_FILE_START_1 = '1' then
          
          assert false report "received" severity note;
          assert false report COMMAND_FILE_NAME(1 to COMMAND_FILE_NAMELEN) severity note;
@@ -99,7 +99,7 @@ begin
       
          file_close(infile);
       
-         COMMAND_FILE_ACK <= '1';
+         COMMAND_FILE_ACK_1 <= '1';
       
       end if;
       

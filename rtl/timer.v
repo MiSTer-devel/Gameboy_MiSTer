@@ -21,7 +21,8 @@
 
 module timer (
 	input  reset,
-   input  clk,    // 4 Mhz cpu clock
+	input  clk_sys,
+	input  ce,    // 4 Mhz cpu clock
 	output reg irq,
 	
 	// cpu register interface
@@ -29,8 +30,21 @@ module timer (
 	input [1:0] cpu_addr,
 	input  cpu_wr,
 	input [7:0] cpu_di,
-	output [7:0] cpu_do
+	output [7:0] cpu_do,
+	
+	// savestates              
+	input  [63:0] SaveStateBus_Din, 
+	input  [9:0]  SaveStateBus_Adr, 
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst, 
+	output [63:0] SaveStateBus_Dout
 );
+
+// savestates
+wire [37:0] SS_Timer;
+wire [37:0] SS_Timer_BACK;
+
+eReg_SavestateV #(0, 6, 37, 0, 64'h0000000000000008) iREG_SAVESTATE_Timer (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_Timer_BACK, SS_Timer);  
 
 // input: 4Mhz
 // clk_div[0] = 2Mhz
@@ -47,28 +61,34 @@ module timer (
 wire resetdiv = cpu_sel && cpu_wr && (cpu_addr == 2'b00); //resetdiv also resets internal counter
 
 reg [9:0] clk_div;
-always @(posedge clk or posedge resetdiv)
-	if(resetdiv)
-	  clk_div <= 10'd2;
-	else
-		if (reset)
-		     clk_div <= 10'd8;
-		  else
-	        clk_div <= clk_div + 10'd1;
+always @(posedge clk_sys)
+	if (reset)
+		clk_div <= SS_Timer[9:0]; // 10'd8;
+	else if(resetdiv)
+		clk_div <= 10'd2;
+	else if (ce)
+		clk_div <= clk_div + 10'd1;
 
 reg [7:0] div;
 reg [7:0] tma;
 reg [7:0] tima;
 reg [2:0] tac;
 
-always @(posedge clk) begin
+assign SS_Timer_BACK[ 9: 0] = clk_div;
+assign SS_Timer_BACK[17:10] = tima;
+assign SS_Timer_BACK[25:18] = tma;
+assign SS_Timer_BACK[28:26] = tac;
+assign SS_Timer_BACK[29]    = irq;
+assign SS_Timer_BACK[37:30] = div;
+
+always @(posedge clk_sys) begin
 	if(reset) begin
-		tima <= 0;
-		tma <= 0;
-		tac <= 0;
-		irq <= 0;
-		div <= 0;
-	end else begin
+		tima <= SS_Timer[17:10]; // 0;
+		tma  <= SS_Timer[25:18]; // 0;
+		tac  <= SS_Timer[28:26]; // 0;
+		irq  <= SS_Timer[29];    // 0;
+		div  <= SS_Timer[37:30]; // 0;
+	end else if (ce) begin
 		irq <= 0;
 
 		if(clk_div[7:0] == 0)   // 16kHz

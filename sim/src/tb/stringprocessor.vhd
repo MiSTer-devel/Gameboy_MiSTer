@@ -295,10 +295,17 @@ begin
                else
                   COMMAND_FILE_ENDIAN <= '0';
                end if;
-               COMMAND_FILE_START  <= '1';
-               wait until COMMAND_FILE_ACK = '1';
-               COMMAND_FILE_START  <= '0';
-               wait for 20 ns;
+               if (address = 0) then
+                  COMMAND_FILE_START_1  <= '1';
+                  wait until COMMAND_FILE_ACK_1 = '1';
+                  COMMAND_FILE_START_1  <= '0';
+                  wait for 20 ns;
+                else
+                   COMMAND_FILE_START_2  <= '1';
+                  wait until COMMAND_FILE_ACK_2 = '1';
+                  COMMAND_FILE_START_2  <= '0';
+                  wait for 20 ns;
+               end if;
                
                write(line_out, string'("&"));
                file_open(f_status, outfile, "output.txt", append_mode);

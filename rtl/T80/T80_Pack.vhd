@@ -58,6 +58,8 @@
 library IEEE;
 use IEEE.std_logic_1164.all;
 
+use work.pBus_savestates.all;
+
 package T80_Pack is
 
 	constant aNone      : std_logic_vector(2 downto 0) := "111";
@@ -82,49 +84,62 @@ package T80_Pack is
 		Flag_S : integer := 7
 	);
 	port(
-		RESET_n         : in std_logic;
-		CLK_n           : in std_logic;
-		CEN                     : in std_logic;
-		WAIT_n          : in std_logic;
-		INT_n           : in std_logic;
-		NMI_n           : in std_logic;
-		BUSRQ_n         : in std_logic;
-		M1_n            : out std_logic;
-		IORQ            : out std_logic;
-		NoRead          : out std_logic;
-		Write           : out std_logic;
-		RFSH_n          : out std_logic;
-		HALT_n          : out std_logic;
-		BUSAK_n         : out std_logic;
-		A                       : out std_logic_vector(15 downto 0);
-		DInst           : in std_logic_vector(7 downto 0);
-		DI                      : in std_logic_vector(7 downto 0);
-		DO                      : out std_logic_vector(7 downto 0);
-		MC                      : out std_logic_vector(2 downto 0);
-		TS                      : out std_logic_vector(2 downto 0);
-		IntCycle_n      : out std_logic;
-		IntE            : out std_logic;
-		Stop            : out std_logic
+		RESET_n         	: in 		std_logic;
+		CLK_n           	: in 		std_logic;
+		CEN             	: in 		std_logic;
+		WAIT_n          	: in 		std_logic;
+		INT_n           	: in 		std_logic;
+		NMI_n           	: in 		std_logic;
+		BUSRQ_n         	: in 		std_logic;
+		M1_n            	: buffer std_logic;
+		IORQ            	: out 	std_logic;
+		NoRead          	: out 	std_logic;
+		Write           	: out 	std_logic;
+		RFSH_n          	: buffer std_logic;
+		HALT_n          	: out 	std_logic;
+		BUSAK_n         	: out 	std_logic;
+		A               	: buffer std_logic_vector(15 downto 0);
+		DInst           	: in 		std_logic_vector(7 downto 0);
+		DI              	: in 		std_logic_vector(7 downto 0);
+		DO              	: buffer std_logic_vector(7 downto 0);
+		MC              	: out 	std_logic_vector(2 downto 0);
+		TS              	: out 	std_logic_vector(2 downto 0);
+		IntCycle_n      	: out 	std_logic;
+		IntE            	: out 	std_logic;
+		Stop            	: out 	std_logic;
+		-- savestates           	   
+		SaveStateBus_Din  : in  	std_logic_vector(BUS_buswidth-1 downto 0);
+		SaveStateBus_Adr  : in  	std_logic_vector(BUS_busadr-1 downto 0);
+		SaveStateBus_wren : in  	std_logic;
+		SaveStateBus_rst  : in  	std_logic;
+		SaveStateBus_Dout : out 	std_logic_vector(BUS_buswidth-1 downto 0)
 	);
 	end component;
 
 	component T80_Reg
 	port(
-		Clk                     : in std_logic;
-		CEN                     : in std_logic;
-		WEH                     : in std_logic;
-		WEL                     : in std_logic;
-		AddrA           : in std_logic_vector(2 downto 0);
-		AddrB           : in std_logic_vector(2 downto 0);
-		AddrC           : in std_logic_vector(2 downto 0);
-		DIH                     : in std_logic_vector(7 downto 0);
-		DIL                     : in std_logic_vector(7 downto 0);
-		DOAH            : out std_logic_vector(7 downto 0);
-		DOAL            : out std_logic_vector(7 downto 0);
-		DOBH            : out std_logic_vector(7 downto 0);
-		DOBL            : out std_logic_vector(7 downto 0);
-		DOCH            : out std_logic_vector(7 downto 0);
-		DOCL            : out std_logic_vector(7 downto 0)
+		RESET_n           : in  std_logic;
+		Clk               : in std_logic;
+		CEN               : in std_logic;
+		WEH               : in std_logic;
+		WEL               : in std_logic;
+		AddrA           	: in std_logic_vector(2 downto 0);
+		AddrB           	: in std_logic_vector(2 downto 0);
+		AddrC           	: in std_logic_vector(2 downto 0);
+		DIH               : in std_logic_vector(7 downto 0);
+		DIL               : in std_logic_vector(7 downto 0);
+		DOAH            	: out std_logic_vector(7 downto 0);
+		DOAL            	: out std_logic_vector(7 downto 0);
+		DOBH            	: out std_logic_vector(7 downto 0);
+		DOBL            	: out std_logic_vector(7 downto 0);
+		DOCH            	: out std_logic_vector(7 downto 0);
+		DOCL            	: out std_logic_vector(7 downto 0);
+		-- savestates              
+		SaveStateBus_Din  : in  std_logic_vector(BUS_buswidth-1 downto 0);
+		SaveStateBus_Adr  : in  std_logic_vector(BUS_busadr-1 downto 0);
+		SaveStateBus_wren : in  std_logic;
+		SaveStateBus_rst  : in  std_logic;
+		SaveStateBus_Dout : out std_logic_vector(BUS_buswidth-1 downto 0)
 	);
 	end component;
 
