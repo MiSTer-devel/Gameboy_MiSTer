@@ -72,31 +72,40 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 use work.T80_Pack.all;
 
+use work.pBus_savestates.all;
+use work.pReg_savestates.all;
+
 entity GBse is
 	generic(
 		T2Write : integer := 1;  -- 0 => WR_n active in T3, /=0 => WR_n active in T2
 		IOWait : integer := 1   -- 0 => Single cycle I/O, 1 => Std I/O cycle
 	);
 	port(
-		RESET_n         : in  std_logic;
-		CLK_n           : in  std_logic;
-		CLKEN           : in  std_logic;
-		WAIT_n          : in  std_logic;
-		INT_n           : in  std_logic;
-		NMI_n           : in  std_logic;
-		BUSRQ_n         : in  std_logic;
-		M1_n            : out std_logic;
-		MREQ_n          : out std_logic;
-		IORQ_n          : out std_logic;
-		RD_n            : out std_logic;
-		WR_n            : out std_logic;
-		RFSH_n          : out std_logic;
-		HALT_n          : out std_logic;
-		BUSAK_n         : out std_logic;
-		STOP            : out std_logic;
-		A               : out std_logic_vector(15 downto 0);
-		DI              : in  std_logic_vector(7 downto 0);
-		DO              : out std_logic_vector(7 downto 0)
+		RESET_n           : in     std_logic;
+		CLK_n             : in     std_logic;
+		CLKEN             : in     std_logic;
+		WAIT_n            : in     std_logic;
+		INT_n             : in     std_logic;
+		NMI_n             : in     std_logic;
+		BUSRQ_n           : in     std_logic;
+		M1_n              : out    std_logic;
+		MREQ_n            : buffer std_logic;
+		IORQ_n            : buffer std_logic;
+		RD_n              : buffer std_logic;
+		WR_n              : buffer std_logic;
+		RFSH_n            : out    std_logic;
+		HALT_n            : out    std_logic;
+		BUSAK_n           : out    std_logic;
+		STOP              : out    std_logic;
+		A                 : out    std_logic_vector(15 downto 0);
+		DI                : in     std_logic_vector(7 downto 0);
+		DO                : out    std_logic_vector(7 downto 0);
+		-- savestates              
+		SaveStateBus_Din  : in     std_logic_vector(BUS_buswidth-1 downto 0);
+		SaveStateBus_Adr  : in     std_logic_vector(BUS_busadr-1 downto 0);
+		SaveStateBus_wren : in     std_logic;
+		SaveStateBus_rst  : in     std_logic;
+		SaveStateBus_Dout : out    std_logic_vector(BUS_buswidth-1 downto 0)
 	);
 end GBse;
 
@@ -110,22 +119,47 @@ architecture rtl of GBse is
 	signal MCycle       : std_logic_vector(2 downto 0);
 	signal TState       : std_logic_vector(2 downto 0);
 
+	-- savestates
+	type t_reg_wired_or is array(0 to 1) of std_logic_vector(63 downto 0);
+	signal reg_wired_or : t_reg_wired_or;
+	
+	signal SS_GBSE      : std_logic_vector(REG_SAVESTATE_GBSE.upper downto REG_SAVESTATE_GBSE.lower);
+	signal SS_GBSE_BACK : std_logic_vector(REG_SAVESTATE_GBSE.upper downto REG_SAVESTATE_GBSE.lower);
+
 begin
+
+	iREG_SAVESTATE_GBSE : entity work.eReg_Savestate generic map ( REG_SAVESTATE_GBSE ) port map (CLK_n, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, reg_wired_or(0), SS_GBSE_BACK, SS_GBSE);  
+	
+	SS_GBSE_BACK(0)           <= RD_n;
+	SS_GBSE_BACK(1)           <= WR_n;
+	SS_GBSE_BACK(2)           <= IORQ_n;
+	SS_GBSE_BACK(3)           <= MREQ_n;
+	SS_GBSE_BACK(11 downto 4) <= DI_Reg;
+	
+	process (reg_wired_or)
+		variable wired_or : std_logic_vector(63 downto 0);
+	begin
+		wired_or := reg_wired_or(0);
+		for i in 1 to (reg_wired_or'length - 1) loop
+			wired_or := wired_or or reg_wired_or(i);
+		end loop;
+		SaveStateBus_Dout <= wired_or;
+	end process;
 
 	u0 : T80
 		generic map
-    (
+	(
 			Mode      => 3,
 			IOWait    => IOWait,
-      Flag_S    => 0,
-      Flag_P    => 0,
-      Flag_X    => 0,
-      Flag_Y    => 0,
-      Flag_C    => 4,
-      Flag_H    => 5,
-      Flag_N    => 6,
-      Flag_Z    => 7
-    )
+			Flag_S    => 0,
+			Flag_P    => 0,
+			Flag_X    => 0,
+			Flag_Y    => 0,
+			Flag_C    => 4,
+			Flag_H    => 5,
+			Flag_N    => 6,
+			Flag_Z    => 7
+		)
 		port map(
 			CEN        => CLKEN,
 			M1_n       => M1_n,
@@ -148,18 +182,25 @@ begin
 			DO         => DO,
 			MC         => MCycle,
 			TS         => TState,
-			IntCycle_n => IntCycle_n);
+			IntCycle_n => IntCycle_n,
+			-- savestates
+			SaveStateBus_Din  => SaveStateBus_Din, 
+			SaveStateBus_Adr  => SaveStateBus_Adr, 
+			SaveStateBus_wren => SaveStateBus_wren,
+			SaveStateBus_rst  => SaveStateBus_rst, 
+			SaveStateBus_Dout => reg_wired_or(1)
+		);
 
-	process (RESET_n, CLK_n)
+	process (CLK_n)
 	begin
-		if RESET_n = '0' then
-			RD_n <= '1';
-			WR_n <= '1';
-			IORQ_n <= '1';
-			MREQ_n <= '1';
-			DI_Reg <= "00000000";
-		elsif CLK_n'event and CLK_n = '1' then
-			if CLKEN = '1' then
+		if CLK_n'event and CLK_n = '1' then
+			if RESET_n = '0' then
+				RD_n   <=  SS_GBSE(0);           -- '1';
+				WR_n   <=  SS_GBSE(1);           -- '1';
+				IORQ_n <=  SS_GBSE(2);           -- '1';
+				MREQ_n <=  SS_GBSE(3);           -- '1';
+				DI_Reg <=  SS_GBSE(11 downto 4); -- "00000000";
+			elsif CLKEN = '1' then
 				RD_n <= '1';
 				WR_n <= '1';
 				IORQ_n <= '1';

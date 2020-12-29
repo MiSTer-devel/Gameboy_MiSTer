@@ -85,6 +85,9 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 use work.T80_Pack.all;
 
+use work.pBus_savestates.all;
+use work.pReg_savestates.all;
+
 entity T80 is
 	generic(
 		Mode   : integer := 0;  -- 0 => Z80, 1 => Fast Z80, 2 => 8080, 3 => GB
@@ -106,22 +109,28 @@ entity T80 is
 		INT_n           : in  std_logic;
 		NMI_n           : in  std_logic;
 		BUSRQ_n         : in  std_logic;
-		M1_n            : out std_logic;
+		M1_n            : buffer std_logic;
 		IORQ            : out std_logic;
 		NoRead          : out std_logic;
 		Write           : out std_logic;
-		RFSH_n          : out std_logic;
+		RFSH_n          : buffer std_logic;
 		HALT_n          : out std_logic;
 		BUSAK_n         : out std_logic;
-		A               : out std_logic_vector(15 downto 0);
+		A               : buffer std_logic_vector(15 downto 0);
 		DInst           : in  std_logic_vector(7 downto 0);
 		DI              : in  std_logic_vector(7 downto 0);
-		DO              : out std_logic_vector(7 downto 0);
+		DO              : buffer std_logic_vector(7 downto 0);
 		MC              : out std_logic_vector(2 downto 0);
 		TS              : out std_logic_vector(2 downto 0);
 		IntCycle_n      : out std_logic;
 		IntE            : out std_logic;
-		Stop            : out std_logic
+		Stop            : out 	 std_logic;
+		-- savestates              
+		SaveStateBus_Din  : in  std_logic_vector(BUS_buswidth-1 downto 0);
+		SaveStateBus_Adr  : in  std_logic_vector(BUS_busadr-1 downto 0);
+		SaveStateBus_wren : in  std_logic;
+		SaveStateBus_rst  : in  std_logic;
+		SaveStateBus_Dout : out std_logic_vector(BUS_buswidth-1 downto 0)
 	);
 end T80;
 
@@ -167,6 +176,7 @@ architecture rtl of T80 is
 	signal BusAck               : std_logic;
 	signal ClkEn                : std_logic;
 	signal NMI_s                : std_logic;
+	signal OldNMI_n             : std_logic;
 	signal INT_s                : std_logic;
 	signal INT_d                : std_logic;
 	signal IStatus              : std_logic_vector(1 downto 0);
@@ -251,8 +261,35 @@ architecture rtl of T80 is
 	signal Halt                 : std_logic;
 	signal XYbit_undoc          : std_logic;
 
+	-- savestates
+	type t_reg_wired_or is array(0 to 4) of std_logic_vector(63 downto 0);
+	signal reg_wired_or : t_reg_wired_or;
+
+	signal SS_1      : std_logic_vector(REG_SAVESTATE_T80_1.upper downto REG_SAVESTATE_T80_1.lower);
+	signal SS_1_BACK : std_logic_vector(REG_SAVESTATE_T80_1.upper downto REG_SAVESTATE_T80_1.lower);	
+	signal SS_2      : std_logic_vector(REG_SAVESTATE_T80_2.upper downto REG_SAVESTATE_T80_2.lower);
+	signal SS_2_BACK : std_logic_vector(REG_SAVESTATE_T80_2.upper downto REG_SAVESTATE_T80_2.lower);	
+	signal SS_3      : std_logic_vector(REG_SAVESTATE_T80_3.upper downto REG_SAVESTATE_T80_3.lower);
+	signal SS_3_BACK : std_logic_vector(REG_SAVESTATE_T80_3.upper downto REG_SAVESTATE_T80_3.lower);	
+	signal SS_4      : std_logic_vector(REG_SAVESTATE_T80_4.upper downto REG_SAVESTATE_T80_4.lower);
+	signal SS_4_BACK : std_logic_vector(REG_SAVESTATE_T80_4.upper downto REG_SAVESTATE_T80_4.lower);
 
 begin
+
+	iREG_SAVESTATE_T80_1 : entity work.eReg_Savestate generic map ( REG_SAVESTATE_T80_1 ) port map (CLK_n, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, reg_wired_or(1), SS_1_BACK, SS_1);  
+	iREG_SAVESTATE_T80_2 : entity work.eReg_Savestate generic map ( REG_SAVESTATE_T80_2 ) port map (CLK_n, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, reg_wired_or(2), SS_2_BACK, SS_2);  
+	iREG_SAVESTATE_T80_3 : entity work.eReg_Savestate generic map ( REG_SAVESTATE_T80_3 ) port map (CLK_n, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, reg_wired_or(3), SS_3_BACK, SS_3);  
+	iREG_SAVESTATE_T80_4 : entity work.eReg_Savestate generic map ( REG_SAVESTATE_T80_4 ) port map (CLK_n, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, reg_wired_or(4), SS_4_BACK, SS_4);  
+
+	process (reg_wired_or)
+		variable wired_or : std_logic_vector(63 downto 0);
+	begin
+		wired_or := reg_wired_or(0);
+		for i in 1 to (reg_wired_or'length - 1) loop
+			wired_or := wired_or or reg_wired_or(i);
+		end loop;
+		SaveStateBus_Dout <= wired_or;
+	end process;
 
 	mcode : T80_MCode
 		generic map(
@@ -361,47 +398,75 @@ begin
 		DI_Reg when Save_ALU_r = '0' else
 		ALU_Q;
 
-	process (RESET_n, CLK_n)
+
+	SS_1_BACK(15 downto  0) <= std_logic_vector(PC);
+	SS_1_BACK(31 downto 16) <= A 		  ;
+	SS_1_BACK(47 downto 32) <= TmpAddr ;
+	SS_1_BACK(55 downto 48) <= IR 	  ;
+	SS_1_BACK(57 downto 56) <= ISet 	  ;
+	SS_1_BACK(59 downto 58) <= XY_State;
+	SS_1_BACK(61 downto 60) <= IStatus ;
+	
+	SS_2_BACK( 7 downto  0) <= DO;
+	SS_2_BACK(15 downto  8) <= ACC;
+	SS_2_BACK(23 downto 16) <= Ap;
+	SS_2_BACK(31 downto 24) <= Fp;
+	SS_2_BACK(39 downto 32) <= I ;
+	SS_2_BACK(47 downto 40) <= std_logic_vector(R);
+	SS_2_BACK(50 downto 48) <= MCycles;
+	
+	SS_3_BACK(15 downto  0) <= std_logic_vector(SP);
+	SS_3_BACK(20 downto 16) <= Read_To_Reg_r;
+	SS_3_BACK(28 downto 21) <= F 				;
+	SS_3_BACK(29)           <= Arith16_r 	;
+	SS_3_BACK(30)           <= BTR_r 		;
+	SS_3_BACK(31)           <= Z16_r 		;
+	SS_3_BACK(35 downto 32) <= ALU_Op_r 	;
+	SS_3_BACK(36) 			   <= Save_ALU_r 	;
+	SS_3_BACK(37) 			   <= PreserveC_r ;
+	SS_3_BACK(38) 			   <= XY_Ind 		;
+
+	process (CLK_n)
 	variable temp_c : unsigned(8 downto 0);
 	variable temp_h : unsigned(4 downto 0);
 	begin
-		if RESET_n = '0' then
-			PC <= (others => '0');  -- Program Counter
-			A <= (others => '0');
-			TmpAddr <= (others => '0');
-			IR <= "00000000";
-			ISet <= "00";
-			XY_State <= "00";
-			IStatus <= "00";
-			MCycles <= "000";
-			DO <= "00000000";
+		if CLK_n'event and CLK_n = '1' then
+			if RESET_n = '0' then
 
-			ACC <= (others => '0');
-			if Mode = 3 then
+				PC 				<= unsigned(SS_1(15 downto  0)); -- (others => '0');  -- Program Counter
+				A 					<= SS_1(31 downto 16); -- (others => '0');
+				TmpAddr 			<= SS_1(47 downto 32); -- (others => '0');
+				IR 				<= SS_1(55 downto 48); -- "00000000";
+				ISet 				<= SS_1(57 downto 56); -- "00";
+				XY_State 		<= SS_1(59 downto 58); -- "00";
+				IStatus 			<= SS_1(61 downto 60); -- "00";
+				MCycles 			<= SS_2(50 downto 48); -- "000";
+				DO 				<= SS_2( 7 downto  0); -- "00000000";
+										 
+				ACC 				<= SS_2(15 downto  8); -- (others => '0');
+				if Mode = 3 then -- this is what Gameboy should be using, but it's ignored because overwritten down below, why?
 				F <= "11110000";
 			else
 				F <= (others => '1');
 			end if;
-			Ap <= (others => '1');
-			Fp <= (others => '1');
-			I <= (others => '0');
-			R <= (others => '0');
-			SP <= (others => '1');
-			Alternate <= '0';
+				Ap 				<= SS_2(23 downto 16); -- (others => '1');
+				Fp 				<= SS_2(31 downto 24); -- (others => '1');
+				I 					<= SS_2(39 downto 32); -- (others => '0');
+				R 					<= unsigned(SS_2(47 downto 40)); -- (others => '0');
+				SP 				<= unsigned(SS_3(15 downto  0)); -- (others => '1');
+				Alternate 		<= '0'; -- unused in gameboy
 
-			Read_To_Reg_r <= "00000";
-			F <= (others => '1');
-			Arith16_r <= '0';
-			BTR_r <= '0';
-			Z16_r <= '0';
-			ALU_Op_r <= "0000";
-			Save_ALU_r <= '0';
-			PreserveC_r <= '0';
-			XY_Ind <= '0';
+				Read_To_Reg_r 	<= SS_3(20 downto 16); -- "00000";
+				F 					<= SS_3(28 downto 21); -- (others => '1');
+				Arith16_r 		<= SS_3(29); 			  -- '0';
+				BTR_r 			<= SS_3(30); 			  -- '0';
+				Z16_r 			<= SS_3(31); 			  -- '0';
+				ALU_Op_r 		<= SS_3(35 downto 32); -- "0000";
+				Save_ALU_r 		<= SS_3(36); 			-- '0';
+				PreserveC_r 	<= SS_3(37); 			-- '0';
+				XY_Ind 			<= SS_3(38); 			-- '0';
 
-		elsif CLK_n'event and CLK_n = '1' then
-
-			if ClkEn = '1' then
+			elsif ClkEn = '1' then
 
 			ALU_Op_r <= "0000";
 			Save_ALU_r <= '0';
@@ -784,10 +849,27 @@ begin
 -- BC('), DE('), HL('), IX and IY
 --
 ---------------------------------------------------------------------------
+	
+	SS_4_BACK(15 downto  0) <= RegBusA_r ;
+	SS_4_BACK(18 downto 16) <= "000"; -- unused now
+	SS_4_BACK(21 downto 19) <= RegAddrA_r;
+	SS_4_BACK(24 downto 22) <= "000"; -- unused now
+	SS_4_BACK(27 downto 25) <= RegAddrB_r;
+	SS_4_BACK(30 downto 28) <= RegAddrC  ;
+	SS_4_BACK(31)           <= IncDecZ   ;
+	
 	process (CLK_n)
 	begin
 		if CLK_n'event and CLK_n = '1' then
-			if ClkEn = '1' then
+			if RESET_n = '0' then
+			
+				RegBusA_r  <= SS_4(15 downto  0); -- (others => '0');
+				RegAddrA_r <= SS_4(21 downto 19); -- (others => '0');
+				RegAddrB_r <= SS_4(27 downto 25); -- (others => '0');
+				RegAddrC   <= SS_4(30 downto 28); -- (others => '0');
+				IncDecZ    <= SS_4(31); 			 -- '0';
+			
+			elsif ClkEn = '1' then
 				-- Bus A / Write
 				RegAddrA_r <= Alternate & Set_BusA_To(2 downto 1);
 				if XY_Ind = '0' and XY_State /= "00" and Set_BusA_To(2 downto 1) = "10" then
@@ -914,6 +996,7 @@ begin
 
 	Regs : T80_Reg
 		port map(
+			RESET_n => RESET_n,
 			Clk => CLK_n,
 			CEN => ClkEn,
 			WEH => RegWEH,
@@ -928,17 +1011,34 @@ begin
 			DOBH => RegBusB(15 downto 8),
 			DOBL => RegBusB(7 downto 0),
 			DOCH => RegBusC(15 downto 8),
-			DOCL => RegBusC(7 downto 0));
+			DOCL => RegBusC(7 downto 0),
+			-- savestates
+			SaveStateBus_Din  => SaveStateBus_Din, 
+			SaveStateBus_Adr  => SaveStateBus_Adr, 
+			SaveStateBus_wren => SaveStateBus_wren,
+			SaveStateBus_rst  => SaveStateBus_rst, 
+			SaveStateBus_Dout => reg_wired_or(0)
+		);
 
 ---------------------------------------------------------------------------
 --
 -- Buses
 --
 ---------------------------------------------------------------------------
+
+	SS_4_BACK(39 downto 32)  <= BusA;
+	SS_4_BACK(47 downto 40)  <= BusB;
+
 	process (CLK_n)
 	begin
 		if CLK_n'event and CLK_n = '1' then
-			if ClkEn = '1' then
+			
+			if RESET_n = '0' then
+			
+				BusA <= SS_4(39 downto 32); --(others => '0');
+				BusB <= SS_4(47 downto 40); --(others => '0');
+			
+			elsif ClkEn = '1' then
 			case Set_BusB_To is
 			when "0111" =>
 				BusB <= ACC;
@@ -1001,12 +1101,15 @@ begin
 -- Generate external control signals
 --
 ---------------------------------------------------------------------------
-	process (RESET_n,CLK_n)
+
+	SS_4_BACK(48)  <= RFSH_n;
+
+	process (CLK_n)
 	begin
-		if RESET_n = '0' then
-			RFSH_n <= '1';
-		elsif CLK_n'event and CLK_n = '1' then
-			if CEN = '1' then
+		if CLK_n'event and CLK_n = '1' then
+			if RESET_n = '0' then
+				RFSH_n <= SS_4(48); --'1';
+			elsif CEN = '1' then
 			if MCycle = "001" and ((TState = 2  and Wait_n = '1') or TState = 3) then
 				RFSH_n <= '0';
 			else
@@ -1031,24 +1134,29 @@ begin
 -- Syncronise inputs
 --
 -------------------------------------------------------------------------
-	process (RESET_n, CLK_n)
-		variable OldNMI_n : std_logic;
+
+	SS_4_BACK(49) <= BusReq_s;
+	SS_4_BACK(50) <= INT_s;   
+	SS_4_BACK(51) <= NMI_s;   
+	SS_4_BACK(52) <= OldNMI_n;
+
+	process (CLK_n)
 	begin
-		if RESET_n = '0' then
-			BusReq_s <= '0';
-			INT_d <= '0';
-			NMI_s <= '0';
-			OldNMI_n := '0';
-		elsif CLK_n'event and CLK_n = '1' then
-			if CEN = '1' then
-			BusReq_s <= not BUSRQ_n;
-			INT_d <= not INT_n;
-			if NMICycle = '1' then
-				NMI_s <= '0';
-			elsif NMI_n = '0' and OldNMI_n = '1' then
-				NMI_s <= '1';
-			end if;
-			OldNMI_n := NMI_n;
+		if CLK_n'event and CLK_n = '1' then
+			if RESET_n = '0' then
+				BusReq_s <= SS_4(49); -- '0';
+				INT_d    <= SS_4(50); -- '0';
+				NMI_s    <= SS_4(51); -- '0';
+				OldNMI_n <= SS_4(52); -- '0';
+			elsif CEN = '1' then
+				BusReq_s <= not BUSRQ_n;
+				INT_d <= not INT_n;
+				if NMICycle = '1' then
+					NMI_s <= '0';
+				elsif NMI_n = '0' and OldNMI_n = '1' then
+					NMI_s <= '1';
+				end if;
+				OldNMI_n <= NMI_n;
 			end if;
 		end if;
 	end process;
@@ -1060,24 +1168,39 @@ begin
 -- Main state machine
 --
 -------------------------------------------------------------------------
-	process (RESET_n, CLK_n)
+
+	SS_3_BACK(41 downto 39) 	<= MCycle 		;
+	SS_3_BACK(44 downto 42) 	<= std_logic_vector(TState);
+	SS_3_BACK(47 downto 45) 	<= Pre_XY_F_M  ;
+	SS_3_BACK(48) 					<= Halt_FF 		;
+	SS_3_BACK(49) 					<= BusAck  		;
+	SS_3_BACK(50) 					<= NMICycle 	;
+	SS_3_BACK(51) 					<= IntCycle 	;
+	SS_3_BACK(52) 					<= IntE_FF1 	;
+	SS_3_BACK(53) 					<= IntE_FF2 	;
+	SS_3_BACK(54) 					<= No_BTR 		;
+	SS_3_BACK(55) 					<= Auto_Wait_t1;
+	SS_3_BACK(56) 					<= Auto_Wait_t2;
+	SS_3_BACK(57) 					<= M1_n 			;
+
+	process (CLK_n)
 	begin
+		if CLK_n'event and CLK_n = '1' then
 		if RESET_n = '0' then
-			MCycle <= "001";
-			TState <= "000";
-			Pre_XY_F_M <= "000";
-			Halt_FF <= '0';
-			BusAck <= '0';
-			NMICycle <= '0';
-			IntCycle <= '0';
-			IntE_FF1 <= '0';
-			IntE_FF2 <= '0';
-			No_BTR <= '0';
-			Auto_Wait_t1 <= '0';
-			Auto_Wait_t2 <= '0';
-			M1_n <= '1';
-		elsif CLK_n'event and CLK_n = '1' then
-			if CEN = '1' then
+				MCycle 			<= SS_3(41 downto 39); -- "001";
+				TState 			<= unsigned(SS_3(44 downto 42)); -- "000";
+				Pre_XY_F_M  	<= SS_3(47 downto 45); -- "000";
+				Halt_FF 			<= SS_3(48); -- '0';
+				BusAck  			<= SS_3(49); -- '0';
+				NMICycle 		<= SS_3(50); -- '0';
+				IntCycle 		<= SS_3(51); -- '0';
+				IntE_FF1 		<= SS_3(52); -- '0';
+				IntE_FF2 		<= SS_3(53); -- '0';
+				No_BTR 			<= SS_3(54); -- '0';
+				Auto_Wait_t1 	<= SS_3(55); -- '0';
+				Auto_Wait_t2 	<= SS_3(56); -- '0';
+				M1_n 				<= SS_3(57); -- '1';
+			elsif CEN = '1' then
 			Auto_Wait_t1 <= Auto_Wait;
 			Auto_Wait_t2 <= Auto_Wait_t1;
 			No_BTR <= (I_BT and (not IR(4) or not F(Flag_P))) or

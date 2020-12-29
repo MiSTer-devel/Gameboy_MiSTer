@@ -1,5 +1,6 @@
 set_global_assignment -name QIP_FILE rtl/T80/T80.qip
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram.sv
 set_global_assignment -name VHDL_FILE rtl/spram.vhd
 set_global_assignment -name VHDL_FILE rtl/dpram.vhd
 set_global_assignment -name VHDL_FILE rtl/boot_rom.vhd
@@ -10,6 +11,10 @@ set_global_assignment -name VERILOG_FILE rtl/sprites.v
 set_global_assignment -name VERILOG_FILE rtl/lcd.v
 set_global_assignment -name VHDL_FILE rtl/gbc_snd.vhd
 set_global_assignment -name VHDL_FILE rtl/speedcontrol.vhd
+set_global_assignment -name VHDL_FILE rtl/bus_savestates.vhd
+set_global_assignment -name VHDL_FILE rtl/reg_savestates.vhd
+set_global_assignment -name VHDL_FILE rtl/gb_statemanager.vhd
+set_global_assignment -name VHDL_FILE rtl/gb_savestates.vhd
 set_global_assignment -name VERILOG_FILE rtl/gb.v
 set_global_assignment -name VERILOG_FILE rtl/hdma.v
 set_global_assignment -name VERILOG_FILE rtl/link.v

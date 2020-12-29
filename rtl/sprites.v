@@ -51,7 +51,13 @@ module sprites (
 	input oam_wr,
 	input [7:0] oam_addr_in,
 	input [7:0] oam_di,
-	output [7:0] oam_do
+	output [7:0] oam_do,
+   
+   // savestates
+   input [7:0] Savestate_OAMRAMAddr,     
+   input       Savestate_OAMRAMRWrEn,    
+   input [7:0] Savestate_OAMRAMWriteData,
+   output[7:0] Savestate_OAMRAMReadData  
 );
 
 localparam SPRITES_PER_LINE = 10;
@@ -68,16 +74,20 @@ wire [7:0] oam_addr = dma_active ? oam_addr_in :
 wire valid_oam_addr = (oam_addr[7:4] < 4'hA); // $FEA0 - $FEFF unused range
 assign oam_do = dma_active ? 8'hFF : valid_oam_addr ? oam_q : 8'd0;
 
-reg [7:0] oam_data[0:159];
-always @(posedge clk) begin
-	if (ce_cpu) begin
-		if(oam_wr && valid_oam_addr) begin
-			oam_data[oam_addr] <= oam_di;
-		end
-	end
 
-	oam_q <= oam_data[oam_addr];
-end
+dpram #(8) oam_data (
+	.clock_a   (clk      ),
+	.address_a (oam_addr ),
+	.wren_a    (ce_cpu && oam_wr && valid_oam_addr),
+	.data_a    (oam_di   ),
+	.q_a       (oam_q    ),
+	
+	.clock_b   (clk),
+	.address_b (Savestate_OAMRAMAddr     ),
+	.wren_b    (Savestate_OAMRAMRWrEn    ),
+	.data_b    (Savestate_OAMRAMWriteData),
+	.q_b       (Savestate_OAMRAMReadData )
+);
 
 reg [7:0] sprite_x[0:SPRITES_PER_LINE-1];
 reg [3:0] sprite_y[0:SPRITES_PER_LINE-1];
@@ -115,6 +125,16 @@ always @(posedge clk) begin
 			sprite_x[7] <= 8'hFF;
 			sprite_x[8] <= 8'hFF;
 			sprite_x[9] <= 8'hFF;
+			sprite_no[0] <= 6'd0;
+			sprite_no[1] <= 6'd0;
+			sprite_no[2] <= 6'd0;
+			sprite_no[3] <= 6'd0;
+			sprite_no[4] <= 6'd0;
+			sprite_no[5] <= 6'd0;
+			sprite_no[6] <= 6'd0;
+			sprite_no[7] <= 6'd0;
+			sprite_no[8] <= 6'd0;
+			sprite_no[9] <= 6'd0;
 		end else begin
 
 			if (oam_eval) begin

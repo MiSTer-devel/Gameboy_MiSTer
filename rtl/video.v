@@ -56,8 +56,64 @@ module video (
 	// dma connection
 	output dma_rd,
 	output [15:0] dma_addr,
-	input [7:0] dma_data
+	input [7:0] dma_data,
+
+	// savestates
+	input [7:0] Savestate_OAMRAMAddr,     
+	input       Savestate_OAMRAMRWrEn,    
+	input [7:0] Savestate_OAMRAMWriteData,
+	output[7:0] Savestate_OAMRAMReadData,
+	         
+	input  [63:0] SaveStateBus_Din, 
+	input  [9:0]  SaveStateBus_Adr, 
+	input         SaveStateBus_wren,
+	input         SaveStateBus_rst, 
+	output [63:0] SaveStateBus_Dout
 );
+
+// savestates
+localparam SAVESTATE_MODULES    = 19;
+wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
+
+wire [58:0] SS_Video1;
+wire [58:0] SS_Video1_BACK;
+wire [53:0] SS_Video2;
+wire [53:0] SS_Video2_BACK;
+wire [62:0] SS_Video3;
+wire [62:0] SS_Video3_BACK;
+
+eReg_SavestateV #(0,  9, 58, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
+eReg_SavestateV #(0, 10, 53, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
+eReg_SavestateV #(0, 27, 62, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
+
+wire [63:0] SS_BPAL [7:0];
+wire [63:0] SS_BPAL_BACK [7:0];
+wire [63:0] SS_OPAL [7:0];
+wire [63:0] SS_OPAL_BACK [7:0];
+eReg_SavestateV #(0, 11, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL0 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[2], SS_BPAL_BACK[0], SS_BPAL[0]);  
+eReg_SavestateV #(0, 12, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[3], SS_BPAL_BACK[1], SS_BPAL[1]);  
+eReg_SavestateV #(0, 13, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[4], SS_BPAL_BACK[2], SS_BPAL[2]);  
+eReg_SavestateV #(0, 14, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[5], SS_BPAL_BACK[3], SS_BPAL[3]);  
+eReg_SavestateV #(0, 15, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL4 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_BPAL_BACK[4], SS_BPAL[4]);  
+eReg_SavestateV #(0, 16, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL5 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[7], SS_BPAL_BACK[5], SS_BPAL[5]);  
+eReg_SavestateV #(0, 17, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL6 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[8], SS_BPAL_BACK[6], SS_BPAL[6]);  
+eReg_SavestateV #(0, 18, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_BPAL7 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[9], SS_BPAL_BACK[7], SS_BPAL[7]);  
+
+eReg_SavestateV #(0, 19, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL0 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[10], SS_OPAL_BACK[0], SS_OPAL[0]);  
+eReg_SavestateV #(0, 20, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[11], SS_OPAL_BACK[1], SS_OPAL[1]);  
+eReg_SavestateV #(0, 21, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[12], SS_OPAL_BACK[2], SS_OPAL[2]);  
+eReg_SavestateV #(0, 22, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[13], SS_OPAL_BACK[3], SS_OPAL[3]);  
+eReg_SavestateV #(0, 23, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL4 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[14], SS_OPAL_BACK[4], SS_OPAL[4]);  
+eReg_SavestateV #(0, 24, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL5 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[15], SS_OPAL_BACK[5], SS_OPAL[5]);  
+eReg_SavestateV #(0, 25, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL6 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[16], SS_OPAL_BACK[6], SS_OPAL[6]);  
+eReg_SavestateV #(0, 26, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_OPAL7 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[17], SS_OPAL_BACK[7], SS_OPAL[7]);  
+
+assign SaveStateBus_Dout  = SaveStateBus_wired_or[ 0] | SaveStateBus_wired_or[ 1] | SaveStateBus_wired_or[ 2] | SaveStateBus_wired_or[ 3] | 
+							SaveStateBus_wired_or[ 4] | SaveStateBus_wired_or[ 5] | SaveStateBus_wired_or[ 6] | SaveStateBus_wired_or[ 7] | 
+							SaveStateBus_wired_or[ 8] | SaveStateBus_wired_or[ 9] | SaveStateBus_wired_or[10] | SaveStateBus_wired_or[11] |
+							SaveStateBus_wired_or[12] | SaveStateBus_wired_or[13] | SaveStateBus_wired_or[14] | SaveStateBus_wired_or[15] | 
+							SaveStateBus_wired_or[16] | SaveStateBus_wired_or[17] | SaveStateBus_wired_or[18];
+
 
 wire [7:0] oam_do;
 wire [10:0] sprite_addr;
@@ -137,13 +193,17 @@ reg[7:0] obpd [63:0]; //64 bytes
 // ----------------------------- DMA engine ---------------------------
 // --------------------------------------------------------------------
 
+assign SS_Video1_BACK[    0] = dma_active;
+assign SS_Video1_BACK[10: 1] = dma_cnt;
+
 assign dma_addr = { dma, dma_cnt[9:2] };
 assign dma_rd = dma_active;
 
 always @(posedge clk) begin
-	if(reset)
-		dma_active <= 1'b0;
-	else if (ce_cpu) begin
+	if(reset) begin
+		dma_active <= SS_Video1[    0]; //1'b0;
+		dma_cnt    <= SS_Video1[10: 1]; //10'd0;
+	end else if (ce_cpu) begin
 		// writing the dma register engages the dma engine
 		if(cpu_sel_reg && cpu_wr && (cpu_addr == 8'h46)) begin
 			dma_active <= 1'b1;
@@ -170,11 +230,23 @@ wire h455 = (h_cnt == 9'd455);
 wire vblank  = (v_cnt >= 144);
 
 reg vblank_l, end_of_line, end_of_line_l, end_of_line_ll, lyc_match_l;
+
+assign SS_Video3_BACK[0] = vblank_l;
+assign SS_Video3_BACK[1] = end_of_line;
+assign SS_Video3_BACK[2] = end_of_line_l;
+assign SS_Video3_BACK[3] = end_of_line_ll;
+assign SS_Video3_BACK[4] = lyc_match_l;
+
 always @(posedge clk) begin
-	if (!lcd_on) begin
-		vblank_l <= 1'b0;
-		end_of_line <= 1'b0;
-		end_of_line_l <= 1'b0;
+	if (reset) begin
+		vblank_l       <= SS_Video3[0]; //1'b0;
+		end_of_line    <= SS_Video3[1]; //1'b0;
+		end_of_line_l  <= SS_Video3[2]; //1'b0;
+		end_of_line_ll <= SS_Video3[3]; //1'b0;
+	end else if (!lcd_on) begin
+		vblank_l       <= 1'b0;
+		end_of_line    <= 1'b0;
+		end_of_line_l  <= 1'b0;
 		end_of_line_ll <= 1'b0;
 	end else if (ce) begin
 		if (h455) end_of_line <= 1'b1;
@@ -198,7 +270,7 @@ end
 
 always @(posedge clk) begin
 	if (reset) begin
-		lyc_match_l <= 1'b0; // lyc_match does not reset when lcd is off
+		lyc_match_l <= SS_Video3[4]; // 1'b0; // lyc_match does not reset when lcd is off
 	end else if (ce) begin
 		if (h_cnt[1:0] == 2'b11) begin
 			lyc_match_l <= lyc_match;
@@ -206,12 +278,17 @@ always @(posedge clk) begin
 	end
 end
 
-wire pcnt_end;
+wire pcnt_reset, pcnt_end;
 wire mode3_end = isGBC ? pcnt_end : (~sprite_found & pcnt_end);
 
 reg mode3_end_l;
+
+assign SS_Video3_BACK[5] = mode3_end_l;
+
 always @(posedge clk) begin
-	if (!lcd_on) begin
+	if (reset) begin
+		mode3_end_l <= SS_Video3[5]; //1'b0;
+	end else if (!lcd_on) begin
 		mode3_end_l <= 1'b0;
 	end else if (ce) begin
 		if (pcnt_reset)
@@ -245,27 +322,84 @@ assign mode =
 // --------------------------------------------------------------------
 // --------------------- CPU register interface -----------------------
 // --------------------------------------------------------------------
+
+assign SS_Video1_BACK[18:11] = dma;
+assign SS_Video1_BACK[26:19] = lcdc;
+assign SS_Video1_BACK[34:27] = scy;
+assign SS_Video1_BACK[42:35] = scx;
+assign SS_Video1_BACK[50:43] = wy;
+assign SS_Video1_BACK[58:51] = wx;
+
+assign SS_Video2_BACK[ 7: 0] = stat;
+assign SS_Video2_BACK[15: 8] = bgp;
+assign SS_Video2_BACK[23:16] = obp0;
+assign SS_Video2_BACK[31:24] = obp1;
+assign SS_Video2_BACK[37:32] = bgpi;
+assign SS_Video2_BACK[43:38] = obpi;
+assign SS_Video2_BACK[   44] = bgpi_ai;
+assign SS_Video2_BACK[   45] = obpi_ai;
+assign SS_Video2_BACK[53:46] = lyc;
+
+genvar palI;
+generate
+	for (palI=0;palI<8;palI=palI+1) begin : palette_readback
+		assign SS_BPAL_BACK[palI][ 7: 0] = bgpd[palI*8+0];
+		assign SS_BPAL_BACK[palI][15: 8] = bgpd[palI*8+1];
+		assign SS_BPAL_BACK[palI][23:16] = bgpd[palI*8+2];
+		assign SS_BPAL_BACK[palI][31:24] = bgpd[palI*8+3];
+		assign SS_BPAL_BACK[palI][39:32] = bgpd[palI*8+4];
+		assign SS_BPAL_BACK[palI][47:40] = bgpd[palI*8+5];
+		assign SS_BPAL_BACK[palI][55:48] = bgpd[palI*8+6];
+		assign SS_BPAL_BACK[palI][63:56] = bgpd[palI*8+7];
+		assign SS_OPAL_BACK[palI][ 7: 0] = obpd[palI*8+0];
+		assign SS_OPAL_BACK[palI][15: 8] = obpd[palI*8+1];
+		assign SS_OPAL_BACK[palI][23:16] = obpd[palI*8+2];
+		assign SS_OPAL_BACK[palI][31:24] = obpd[palI*8+3];
+		assign SS_OPAL_BACK[palI][39:32] = obpd[palI*8+4];
+		assign SS_OPAL_BACK[palI][47:40] = obpd[palI*8+5];
+		assign SS_OPAL_BACK[palI][55:48] = obpd[palI*8+6];
+		assign SS_OPAL_BACK[palI][63:56] = obpd[palI*8+7];
+	end
+endgenerate
+
 integer ii=0;
 always @(posedge clk) begin
+
 	if(reset) begin
-		lcdc <= 8'h00;  // screen must be off since dmg rom writes to vram
-		scy <= 8'h00;
-		scx <= 8'h00;
-		wy <= 8'h00;
-		wx <= 8'h00;
-		stat <= 8'h00;
-		bgp <= 8'hfc;
-		obp0 <= 8'hff;
-		obp1 <= 8'hff;
+	
+		dma     <= SS_Video1[18:11]; // 8'h00;
+		lcdc    <= SS_Video1[26:19]; // 8'h00;  // screen must be off since dmg rom writes to vram
+		scy     <= SS_Video1[34:27]; // 8'h00;
+		scx     <= SS_Video1[42:35]; // 8'h00;
+		wy      <= SS_Video1[50:43]; // 8'h00;
+		wx      <= SS_Video1[58:51]; // 8'h00;
+		stat    <= SS_Video2[ 7: 0]; // 8'h00;
+		bgp     <= SS_Video2[15: 8]; // 8'hfc;
+		obp0    <= SS_Video2[23:16]; // 8'hff;
+		obp1    <= SS_Video2[31:24]; // 8'hff;							     
+		bgpi    <= SS_Video2[37:32]; // 6'h0;
+		obpi    <= SS_Video2[43:38]; // 6'h0;
+		bgpi_ai <= SS_Video2[   44]; // 1'b0;
+		obpi_ai <= SS_Video2[   45]; // 1'b0;
+		lyc     <= SS_Video2[53:46]; // 8'h00;
 
-		bgpi <= 6'h0;
-		obpi <= 6'h0;
-		bgpi_ai <= 1'b0;
-		obpi_ai <= 1'b0;
-
-		for (ii=0;ii<64;ii=ii+1)begin
-			bgpd[ii] <= 8'h00;
-			obpd[ii] <= 8'h00;
+		for (ii=0;ii<8;ii=ii+1)begin
+			bgpd[ii*8+0] <= SS_BPAL[ii][ 7: 0]; //8'h00;
+			bgpd[ii*8+1] <= SS_BPAL[ii][15: 8]; //8'h00;
+			bgpd[ii*8+2] <= SS_BPAL[ii][23:16]; //8'h00;
+			bgpd[ii*8+3] <= SS_BPAL[ii][31:24]; //8'h00;
+			bgpd[ii*8+4] <= SS_BPAL[ii][39:32]; //8'h00;
+			bgpd[ii*8+5] <= SS_BPAL[ii][47:40]; //8'h00;
+			bgpd[ii*8+6] <= SS_BPAL[ii][55:48]; //8'h00;
+			bgpd[ii*8+7] <= SS_BPAL[ii][63:56]; //8'h00;
+			obpd[ii*8+0] <= SS_OPAL[ii][ 7: 0]; //8'h00;
+			obpd[ii*8+1] <= SS_OPAL[ii][15: 8]; //8'h00;
+			obpd[ii*8+2] <= SS_OPAL[ii][23:16]; //8'h00;
+			obpd[ii*8+3] <= SS_OPAL[ii][31:24]; //8'h00;
+			obpd[ii*8+4] <= SS_OPAL[ii][39:32]; //8'h00;
+			obpd[ii*8+5] <= SS_OPAL[ii][47:40]; //8'h00;
+			obpd[ii*8+6] <= SS_OPAL[ii][55:48]; //8'h00;
+			obpd[ii*8+7] <= SS_OPAL[ii][63:56]; //8'h00;
 		end
 
 	end else if (ce_cpu) begin
@@ -344,12 +478,21 @@ wire sprite_fetch_hold;
 wire bg_shift_empty;
 
 assign pcnt_end = ( pcnt == (isGBC ? 8'd168 : 8'd167) );
-wire pcnt_reset = (h_cnt[1:0] == 2'b11) & end_of_line & ~vblank;
+assign pcnt_reset = (h_cnt[1:0] == 2'b11) & end_of_line & ~vblank;
+
+assign SS_Video3_BACK[    6] = skip_en;
+assign SS_Video3_BACK[14: 7] = skip;
+assign SS_Video3_BACK[22:15] = pcnt;
+
 always @(posedge clk) begin
-	if (!lcd_on) begin
+	if (reset) begin
+		skip_en <= SS_Video3[    6]; // 1'b0;
+		pcnt    <= SS_Video3[14: 7]; // 8'd0;
+		skip    <= SS_Video3[22:15]; // 8'd0;
+	end else if (!lcd_on) begin
 		skip_en <= 1'b0;
-		pcnt <= 8'd0;
-		skip <= 8'd0;
+		pcnt    <= 8'd0;
+		skip    <= 8'd0;
 	end else if (ce) begin
 		// Only skip when not paused for sprites and fifo is not empty.
 		// This makes it skip pixels when pcnt = 1 after the first tile fetch.
@@ -383,11 +526,20 @@ end
 wire line153 = (v_cnt == 8'd153);
 reg vcnt_reset;
 reg vsync;
+
+assign SS_Video3_BACK[   23] = vcnt_reset;
+assign SS_Video3_BACK[31:24] = v_cnt;
+assign SS_Video3_BACK[   32] = vsync;
+
 always @(posedge clk) begin
-	if (!lcdc_on) begin
-		v_cnt <= 8'd0;
+	if (reset) begin
+		vcnt_reset <= SS_Video3[   23]; // 1'b0;
+		v_cnt      <= SS_Video3[31:24]; // 8'd0;
+		vsync      <= SS_Video3[   32]; // 1'b0;
+	end else if (!lcdc_on) begin
 		vcnt_reset <= 1'b0;
-		vsync <= 1'b0;
+		v_cnt      <= 8'd0;
+		vsync      <= 1'b0;
 	end else if (ce) begin
 		if (~vcnt_reset && h455) begin
 			v_cnt <= v_cnt + 1'b1;
@@ -430,15 +582,27 @@ reg window_match, window_ena_d;
 wire win_start = mode3 && lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy) && (pcnt == wx) && (wx < 8'hA7);
 assign window_ena = window_match & ~pcnt_reset & lcdc_win_ena;
 
+assign SS_Video3_BACK[41:33] = h_cnt       ;
+assign SS_Video3_BACK[   42] = window_match;
+assign SS_Video3_BACK[   43] = window_ena_d;
+assign SS_Video3_BACK[48:44] = win_col     ;
+assign SS_Video3_BACK[56:49] = win_line    ;
+
 always @(posedge clk) begin
 
-	if (!lcdc_on) begin
+	if (reset) begin
+		h_cnt        <= SS_Video3[41:33]; // 9'd0;
+		window_match <= SS_Video3[   42]; // 1'b0;
+		window_ena_d <= SS_Video3[   43]; // 1'b0;
+		win_col      <= SS_Video3[48:44]; // 5'd0;
+		win_line     <= SS_Video3[56:49]; // 8'd0;
+	end else if (!lcdc_on) begin
 		//reset counters
-		h_cnt <= 9'd0;
+		h_cnt        <= 9'd0;
 		window_match <= 1'b0;
 		window_ena_d <= 1'b0;
-		win_col <= 5'd0;
-		win_line <= 8'd0;
+		win_col      <= 5'd0;
+		win_line     <= 8'd0;
 	end else if (ce) begin
 		h_cnt <= h455 ? 9'd0 : h_cnt + 9'd1;
 
@@ -550,9 +714,17 @@ wire bg_tile_data1_rd = (mode3 && bg_fetch_cycle[2:1] == 2'b10);
 wire bg_tile_obj0_rd = (mode3 && sprite_fetch_cycle[2:1] == 2'b01);
 wire bg_tile_obj1_rd = (mode3 && sprite_fetch_cycle[2:1] == 2'b10);
 
-always @(posedge clk) begin
+assign SS_Video3_BACK[59:57] = bg_fetch_cycle;
+assign SS_Video3_BACK[62:60] = sprite_fetch_cycle;
 
-	if (ce) begin
+always @(posedge clk) begin
+	
+	if (reset) begin
+	
+		bg_fetch_cycle     <= SS_Video3[59:57]; // 3'b000;
+		sprite_fetch_cycle <= SS_Video3[62:60]; // 3'b000;
+
+	end else if (ce) begin
 
 		// every memory access is two pixel cycles
 		if (bg_fetch_cycle[0]) begin
@@ -684,7 +856,12 @@ sprites sprites (
 	.oam_wr     ( oam_wr       ),
 	.oam_addr_in( oam_addr     ),
 	.oam_di     ( oam_di       ),
-	.oam_do     ( oam_do       )
+	.oam_do     ( oam_do       ),
+
+	.Savestate_OAMRAMAddr      (Savestate_OAMRAMAddr),     
+	.Savestate_OAMRAMRWrEn     (Savestate_OAMRAMRWrEn),    
+	.Savestate_OAMRAMWriteData (Savestate_OAMRAMWriteData),
+	.Savestate_OAMRAMReadData  (Savestate_OAMRAMReadData)   
 );
 
 // --------------------------------------------------------------------

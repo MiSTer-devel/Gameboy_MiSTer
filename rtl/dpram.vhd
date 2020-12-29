@@ -119,9 +119,15 @@ ARCHITECTURE SYN OF dpram_dif IS
 	signal q0 : std_logic_vector((data_width_a - 1) downto 0);
 	signal q1 : std_logic_vector((data_width_b - 1) downto 0);
 
+   signal wren_a_comb : std_logic;
+   signal wren_b_comb : std_logic;
+
 BEGIN
 	q_a<= q0 when cs_a = '1' else (others => '1');
 	q_b<= q1 when cs_b = '1' else (others => '1');
+   
+   wren_a_comb <= wren_a and cs_a;
+   wren_b_comb <= wren_b and cs_b;
 
 	altsyncram_component : altsyncram
 	GENERIC MAP (
@@ -161,8 +167,8 @@ BEGIN
 		clocken1 => enable_b,
 		data_a => data_a,
 		data_b => data_b,
-		wren_a => wren_a and cs_a,
-		wren_b => wren_b and cs_b,
+		wren_a => wren_a_comb,
+		wren_b => wren_b_comb,
 		q_a => q0,
 		q_b => q1
 	);
