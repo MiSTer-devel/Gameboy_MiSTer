@@ -58,6 +58,7 @@ module gb (
 	input  [3:0] joy_din,
 	
 	output speed,   //GBC
+	output HDMA_on,
 	
 	input          gg_reset,
 	input          gg_en,
@@ -72,9 +73,12 @@ module gb (
 	output serial_data_out,
 	
 	// savestates
-	input  save_state,
-	input  load_state,
-	output sleep_savestate,
+	input  [7:0] cart_ram_size,
+	input        save_state,
+	input        load_state,
+	input  [1:0] savestate_number,
+	output       sleep_savestate,
+	output       state_loaded,
 	
 	output [63:0] SaveStateExt_Din, 
 	output [9:0]  SaveStateExt_Adr, 
@@ -233,7 +237,7 @@ wire clk_cpu = clk_sys & ce_cpu;
 
 wire cpu_clken = !(isGBC && hdma_active) && ce_cpu;  //when hdma is enabled stop CPU (GBC)
 reg reset_r  = 1;
-reg reset_ss = 1;
+wire reset_ss;
 
 //sync reset with clock
 always  @ (posedge clk) begin
@@ -566,11 +570,11 @@ video video (
 	.dma_rd      ( dma_rd        ),
 	.dma_addr    ( dma_addr      ),
 	.dma_data    ( dma_data      ),
-	 
-	.Savestate_OAMRAMAddr      (Savestate_RAMAddr[7:0]),
-	.Savestate_OAMRAMRWrEn     (Savestate_RAMRWrEn[2]),
-	.Savestate_OAMRAMWriteData (Savestate_RAMWriteData),
-	.Savestate_OAMRAMReadData  (Savestate_RAMReadData_ORAM),
+   
+   .Savestate_OAMRAMAddr      (Savestate_RAMAddr[7:0]),
+   .Savestate_OAMRAMRWrEn     (Savestate_RAMRWrEn[2]),
+   .Savestate_OAMRAMWriteData (Savestate_RAMWriteData),
+   .Savestate_OAMRAMReadData  (Savestate_RAMReadData_ORAM),
 	
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
 	.SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -674,6 +678,8 @@ hdma hdma(
 	.SaveStateBus_rst  (SaveStateBus_rst ),
 	.SaveStateBus_Dout (SaveStateBus_wired_or[2])
 );
+
+assign HDMA_on = hdma_active;
 
 // --------------------------------------------------------------------
 // -------------------------- zero page ram ---------------------------
@@ -823,12 +829,14 @@ gb_savestates gb_savestates (
    .reset_in               (reset_r),
    .reset_out              (reset_ss),
    
-   //.load_done              (load_done),
+   .load_done              (state_loaded),
    
    .save                   (savestate_savestate),
    .load                   (savestate_loadstate),
    .savestate_address      (savestate_address),
    .savestate_busy         (savestate_busy),      
+   
+   .cart_ram_size          (cart_ram_size),
    
    .lcd_vsync              (lcd_vsync),
    
@@ -867,7 +875,7 @@ gb_statemanager #(58720256, 33554432) gb_statemanager (
    .rewind_on           (rewind_on),    
    .rewind_active       (rewind_active),
 
-   .savestate_number    (1'b0),
+   .savestate_number    (savestate_number),
    .save                (save_state),
    .load                (load_state),
 

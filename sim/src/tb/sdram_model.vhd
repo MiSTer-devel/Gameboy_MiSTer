@@ -8,10 +8,16 @@ use tb.globals.all;
 entity sdram_model is
    port 
    (
-      clk       : in  std_logic;
-      cart_addr : in  std_logic_vector(15 downto 0);
-      cart_rd   : in  std_logic;
-      cart_do   : out std_logic_vector(7 downto 0)
+      clk               : in  std_logic;
+      cart_addr         : in  std_logic_vector(23 downto 0);
+      cart_rd           : in  std_logic;
+      cart_do           : out std_logic_vector(7 downto 0);
+      cart_cgb_flag     : out std_logic_vector(7 downto 0);
+      cart_sgb_flag     : out std_logic_vector(7 downto 0);
+      cart_mbc_type     : out std_logic_vector(7 downto 0);
+      cart_rom_size     : out std_logic_vector(7 downto 0);
+      cart_ram_size     : out std_logic_vector(7 downto 0);
+      cart_old_licensee : out std_logic_vector(7 downto 0)
    );
 end entity;
 
@@ -72,7 +78,14 @@ begin
          wait until rising_edge(clk);
          wait until rising_edge(clk);         
          cart_do       <= std_logic_vector(to_unsigned(data(to_integer(unsigned(cart_addr))), 8));
-      end if;  
+      end if; 
+
+      cart_cgb_flag     <= std_logic_vector(to_unsigned(data(16#143#), 8));
+      cart_sgb_flag     <= std_logic_vector(to_unsigned(data(16#146#), 8));
+      cart_mbc_type     <= std_logic_vector(to_unsigned(data(16#147#), 8));
+      cart_rom_size     <= std_logic_vector(to_unsigned(data(16#148#), 8));
+      cart_ram_size     <= std_logic_vector(to_unsigned(data(16#149#), 8));
+      cart_old_licensee <= std_logic_vector(to_unsigned(data(16#14B#), 8));
       
       COMMAND_FILE_ACK_1 <= '0';
       if COMMAND_FILE_START_1 = '1' then
@@ -102,7 +115,7 @@ begin
          COMMAND_FILE_ACK_1 <= '1';
       
       end if;
-      
+
    
    
    end process;

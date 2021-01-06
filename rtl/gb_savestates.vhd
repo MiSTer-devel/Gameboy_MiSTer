@@ -18,6 +18,8 @@ entity gb_savestates is
       savestate_address       : in     integer;
       savestate_busy          : out    std_logic;
       
+      cart_ram_size           : in     std_logic_vector(7 downto 0);
+      
       lcd_vsync               : in     std_logic;
             
       BUS_Din                 : out    std_logic_vector(BUS_buswidth-1 downto 0) := (others => '0');
@@ -60,13 +62,13 @@ architecture arch of gb_savestates is
    constant SAVETYPESCOUNT : integer := 5;
    signal savetype_counter : integer range 0 to SAVETYPESCOUNT;
    type t_savetypes is array(0 to SAVETYPESCOUNT - 1) of integer;
-   constant savetypes : t_savetypes := 
+   signal savetypes : t_savetypes := 
    (
       32768, -- RAM
       16384, -- VRAM
       160,   -- OAM
       128,   -- ZeroPage
-      131072 -- Saveram
+      131072 -- Saveram -> overwritten depending on cart_ram_size
    );
 
    type tstate is
@@ -126,6 +128,14 @@ begin
          --if (reset_in = '1') then 
          --   header_amount <= (others => '0');
          --end if;
+         
+         case (cart_ram_size) is
+            when x"00"  => savetypes(4) <=    512; -- for MBC2
+            when x"01"  => savetypes(4) <=   2048; -- 2   KByte
+            when x"02"  => savetypes(4) <=   8192; -- 8   KByte
+            when x"03"  => savetypes(4) <=  32768; -- 32  KByte
+            when others => savetypes(4) <= 131072; -- 128 KByte 
+         end case;
    
          case state is
          
@@ -133,7 +143,7 @@ begin
                savetype_counter <= 0;
                if (reset_in = '1') then
                   reset_out <= '1';
-                  BUS_rst   <= '1';
+				  BUS_rst   <= '1';
                elsif (save = '1') then
                   state                <= SAVE_WAITVSYNC;
                   header_amount        <= header_amount + 1;
