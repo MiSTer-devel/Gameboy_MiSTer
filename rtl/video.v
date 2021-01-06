@@ -152,7 +152,9 @@ wire lcdc_bg_prio = lcdc[0];
 assign lcd_on = lcdc_on;
 
 // ff41 STAT
-reg [7:0] stat;
+reg [7:0] stat_r;
+// DMG STAT bug: IRQs are enabled for 1 cycle during a write
+wire [7:0] stat = (cpu_sel_reg & cpu_wr & cpu_addr == 8'h41 & ~isGBC) ? 8'hFF : stat_r;
 
 // ff42, ff43 background scroll registers
 reg [7:0] scy;
@@ -330,7 +332,7 @@ assign SS_Video1_BACK[42:35] = scx;
 assign SS_Video1_BACK[50:43] = wy;
 assign SS_Video1_BACK[58:51] = wx;
 
-assign SS_Video2_BACK[ 7: 0] = stat;
+assign SS_Video2_BACK[ 7: 0] = stat_r;
 assign SS_Video2_BACK[15: 8] = bgp;
 assign SS_Video2_BACK[23:16] = obp0;
 assign SS_Video2_BACK[31:24] = obp1;
@@ -373,7 +375,7 @@ always @(posedge clk) begin
 		scx     <= SS_Video1[42:35]; // 8'h00;
 		wy      <= SS_Video1[50:43]; // 8'h00;
 		wx      <= SS_Video1[58:51]; // 8'h00;
-		stat    <= SS_Video2[ 7: 0]; // 8'h00;
+		stat_r  <= SS_Video2[ 7: 0]; // 8'h00;
 		bgp     <= SS_Video2[15: 8]; // 8'hfc;
 		obp0    <= SS_Video2[23:16]; // 8'hff;
 		obp1    <= SS_Video2[31:24]; // 8'hff;							     
@@ -406,7 +408,7 @@ always @(posedge clk) begin
 		if(cpu_sel_reg && cpu_wr) begin
 			case(cpu_addr)
 				8'h40:	lcdc <= cpu_di;
-				8'h41:	stat <= cpu_di;
+				8'h41:	stat_r <= cpu_di;
 				8'h42:	scy <= cpu_di;
 				8'h43:	scx <= cpu_di;
 				// a write to 4 is supposed to reset the v_cnt
@@ -472,7 +474,7 @@ assign cpu_do =
 // --------------------------------------------------------------------
 
 reg skip_en;
-reg [7:0] skip;
+reg [2:0] skip_cnt;
 reg [7:0] pcnt;
 wire sprite_fetch_hold;
 wire bg_shift_empty;
@@ -481,31 +483,35 @@ assign pcnt_end = ( pcnt == (isGBC ? 8'd168 : 8'd167) );
 assign pcnt_reset = (h_cnt[1:0] == 2'b11) & end_of_line & ~vblank;
 
 assign SS_Video3_BACK[    6] = skip_en;
-assign SS_Video3_BACK[14: 7] = skip;
-assign SS_Video3_BACK[22:15] = pcnt;
+assign SS_Video3_BACK[ 9: 7] = skip_cnt;
+assign SS_Video3_BACK[17:10] = pcnt;
+assign SS_Video3_BACK[22:18] = 5'd0;
 
 always @(posedge clk) begin
 	if (reset) begin
-		skip_en <= SS_Video3[    6]; // 1'b0;
-		pcnt    <= SS_Video3[14: 7]; // 8'd0;
-		skip    <= SS_Video3[22:15]; // 8'd0;
+		skip_en  <= SS_Video3[    6]; // 1'b0;
+		skip_cnt <= SS_Video3[ 9: 7]; // 3'd0;
+		pcnt     <= SS_Video3[17:10]; // 8'd0;
 	end else if (!lcd_on) begin
-		skip_en <= 1'b0;
-		pcnt    <= 8'd0;
-		skip    <= 8'd0;
+		skip_en  <= 1'b0;
+		skip_cnt <= 3'd0;
+		pcnt     <= 8'd0;
 	end else if (ce) begin
 		// Only skip when not paused for sprites and fifo is not empty.
 		// This makes it skip pixels when pcnt = 1 after the first tile fetch.
 		// If window_x = 0 then window starts at pcnt = 1 when it is skipping pixels which scrolls the window.
 		if (~sprite_fetch_hold & ~bg_shift_empty) begin
 			if ((pcnt == 0) && |scx[2:0]) begin
-				skip <= scx[2:0];
+				skip_cnt <= 3'd1;
 				skip_en <= 1'b1;
 			end
 
-			if(skip) skip <= skip - 1'd1;
-
-			if(skip == 1) skip_en <= 1'b0;
+			if (skip_en) begin
+				if(skip_cnt == scx[2:0] || &skip_cnt)
+					skip_en <= 1'b0;
+				else
+					skip_cnt <= skip_cnt + 1'd1;
+			end
 
 			// Pixels 0-7 are for fetching partially offscreen sprites and window.
 			// Pixels 8-167 are output to the display.
