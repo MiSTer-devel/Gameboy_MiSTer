@@ -214,7 +214,7 @@ begin
 						MREQ_n <= '0';
 					end if;
 				elsif MCycle = "011" and IntCycle_n = '0' then
-					if TState = "001" or TState = "010" then
+					if TState = "001" then
 						IORQ_n <= '0'; -- Acknowledge IRQ
 					end if;
 				else
