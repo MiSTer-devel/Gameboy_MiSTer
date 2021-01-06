@@ -6,13 +6,14 @@ entity speedcontrol is
    port
    (
       clk_sys     : in     std_logic;
-      speed       : in     std_logic;
       pause       : in     std_logic;
       speedup     : in     std_logic;
       cart_act    : in     std_logic;
+      HDMA_on     : in     std_logic;
       ce          : out    std_logic := '0';
       ce_2x       : buffer std_logic := '0';
-      refresh     : out    std_logic := '0'
+      refresh     : out    std_logic := '0';
+      ff_on       : out    std_logic := '0'
    );
 end entity;
 
@@ -63,7 +64,7 @@ begin
                      state       <= PAUSED;
                      unpause_cnt <= 0;
                   end if;
-               elsif (speedup = '1' and pause = '0') then
+               elsif (speedup = '1' and pause = '0' and HDMA_on = '0' and clkdiv = "000") then
                   state           <= FASTFORWARDSTART;
                   fastforward_cnt <= 0;
                else
@@ -92,17 +93,19 @@ begin
             when FASTFORWARDSTART =>
                if (fastforward_cnt = 15) then
                   state <= FASTFORWARD;
+                  ff_on <= '1';
                else
                   fastforward_cnt <= fastforward_cnt + 1;
                end if;
 
             when FASTFORWARD =>
-               if (pause = '1' or speedup = '0') then
+               if (pause = '1' or speedup = '0' or HDMA_on = '1') then
                   state           <= FASTFORWARDEND;
                   fastforward_cnt <= 0;
-               end if;
-               
-               if (cart_act = '1' and cart_act_1 = '0') then
+                  if (clkdiv(0) = '1') then
+                     clkdiv <= "100";
+                  end if;
+               elsif (cart_act = '1' and cart_act_1 = '0') then
                   state      <= RAMACCESS;
                   sdram_busy <= 1;
                elsif (cart_act = '0' and refreshcnt = 0) then
@@ -121,6 +124,7 @@ begin
             when FASTFORWARDEND =>
                if (fastforward_cnt = 15) then
                   state <= NORMAL;
+                  ff_on <= '0';
                else
                   fastforward_cnt <= fastforward_cnt + 1;
                end if;

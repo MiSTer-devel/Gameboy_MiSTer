@@ -362,7 +362,6 @@ generate
 	end
 endgenerate
 
-integer ii=0;
 always @(posedge clk) begin
 
 	if(reset) begin
@@ -383,24 +382,39 @@ always @(posedge clk) begin
 		obpi_ai <= SS_Video2[   45]; // 1'b0;
 		lyc     <= SS_Video2[53:46]; // 8'h00;
 
-		for (ii=0;ii<8;ii=ii+1)begin
-			bgpd[ii*8+0] <= SS_BPAL[ii][ 7: 0]; //8'h00;
-			bgpd[ii*8+1] <= SS_BPAL[ii][15: 8]; //8'h00;
-			bgpd[ii*8+2] <= SS_BPAL[ii][23:16]; //8'h00;
-			bgpd[ii*8+3] <= SS_BPAL[ii][31:24]; //8'h00;
-			bgpd[ii*8+4] <= SS_BPAL[ii][39:32]; //8'h00;
-			bgpd[ii*8+5] <= SS_BPAL[ii][47:40]; //8'h00;
-			bgpd[ii*8+6] <= SS_BPAL[ii][55:48]; //8'h00;
-			bgpd[ii*8+7] <= SS_BPAL[ii][63:56]; //8'h00;
-			obpd[ii*8+0] <= SS_OPAL[ii][ 7: 0]; //8'h00;
-			obpd[ii*8+1] <= SS_OPAL[ii][15: 8]; //8'h00;
-			obpd[ii*8+2] <= SS_OPAL[ii][23:16]; //8'h00;
-			obpd[ii*8+3] <= SS_OPAL[ii][31:24]; //8'h00;
-			obpd[ii*8+4] <= SS_OPAL[ii][39:32]; //8'h00;
-			obpd[ii*8+5] <= SS_OPAL[ii][47:40]; //8'h00;
-			obpd[ii*8+6] <= SS_OPAL[ii][55:48]; //8'h00;
-			obpd[ii*8+7] <= SS_OPAL[ii][63:56]; //8'h00;
-		end
+		bgpd[ 0] <= SS_BPAL[0][ 7: 0]; bgpd[16] <= SS_BPAL[2][ 7: 0]; bgpd[32] <= SS_BPAL[4][ 7: 0]; bgpd[48] <= SS_BPAL[6][ 7: 0]; //8'h00;
+		bgpd[ 1] <= SS_BPAL[0][15: 8]; bgpd[17] <= SS_BPAL[2][15: 8]; bgpd[33] <= SS_BPAL[4][15: 8]; bgpd[49] <= SS_BPAL[6][15: 8]; //8'h00;
+		bgpd[ 2] <= SS_BPAL[0][23:16]; bgpd[18] <= SS_BPAL[2][23:16]; bgpd[34] <= SS_BPAL[4][23:16]; bgpd[50] <= SS_BPAL[6][23:16]; //8'h00;
+		bgpd[ 3] <= SS_BPAL[0][31:24]; bgpd[19] <= SS_BPAL[2][31:24]; bgpd[35] <= SS_BPAL[4][31:24]; bgpd[51] <= SS_BPAL[6][31:24]; //8'h00;
+		bgpd[ 4] <= SS_BPAL[0][39:32]; bgpd[20] <= SS_BPAL[2][39:32]; bgpd[36] <= SS_BPAL[4][39:32]; bgpd[52] <= SS_BPAL[6][39:32]; //8'h00;
+		bgpd[ 5] <= SS_BPAL[0][47:40]; bgpd[21] <= SS_BPAL[2][47:40]; bgpd[37] <= SS_BPAL[4][47:40]; bgpd[53] <= SS_BPAL[6][47:40]; //8'h00;
+		bgpd[ 6] <= SS_BPAL[0][55:48]; bgpd[22] <= SS_BPAL[2][55:48]; bgpd[38] <= SS_BPAL[4][55:48]; bgpd[54] <= SS_BPAL[6][55:48]; //8'h00;
+		bgpd[ 7] <= SS_BPAL[0][63:56]; bgpd[23] <= SS_BPAL[2][63:56]; bgpd[39] <= SS_BPAL[4][63:56]; bgpd[55] <= SS_BPAL[6][63:56]; //8'h00;
+		bgpd[ 8] <= SS_BPAL[1][ 7: 0]; bgpd[24] <= SS_BPAL[3][ 7: 0]; bgpd[40] <= SS_BPAL[5][ 7: 0]; bgpd[56] <= SS_BPAL[7][ 7: 0]; //8'h00;
+		bgpd[ 9] <= SS_BPAL[1][15: 8]; bgpd[25] <= SS_BPAL[3][15: 8]; bgpd[41] <= SS_BPAL[5][15: 8]; bgpd[57] <= SS_BPAL[7][15: 8]; //8'h00;
+		bgpd[10] <= SS_BPAL[1][23:16]; bgpd[26] <= SS_BPAL[3][23:16]; bgpd[42] <= SS_BPAL[5][23:16]; bgpd[58] <= SS_BPAL[7][23:16]; //8'h00;
+		bgpd[11] <= SS_BPAL[1][31:24]; bgpd[27] <= SS_BPAL[3][31:24]; bgpd[43] <= SS_BPAL[5][31:24]; bgpd[59] <= SS_BPAL[7][31:24]; //8'h00;
+		bgpd[12] <= SS_BPAL[1][39:32]; bgpd[28] <= SS_BPAL[3][39:32]; bgpd[44] <= SS_BPAL[5][39:32]; bgpd[60] <= SS_BPAL[7][39:32]; //8'h00;
+		bgpd[13] <= SS_BPAL[1][47:40]; bgpd[29] <= SS_BPAL[3][47:40]; bgpd[45] <= SS_BPAL[5][47:40]; bgpd[61] <= SS_BPAL[7][47:40]; //8'h00;
+		bgpd[14] <= SS_BPAL[1][55:48]; bgpd[30] <= SS_BPAL[3][55:48]; bgpd[46] <= SS_BPAL[5][55:48]; bgpd[62] <= SS_BPAL[7][55:48]; //8'h00;
+		bgpd[15] <= SS_BPAL[1][63:56]; bgpd[31] <= SS_BPAL[3][63:56]; bgpd[47] <= SS_BPAL[5][63:56]; bgpd[63] <= SS_BPAL[7][63:56]; //8'h00;
+      
+		obpd[ 0] <= SS_OPAL[0][ 7: 0]; obpd[16] <= SS_OPAL[2][ 7: 0]; obpd[32] <= SS_OPAL[4][ 7: 0]; obpd[48] <= SS_OPAL[6][ 7: 0]; //8'h00;
+		obpd[ 1] <= SS_OPAL[0][15: 8]; obpd[17] <= SS_OPAL[2][15: 8]; obpd[33] <= SS_OPAL[4][15: 8]; obpd[49] <= SS_OPAL[6][15: 8]; //8'h00;
+		obpd[ 2] <= SS_OPAL[0][23:16]; obpd[18] <= SS_OPAL[2][23:16]; obpd[34] <= SS_OPAL[4][23:16]; obpd[50] <= SS_OPAL[6][23:16]; //8'h00;
+		obpd[ 3] <= SS_OPAL[0][31:24]; obpd[19] <= SS_OPAL[2][31:24]; obpd[35] <= SS_OPAL[4][31:24]; obpd[51] <= SS_OPAL[6][31:24]; //8'h00;
+		obpd[ 4] <= SS_OPAL[0][39:32]; obpd[20] <= SS_OPAL[2][39:32]; obpd[36] <= SS_OPAL[4][39:32]; obpd[52] <= SS_OPAL[6][39:32]; //8'h00;
+		obpd[ 5] <= SS_OPAL[0][47:40]; obpd[21] <= SS_OPAL[2][47:40]; obpd[37] <= SS_OPAL[4][47:40]; obpd[53] <= SS_OPAL[6][47:40]; //8'h00;
+		obpd[ 6] <= SS_OPAL[0][55:48]; obpd[22] <= SS_OPAL[2][55:48]; obpd[38] <= SS_OPAL[4][55:48]; obpd[54] <= SS_OPAL[6][55:48]; //8'h00;
+		obpd[ 7] <= SS_OPAL[0][63:56]; obpd[23] <= SS_OPAL[2][63:56]; obpd[39] <= SS_OPAL[4][63:56]; obpd[55] <= SS_OPAL[6][63:56]; //8'h00;
+		obpd[ 8] <= SS_OPAL[1][ 7: 0]; obpd[24] <= SS_OPAL[3][ 7: 0]; obpd[40] <= SS_OPAL[5][ 7: 0]; obpd[56] <= SS_OPAL[7][ 7: 0]; //8'h00;
+		obpd[ 9] <= SS_OPAL[1][15: 8]; obpd[25] <= SS_OPAL[3][15: 8]; obpd[41] <= SS_OPAL[5][15: 8]; obpd[57] <= SS_OPAL[7][15: 8]; //8'h00;
+		obpd[10] <= SS_OPAL[1][23:16]; obpd[26] <= SS_OPAL[3][23:16]; obpd[42] <= SS_OPAL[5][23:16]; obpd[58] <= SS_OPAL[7][23:16]; //8'h00;
+		obpd[11] <= SS_OPAL[1][31:24]; obpd[27] <= SS_OPAL[3][31:24]; obpd[43] <= SS_OPAL[5][31:24]; obpd[59] <= SS_OPAL[7][31:24]; //8'h00;
+		obpd[12] <= SS_OPAL[1][39:32]; obpd[28] <= SS_OPAL[3][39:32]; obpd[44] <= SS_OPAL[5][39:32]; obpd[60] <= SS_OPAL[7][39:32]; //8'h00;
+		obpd[13] <= SS_OPAL[1][47:40]; obpd[29] <= SS_OPAL[3][47:40]; obpd[45] <= SS_OPAL[5][47:40]; obpd[61] <= SS_OPAL[7][47:40]; //8'h00;
+		obpd[14] <= SS_OPAL[1][55:48]; obpd[30] <= SS_OPAL[3][55:48]; obpd[46] <= SS_OPAL[5][55:48]; obpd[62] <= SS_OPAL[7][55:48]; //8'h00;
+		obpd[15] <= SS_OPAL[1][63:56]; obpd[31] <= SS_OPAL[3][63:56]; obpd[47] <= SS_OPAL[5][63:56]; obpd[63] <= SS_OPAL[7][63:56]; //8'h00;
 
 	end else if (ce_cpu) begin
 		if(cpu_sel_reg && cpu_wr) begin

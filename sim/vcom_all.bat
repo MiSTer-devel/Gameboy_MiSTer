@@ -50,6 +50,7 @@ vlog -sv -quiet -work sim/gameboy ^
 ../rtl/gb.v
 
 vlog -sv -quiet -work sim/gameboy ^
+src/gameboy/mbc.sv ^
 src/gameboy/cheatcodes.sv
 
 vcom -quiet -work sim/gameboy ^

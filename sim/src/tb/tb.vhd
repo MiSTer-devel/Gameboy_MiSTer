@@ -31,6 +31,7 @@ architecture arch of etb is
    signal ce_2x       : std_logic := '1';
    
    signal speed       : std_logic;
+   signal HDMA_on     : std_logic;
    
    signal command_in  : std_logic;
    signal command_out : std_logic;
@@ -62,7 +63,7 @@ architecture arch of etb is
    signal pixel_out_data : std_logic_vector(14 downto 0);  
    signal pixel_out_we   : std_logic := '0';       
    
-   signal is_CGB         : std_logic := '0';
+   signal is_CGB         : std_logic;
    
    signal sleep_savestate : std_logic;
 
@@ -97,6 +98,20 @@ architecture arch of etb is
    signal GB_SaveState   : std_logic_vector(Reg_GB_SaveState.upper      downto Reg_GB_SaveState.lower)      := (others => '0');
    signal GB_LoadState   : std_logic_vector(Reg_GB_LoadState.upper      downto Reg_GB_LoadState.lower)      := (others => '0');
 
+   -- savestates
+   signal cart_ram_size : std_logic_vector(7 downto 0);
+   
+   signal Savestate_CRAMAddr       : std_logic_vector(19 downto 0);   
+   signal Savestate_CRAMRWrEn      : std_logic;    
+   signal Savestate_CRAMWriteData  : std_logic_vector(7 downto 0); 
+   signal Savestate_CRAMReadData   : std_logic_vector(7 downto 0); 
+   
+   signal SaveStateExt_Din  : std_logic_vector(63 downto 0);   
+   signal SaveStateExt_Adr  : std_logic_vector(9 downto 0);   
+   signal SaveStateExt_wren : std_logic;    
+   signal SaveStateExt_rst  : std_logic;     
+   signal SaveStateExt_Dout : std_logic_vector(63 downto 0);   
+   signal SaveStateExt_load : std_logic;    
    
 begin
 
@@ -115,21 +130,12 @@ begin
    port map
    (
       clk_sys  => clksys,
-      speed    => speed,
       pause    => sleep_savestate,
       speedup  => '1',
       cart_act => cart_act,
+      HDMA_on  => HDMA_on,
       ce       => ce,
       ce_2x    => ce_2x
-   );
-   
-   isdram_model : entity tb.sdram_model
-   port map
-   (
-      clk       => clkram,      
-      cart_addr => cart_addr,
-      cart_rd   => cart_rd,  
-      cart_do   => cart_do  
    );
    
    igb : entity gameboy.gb
@@ -173,6 +179,7 @@ begin
       joy_din                 => "1111",
                
       speed                   => speed,   --GBC
+      HDMA_on                 => HDMA_on,
                
       gg_reset                => reset,
       gg_en                   => '0',
@@ -186,17 +193,24 @@ begin
       serial_data_in          => '0',
       serial_data_out         => open,
             
+      cart_ram_size           => cart_ram_size,
       save_state              => GB_SaveState,
       load_state              => GB_LoadState,
       sleep_savestate         => sleep_savestate,
+      savestate_number        => 0,
             
-      SaveStateExt_Din        => open,
-      SaveStateExt_Adr        => open,
-      SaveStateExt_wren       => open,
-      SaveStateExt_rst        => open,
-      SaveStateExt_Dout       => (63 downto 0 => '0'),
+      SaveStateExt_Din        => SaveStateExt_Din, 
+      SaveStateExt_Adr        => SaveStateExt_Adr, 
+      SaveStateExt_wren       => SaveStateExt_wren,
+      SaveStateExt_rst        => SaveStateExt_rst, 
+      SaveStateExt_Dout       => SaveStateExt_Dout,
+      SaveStateExt_load       => SaveStateExt_load,
       
-      Savestate_CRAMReadData  => (7 downto 0 => '0'),
+      Savestate_CRAMAddr      => Savestate_CRAMAddr,     
+      Savestate_CRAMRWrEn     => Savestate_CRAMRWrEn,    
+      Savestate_CRAMWriteData => Savestate_CRAMWriteData,
+      Savestate_CRAMReadData  => Savestate_CRAMReadData, 
+      
       
       SAVE_out_Din            => SAVE_out_Din,   
       SAVE_out_Dout           => SAVE_out_Dout,  
@@ -209,6 +223,39 @@ begin
       rewind_active           => '0'
    );
    
+   
+   imbc : entity gameboy.mbc
+   port map
+   (
+      clk_sys                 => clksys,
+      clkram                  => clkram,
+      reset                   => reset,
+      ce_cpu2x                => ce_2x,
+                     
+      cart_addr               => cart_addr,
+      cart_rd                 => cart_rd,  
+      cart_wr                 => cart_wr, 
+      cart_do                 => cart_do,  
+      cart_di                 => cart_di,  
+      
+      cart_ram_size           => cart_ram_size,
+      is_gbc                  => is_CGB,
+                     
+      sleep_savestate         => sleep_savestate,
+                  
+      SaveStateBus_Din        => SaveStateExt_Din, 
+      SaveStateBus_Adr        => SaveStateExt_Adr, 
+      SaveStateBus_wren       => SaveStateExt_wren,
+      SaveStateBus_rst        => SaveStateExt_rst, 
+      SaveStateBus_Dout       => SaveStateExt_Dout,
+      savestate_load          => SaveStateExt_load,
+                     
+      Savestate_CRAMAddr      => Savestate_CRAMAddr,     
+      Savestate_CRAMRWrEn     => Savestate_CRAMRWrEn,    
+      Savestate_CRAMWriteData => Savestate_CRAMWriteData,
+      Savestate_CRAMReadData  => Savestate_CRAMReadData
+   );
+
    ch1_addr <= SAVE_out_Adr(25 downto 0) & "0";
    ch1_din  <= SAVE_out_Din;
    ch1_req  <= SAVE_out_ena;
@@ -259,7 +306,7 @@ begin
       address => gbc_bios_addr,
       data    => gbc_bios_do
    );
-   
+      
    process(clksys)
    begin
       if rising_edge(clksys) then
@@ -292,7 +339,7 @@ begin
                when others => pixel_out_data <= "00000" & "00000" & "11111";
             end case;
          else
-            pixel_out_data <= lcd_data;
+            pixel_out_data <= lcd_data(4 downto 0) & lcd_data(9 downto 5) & lcd_data(14 downto 10);
          end if;
          
       end if;
