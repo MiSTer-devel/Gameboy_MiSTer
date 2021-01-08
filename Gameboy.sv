@@ -150,7 +150,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXX  XXXXXXX
+// XXXXXXXXXXXXXXXXXXXXX  XXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -177,6 +177,7 @@ localparam CONF_STR = {
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O5,Stabilize video(buffer),Off,On;",
 	"OG,Frame blend,Off,On;",
+	"h4OU,Colors,Corrected,Raw;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
 	"OB,Boot,Normal,Fast;",
@@ -277,7 +278,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({isGBC,cart_ready,sav_supported,|tint,gg_available}),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
 	.forced_scandoubler(forced_scandoubler),
@@ -727,6 +728,7 @@ lcd lcd
 	.inv    ( status[12]  ),
 	.double_buffer( status[5]),
 	.frame_blend( status[16] ),
+	.originalcolors( status[30] ),
 
 	// Palettes
 	.pal1   (palette[127:104]),

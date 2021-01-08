@@ -29,6 +29,7 @@ module lcd
 	input        tint,
 	input        inv,
 	input        frame_blend,
+	input        originalcolors,
 
 	input        on,
 
@@ -258,11 +259,11 @@ endfunction
 
 reg [7:0] r_tmp, g_tmp, b_tmp;
 always@(*) begin
-	if (isGBC) begin
+	if (isGBC & !originalcolors) begin
 		r_tmp = r10[8:1];
 		g_tmp = {g10[6:0],1'b0};
 		b_tmp = b10[8:1];
-	end else if (sgb_pal_en) begin
+	end else if (sgb_pal_en | (isGBC & originalcolors)) begin
 		r_tmp = {r5,r5[4:2]};
 		g_tmp = {g5,g5[4:2]};
 		b_tmp = {b5,b5[4:2]};
