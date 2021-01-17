@@ -699,8 +699,8 @@ gb gb (
 	.rewind_active(status[27] & joystick_0[11])
 );
 
-assign AUDIO_L = (joystick_0[8] && status[25]) ? 16'd0 : GB_AUDIO_L;
-assign AUDIO_R = (joystick_0[8] && status[25]) ? 16'd0 : GB_AUDIO_R;
+assign AUDIO_L = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_L;
+assign AUDIO_R = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_R;
 
 // the lcd to vga converter
 wire [7:0] video_r, video_g, video_b;
