@@ -249,6 +249,8 @@ wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
 
+wire [32:0] RTC_time;
+
 hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -291,7 +293,9 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.ps2_key(ps2_key),
 	
 	.info_req(ss_info_req),
-	.info(ss_info)
+	.info(ss_info),
+	
+	.TIMESTAMP(RTC_time)
 );
 
 ///////////////////////////////////////////////////
@@ -455,9 +459,10 @@ always @(posedge clk_sys) begin
 		//write to RAM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b010)) begin
 			if (mbc3) begin
-				if (cart_di[3]==1)
+				if (cart_di[3]==1) begin
 					mbc3_mode <= 1'b1; //enable RTC
-				else begin
+					rtc_index <= cart_di[2:0];
+				end else begin
 					mbc3_mode <= 1'b0; //enable RAM
 					mbc_ram_bank_reg <= {2'b00,cart_di[1:0]};
 				end
@@ -1051,17 +1056,22 @@ assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
 wire [16:0] bk_addr = {sd_lba[7:0],sd_buff_addr};
-wire bk_wr = sd_buff_wr & sd_ack;
+wire bk_wr = (sd_lba[7:0] > ram_mask_file) ? 1'b0 : sd_buff_wr & sd_ack; // only restore data amount of saveram, don't save on RTC data
 wire [15:0] bk_data = sd_buff_dout;
 wire [15:0] bk_q;
-assign sd_buff_din = bk_q;
+assign sd_buff_din = (sd_lba[7:0] <= ram_mask_file) ? bk_q :  // normal saveram data or RTC data
+					 (sd_buff_addr == 8'd0) ? RTC_timestampOut[15:0]  :
+					 (sd_buff_addr == 8'd1) ? RTC_timestampOut[31:16] :
+					 (sd_buff_addr == 8'd2) ? RTC_savedtimeOut[15:0]  :
+					 (sd_buff_addr == 8'd3) ? RTC_savedtimeOut[31:16] :
+					 16'hFFFF;
 
 wire [7:0] cram_do =
 	mbc_ram_enable ? 
 		((cart_addr[15:9] == 7'b1010000) && mbc2) ? 
 			{4'hF,cram_q[3:0]} : // 4 bit MBC2 Ram needs top half masked.
 			mbc3_mode ?
-				8'h0:            // RTC mode 
+				rtc_return:      // RTC mode 
 				cram_q :         // Return normal value
 		8'hFF;                   // Ram not enabled
 
@@ -1184,7 +1194,10 @@ always @(posedge clk_sys) begin
 	end else begin
 		if(old_ack & ~sd_ack) begin
 			
-			if(sd_lba[7:0]>=ram_mask_file) begin
+			if (RTC_inuse && sd_lba[7:0]>ram_mask_file) begin // save/load one block more when game/savefile uses RTC, only first 8 bytes used
+				bk_loading <= 0;
+				bk_state <= 0;
+			end else if(!RTC_inuse && sd_lba[7:0]>=ram_mask_file) begin
 				bk_loading <= 0;
 				bk_state <= 0;
 			end else begin
@@ -1195,5 +1208,138 @@ always @(posedge clk_sys) begin
 		end
 	end
 end
+
+/////////////////////////////  RTC  ///////////////////////////////
+reg [2:0]  rtc_index;
+
+reg [25:0] rtc_subseconds;
+reg [5:0]  rtc_seconds;
+reg [5:0]  rtc_minutes;
+reg [4:0]  rtc_hours;
+reg [9:0]  rtc_days;
+reg        rtc_overflow;
+reg        rtc_halt;
+
+wire [7:0] rtc_return;
+
+wire        RTC_timestampNew = RTC_time[32];
+wire [31:0] RTC_timestampIn  = RTC_time[31:0];	
+
+reg [31:0] RTC_timestampSaved = 0;
+reg [31:0] RTC_savedtimeIn = 0;	
+reg        RTC_saveLoaded = 0;
+
+reg [31:0] RTC_timestampOut;
+reg [31:0] RTC_savedtimeOut;
+reg        RTC_inuse;
+
+reg rtc_change;
+reg RTC_saveLoaded_1;
+reg RTC_timestampNew_1; 
+reg [31:0] diffSeconds;
+
+reg reset_1;
+
+always_ff @(posedge clk_sys) begin
+
+	reset_1 <= reset;
+
+	if(!reset_1 && reset) begin
+		rtc_halt  <= 1'b0;
+		RTC_inuse <= 1'b0;
+	end else begin
+	
+		if (rtc_change == 1'b0) begin // when RTC hasn't changed recently, update the register which will be written after savegame
+			RTC_savedtimeOut <= {3'd0, rtc_halt, rtc_overflow, rtc_days, rtc_hours, rtc_minutes, rtc_seconds};
+		end
+	
+		rtc_change	  <= 1'b0;
+		rtc_subseconds <= rtc_subseconds + 1'd1;
+
+		if (mbc3_mode || (bk_wr && mbc3 && img_size[9])) begin  // RTC is either used by game or already used in savegame
+			RTC_inuse <= 1'b1;
+		end
+
+		RTC_saveLoaded <= 1'b0;
+		if (sd_buff_wr && sd_ack && sd_lba[7:0] > ram_mask_file) begin // load data from savefile to intermediate register
+			case (sd_buff_addr)
+				0: RTC_timestampSaved[15:0]  <= sd_buff_dout;
+				1: RTC_timestampSaved[31:16] <= sd_buff_dout;
+				2: RTC_savedtimeIn[15:0]     <= sd_buff_dout;
+				3: RTC_savedtimeIn[31:16]    <= sd_buff_dout;
+				4: RTC_saveLoaded            <= 1'b1;
+			endcase
+		end
+	
+		if (RTC_saveLoaded == 1'b1) begin  // load data from intermediate register to RTC registers
+			
+			if (RTC_timestampOut > RTC_timestampSaved) begin
+				diffSeconds <= RTC_timestampOut - RTC_timestampSaved;
+			end
+			
+			rtc_seconds	 <= RTC_savedtimeIn[5:0];
+			rtc_minutes	 <= RTC_savedtimeIn[11:6];
+			rtc_hours	 <= RTC_savedtimeIn[16:12];
+			rtc_days		 <= RTC_savedtimeIn[26:17];
+			rtc_overflow <= RTC_savedtimeIn[27];
+			rtc_halt		 <= RTC_savedtimeIn[28];
+
+			RTC_inuse    <= 1'b1;
+
+		end else if(cart_wr && (cart_addr[15:13] == 3'b101) && mbc3_mode == 1'b1) begin // setting RTC registers from game
+		
+			case (rtc_index)
+				0: rtc_seconds	  <= cart_di[5:0]; 
+				1: rtc_minutes	  <= cart_di[5:0]; 
+				2: rtc_hours	  <= cart_di[4:0]; 
+				3: rtc_days[7:0] <= cart_di; 
+				4: begin
+					rtc_days[8]   <= cart_di[0]; 
+					rtc_halt      <= cart_di[6]; 
+					rtc_overflow  <= cart_di[7];
+				end
+			endcase
+			
+		end else begin  // normal counting
+			
+			if (rtc_halt == 1'b0) begin
+				if (rtc_seconds >= 60)	 begin rtc_seconds <= 6'd0;  rtc_minutes  <= rtc_minutes + 1'd1; rtc_change <= 1'b1; end
+				if (rtc_minutes >= 60)	 begin rtc_minutes <= 6'd0;  rtc_hours    <= rtc_hours + 1'd1;	  rtc_change <= 1'b1; end
+				if (rtc_hours   >= 24)	 begin rtc_hours   <= 5'd0;  rtc_days     <= rtc_days + 1'd1;    rtc_change <= 1'b1; end
+				if (rtc_days    >= 512)	 begin rtc_days    <= 10'd0; rtc_overflow <= 1'b1;               rtc_change <= 1'b1; end
+			end
+			
+			if (rtc_subseconds >= 33554432) begin 
+				rtc_subseconds	  <= 26'd0; 
+				RTC_timestampOut	<= RTC_timestampOut + 1'd1;
+				if (rtc_halt == 1'b0) begin
+					rtc_seconds	  <= rtc_seconds + 1'd1;
+					rtc_change	<= 1'b1; 
+				end
+			end else if (diffSeconds > 0 && rtc_change == 1'b0) begin // fast counting loaded seconds
+				diffSeconds		  <= diffSeconds - 1'd1; 
+				if (rtc_halt == 1'b0) begin
+					rtc_seconds	  <= rtc_seconds + 1'd1;
+					rtc_change		<= 1'b1; 
+				end
+			end
+	
+		end
+		
+		RTC_timestampNew_1 <= RTC_timestampNew;  // saving timestamp from HPS
+		if (RTC_timestampNew != RTC_timestampNew_1) begin
+			RTC_timestampOut <= RTC_timestampIn;
+		end
+		
+	end
+end
+
+assign rtc_return = 
+	(rtc_index == 0) ? rtc_seconds   :
+	(rtc_index == 1) ? rtc_minutes   :
+	(rtc_index == 2) ? rtc_hours     :
+	(rtc_index == 3) ? rtc_days[7:0] :
+	(rtc_index == 4) ? {rtc_overflow, rtc_halt, 5'b00000, rtc_days[8]} :
+	8'hFF;
 
 endmodule
