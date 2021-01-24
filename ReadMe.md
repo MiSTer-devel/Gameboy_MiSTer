@@ -13,6 +13,7 @@ This is port of [Gameboy for MiST](https://github.com/mist-devel/mist-board/tree
 * Rewind - Allows you to rewind up to 40 seconds of gameplay
 * Frameblending - Prevents flicker in some games (e.g. "Chikyuu Kaihou Gun Zas") 
 * Custom Palette Loading
+* Real-Time Clock Support
 * Gameboy Link Port Support - Requires USERIO adapter
 * Cheats
 
