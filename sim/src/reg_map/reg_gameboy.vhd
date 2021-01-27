@@ -14,7 +14,8 @@ package pReg_gameboy is
    
    constant Reg_GB_lockspeed     : regmap_type := (1056769,   0,      0,        1,       0,   readwrite); -- 1 = 100% speed
       
-   constant Reg_GB_flash_1m      : regmap_type := (1056770,   0,      0,        1,       0,   readwrite);
+   constant Reg_GB_TestDone      : regmap_type := (1056770,   0,      0,        1,       0,   readonly);
+   constant Reg_GB_TestOk        : regmap_type := (1056770,   1,      1,        1,       0,   readonly);
                                               
    constant Reg_GB_CyclePrecalc  : regmap_type := (1056771,  15,      0,        1,     100,   readwrite);  
    constant Reg_GB_CyclesMissing : regmap_type := (1056772,  31,      0,        1,       0,   readonly);  

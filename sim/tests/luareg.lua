@@ -2,7 +2,8 @@
 gameboy = {}
 gameboy.Reg_GB_on = {1056768,0,0,1,0,"gameboy.Reg_GB_on"} -- on = 1
 gameboy.Reg_GB_lockspeed = {1056769,0,0,1,0,"gameboy.Reg_GB_lockspeed"} -- 1 = 100% speed
-gameboy.Reg_GB_flash_1m = {1056770,0,0,1,0,"gameboy.Reg_GB_flash_1m"}
+gameboy.Reg_GB_TestDone = {1056770,0,0,1,0,"gameboy.Reg_GB_TestDone"}
+gameboy.Reg_GB_TestOk   = {1056770,1,1,1,0,"gameboy.Reg_GB_TestOk"}
 gameboy.Reg_GB_CyclePrecalc = {1056771,15,0,1,100,"gameboy.Reg_GB_CyclePrecalc"}
 gameboy.Reg_GB_CyclesMissing = {1056772,31,0,1,0,"gameboy.Reg_GB_CyclesMissing"}
 gameboy.Reg_GB_BusAddr = {1056773,27,0,1,0,"gameboy.Reg_GB_BusAddr"}

@@ -17,7 +17,7 @@ package pReg_savestates is
    constant REG_SAVESTATE_T80_4           : regmap_type := (  5,   52,      0,        1, x"0001000000000000");
 
    -- components
-   constant REG_SAVESTATE_Timer           : regmap_type := (  6,   37,      0,        1, x"0000000000000008");
+   constant REG_SAVESTATE_Timer           : regmap_type := (  6,   46,      0,        1, x"0000000000000008");
 
    constant REG_SAVESTATE_HDMA            : regmap_type := (  7,   44,      0,        1, x"0000000001FFFFF0");
 

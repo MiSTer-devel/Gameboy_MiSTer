@@ -57,6 +57,8 @@ architecture arch of etb is
    signal cart_do   : std_logic_vector(7 downto 0);
    signal cart_di   : std_logic_vector(7 downto 0);
    
+   signal serial_clk_out  : std_logic;
+   signal serial_data_out : std_logic;
    
    signal pixel_out_x    : integer range 0 to 159;
    signal pixel_out_y    : integer range 0 to 143;
@@ -113,6 +115,16 @@ architecture arch of etb is
    signal SaveStateExt_Dout : std_logic_vector(63 downto 0);   
    signal SaveStateExt_load : std_logic;    
    
+   -- automatic test
+   signal testdone : std_logic_vector(0 downto 0) := "0";
+   signal testok   : std_logic_vector(0 downto 0) := "0";
+   
+   type t_serialarray is array(0 to 5) of std_logic_vector(7 downto 0);
+   signal serialarray : t_serialarray := (others => (others => '0'));
+   signal serialpointer : integer range 0 to 5 := 0;
+   signal serialbuffer : std_logic_vector(7 downto 0);
+   
+   
 begin
 
    reset  <= not GB_on(0);
@@ -122,7 +134,10 @@ begin
    -- registers
    iReg_GBA_on        : entity procbus.eProcReg generic map (Reg_GB_on       )   port map (clksys, proc_bus_in, GB_on       , GB_on       );      
    iReg_GB_SaveState  : entity procbus.eProcReg generic map (Reg_GB_SaveState)   port map (clksys, proc_bus_in, GB_SaveState, GB_SaveState);      
-   iReg_GB_LoadState  : entity procbus.eProcReg generic map (Reg_GB_LoadState)   port map (clksys, proc_bus_in, GB_LoadState, GB_LoadState);      
+   iReg_GB_LoadState  : entity procbus.eProcReg generic map (Reg_GB_LoadState)   port map (clksys, proc_bus_in, GB_LoadState, GB_LoadState);
+   
+   iReg_GB_TestDone   : entity procbus.eProcReg generic map (Reg_GB_TestDone )   port map (clksys, proc_bus_in, testdone);      
+   iReg_GB_TestOk     : entity procbus.eProcReg generic map (Reg_GB_TestOk   )   port map (clksys, proc_bus_in, testok  );      
    
    cart_act <= cart_rd or cart_wr;
    
@@ -189,9 +204,9 @@ begin
       --serial port     
       sc_int_clock2           => open,
       serial_clk_in           => '0',
-      serial_clk_out          => open,
+      serial_clk_out          => serial_clk_out,
       serial_data_in          => '0',
-      serial_data_out         => open,
+      serial_data_out         => serial_data_out,
             
       cart_ram_size           => cart_ram_size,
       save_state              => GB_SaveState,
@@ -344,6 +359,37 @@ begin
          
       end if;
    end process;
+   
+   -- capture serial out for mooneye tests
+   process
+   begin
+      wait until (rising_edge(serial_clk_out) or reset = '1');
+      if (reset = '1') then
+         serialarray   <= (others => (others => '0'));
+         serialpointer <= 0;
+         testdone      <= "0";
+         testok        <= "0";
+      else
+         serialbuffer <= serialbuffer(6 downto 0) & serial_data_out;  
+         wait for 30 us;
+         if (serial_clk_out = '1') then
+            serialarray(serialpointer) <= serialbuffer;
+            if (serialpointer < 5) then
+               serialpointer <= serialpointer + 1;
+            else
+               testdone <= "1";
+               if (serialarray(0) = x"03" and 
+                  serialarray(1) = x"05" and 
+                  serialarray(2) = x"08" and 
+                  serialarray(3) = x"0D" and 
+                  serialarray(4) = x"15") then
+                  testok <= "1";
+               end if;
+            end if;
+         end if;
+      end if;
+   end process;
+   
    
    iframebuffer : entity work.framebuffer
    generic map
