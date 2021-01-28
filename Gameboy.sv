@@ -452,8 +452,14 @@ always @(posedge clk_sys) begin
 					mbc_rom_bank_reg[8] <= cart_di[0];
 				else //2000-2FFF low 8 bits
 					mbc_rom_bank_reg[7:0] <= cart_di[7:0];
-			end else
+			end else begin
 				mbc_rom_bank_reg <= {2'b00,cart_di[6:0]}; //mbc1-3
+				if (mbc1 || mbc2) begin
+					if (cart_di[6:0] == 7'h20) mbc_rom_bank_reg <= 9'h021;
+					if (cart_di[6:0] == 7'h40) mbc_rom_bank_reg <= 9'h041;
+					if (cart_di[6:0] == 7'h60) mbc_rom_bank_reg <= 9'h061;
+				end
+			end
 		end	
 		
 		//write to RAM bank register
@@ -602,7 +608,7 @@ wire [1:0] lcd_mode;
 wire lcd_on;
 wire lcd_vsync;
 
-wire HDMA_on;
+wire DMA_on;
 
 assign AUDIO_S = 0;
 
@@ -657,7 +663,7 @@ gb gb (
 	.lcd_vsync   ( lcd_vsync  ),
 	
 	.speed       ( speed      ),
-	.HDMA_on     ( HDMA_on    ),
+	.DMA_on      ( DMA_on    ),
 	
 	// serial port
 	.sc_int_clock2(sc_int_clock_out),
@@ -858,7 +864,7 @@ speedcontrol speedcontrol
 	.pause       (paused),
 	.speedup     (fast_forward),
 	.cart_act    (cart_act),
-	.HDMA_on     (HDMA_on),
+	.DMA_on      (DMA_on),
 	.ce          (ce_cpu),
 	.ce_2x       (ce_cpu2x),
 	.refresh     (sdram_refresh_force),
@@ -1089,7 +1095,7 @@ wire [7:0] cram_q_l;
 
 wire is_cram_addr = (cart_addr[15:13] == 3'b101);
 wire cram_rd = cart_rd & is_cram_addr;
-wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr;
+wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr & mbc_ram_enable;
 wire [16:0] cram_addr = sleep_savestate ? Savestate_CRAMAddr[16:0]:
                         mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 								mbc3? {2'b00,mbc3_ram_bank, cart_addr[12:0]}:

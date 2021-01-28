@@ -31,7 +31,7 @@ architecture arch of etb is
    signal ce_2x       : std_logic := '1';
    
    signal speed       : std_logic;
-   signal HDMA_on     : std_logic;
+   signal DMA_on      : std_logic;
    
    signal command_in  : std_logic;
    signal command_out : std_logic;
@@ -148,7 +148,7 @@ begin
       pause    => sleep_savestate,
       speedup  => '1',
       cart_act => cart_act,
-      HDMA_on  => HDMA_on,
+      DMA_on   => DMA_on,
       ce       => ce,
       ce_2x    => ce_2x
    );
@@ -194,7 +194,7 @@ begin
       joy_din                 => "1111",
                
       speed                   => speed,   --GBC
-      HDMA_on                 => HDMA_on,
+      DMA_on                  => DMA_on,
                
       gg_reset                => reset,
       gg_en                   => '0',
