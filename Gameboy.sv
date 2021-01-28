@@ -445,7 +445,7 @@ always @(posedge clk_sys) begin
 		
 		//write to ROM bank register
 		if(cart_wr && (cart_addr[15:13] == 3'b001)) begin
-			if(~mbc5 && cart_di[6:0]==0) //special case mbc1-3 rombank 0=1
+			if(~mbc5 && (cart_di[6:0]==0 || (mbc1 && cart_di[4:0]==0) || (mbc2 && cart_di[3:0]==0))) //special case mbc1-3 rombank 0=1
 				mbc_rom_bank_reg <= 5'd1;
 			else if (mbc5) begin
 				if (cart_addr[13:12] == 2'b11) //3000-3FFF High bit
@@ -602,7 +602,7 @@ wire [1:0] lcd_mode;
 wire lcd_on;
 wire lcd_vsync;
 
-wire HDMA_on;
+wire DMA_on;
 
 assign AUDIO_S = 0;
 
@@ -657,7 +657,7 @@ gb gb (
 	.lcd_vsync   ( lcd_vsync  ),
 	
 	.speed       ( speed      ),
-	.HDMA_on     ( HDMA_on    ),
+	.DMA_on      ( DMA_on    ),
 	
 	// serial port
 	.sc_int_clock2(sc_int_clock_out),
@@ -858,7 +858,7 @@ speedcontrol speedcontrol
 	.pause       (paused),
 	.speedup     (fast_forward),
 	.cart_act    (cart_act),
-	.HDMA_on     (HDMA_on),
+	.DMA_on      (DMA_on),
 	.ce          (ce_cpu),
 	.ce_2x       (ce_cpu2x),
 	.refresh     (sdram_refresh_force),
@@ -1089,7 +1089,7 @@ wire [7:0] cram_q_l;
 
 wire is_cram_addr = (cart_addr[15:13] == 3'b101);
 wire cram_rd = cart_rd & is_cram_addr;
-wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr;
+wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr & mbc_ram_enable;
 wire [16:0] cram_addr = sleep_savestate ? Savestate_CRAMAddr[16:0]:
                         mbc1? {2'b00,mbc1_ram_bank, cart_addr[12:0]}:
 								mbc3? {2'b00,mbc3_ram_bank, cart_addr[12:0]}:

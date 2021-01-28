@@ -58,7 +58,7 @@ module gb (
 	input  [3:0] joy_din,
 	
 	output speed,   //GBC
-	output HDMA_on,
+	output DMA_on,
 	
 	input          gg_reset,
 	input          gg_en,
@@ -679,8 +679,6 @@ hdma hdma(
 	.SaveStateBus_Dout (SaveStateBus_wired_or[2])
 );
 
-assign HDMA_on = hdma_active;
-
 // --------------------------------------------------------------------
 // -------------------------- zero page ram ---------------------------
 // --------------------------------------------------------------------
@@ -787,6 +785,8 @@ assign cart_rd = (isGBC&&hdma_rd&&is_hdma_cart_addr) || (dma_rd&&is_dma_cart_add
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n && !hdma_rd;
 
 assign gbc_bios_addr = hdma_rd?hdma_source_addr[11:0]:cpu_addr[11:0];
+
+assign DMA_on = (hdma_active && is_hdma_cart_addr) || (dma_rd && is_dma_cart_addr);
 
 boot_rom boot_rom (
 	.addr    ( cpu_addr[7:0] ),
