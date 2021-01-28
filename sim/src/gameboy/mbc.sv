@@ -181,8 +181,14 @@ always @(posedge clk_sys) begin
 					mbc_rom_bank_reg[8] <= cart_di[0];
 				else //2000-2FFF low 8 bits
 					mbc_rom_bank_reg[7:0] <= cart_di[7:0];
-			end else
+			end else begin
 				mbc_rom_bank_reg <= {2'b00,cart_di[6:0]}; //mbc1-3
+				if (mbc1 || mbc2) begin
+					if (cart_di[6:0] == 7'h20) mbc_rom_bank_reg <= 9'h021;
+					if (cart_di[6:0] == 7'h40) mbc_rom_bank_reg <= 9'h041;
+					if (cart_di[6:0] == 7'h60) mbc_rom_bank_reg <= 9'h061;
+				end
+			end
 		end	
 		
 		//write to RAM bank register
@@ -345,7 +351,7 @@ assign Savestate_CRAMReadData = read_low ? cram_q_h : cram_q_l;
 
 wire is_cram_addr = (cart_addr[15:13] == 3'b101);
 assign cram_rd = cart_rd & is_cram_addr;
-wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr;
+wire cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr & mbc_ram_enable;
 
 wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : cart_di;
 
