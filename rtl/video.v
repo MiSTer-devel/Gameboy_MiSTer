@@ -476,10 +476,10 @@ assign cpu_do =
 	(cpu_addr == 8'h4a)?wy:
 	(cpu_addr == 8'h4b)?wx:
 	isGBC?
-		(cpu_addr == 8'h68)?{bgpi_ai,1'd0,bgpi}:
-		(cpu_addr == 8'h69 && mode != 3)?bgpd[bgpi]:
-		(cpu_addr == 8'h6a)?{obpi_ai,1'd0,obpi}:
-		(cpu_addr == 8'h6b && mode != 3)?obpd[obpi]:
+		(cpu_addr == 8'h68)?{bgpi_ai,1'd1,bgpi}:
+		(cpu_addr == 8'h69 && isGBC_game && mode != 3)?bgpd[bgpi]:
+		(cpu_addr == 8'h6a)?{obpi_ai,1'd1,obpi}:
+		(cpu_addr == 8'h6b && isGBC_game && mode != 3)?obpd[obpi]:
 		8'hff:
 	8'hff;
 
