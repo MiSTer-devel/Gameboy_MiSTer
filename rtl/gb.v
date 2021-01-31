@@ -120,13 +120,7 @@ wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 wire [53:0] SS_Top;
 wire [53:0] SS_Top_BACK;
 
-wire [63:0] default_dmg = 64'h0000000000800001; // joypad P54 startup value is 1'b00
-wire [63:0] default_cgb = 64'h0000000000800061; // joypad P54 startup value is 1'b11
-wire [63:0] default_sgb = 64'h0000000000800061; // joypad P54 startup value is 1'b11
-wire [63:0] default_SAVESTATE_Top = isGBC ? default_cgb : 
-									isSGB ? default_sgb : 
-									default_dmg;
-eReg_SavestateVariableDefault #(0, 31, 53, 0) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top, default_SAVESTATE_Top);  
+eReg_SavestateV #(0, 31, 53, 0, 64'h0000000000800001) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
 
 // include cpu
 reg boot_rom_enabled;
@@ -418,7 +412,7 @@ reg  [1:0] p54;
 assign SS_Top_BACK[6:5] = p54;
 
 always @(posedge clk_sys) begin
-	if(reset_ss) p54 <= SS_Top[6:5]; //2'b00 for DMG, 2'b11 for CGB;
+	if(reset_ss) p54 <= SS_Top[6:5]; //2'b00 for DMG, 2'b11 for CGB/SGB will be written by BIOS
 	else if(ce_cpu && sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
 end
 
@@ -814,13 +808,14 @@ end
 
 wire [7:0] boot_rom_do;
 wire [7:0] fast_boot_rom_do;
+wire [7:0] boot_rom_sgb_do;
 
 assign rom_do = isGBC? //GameBoy Color?
                         (((cpu_addr[14:8] == 7'h00) || (hdma_rd&& hdma_source_addr[14:8] == 7'h00))&& boot_rom_enabled)?gbc_bios_do:         //0-FF bootrom 1st part
                         ((cpu_addr[14:9] == 6'h00) || (hdma_rd&& hdma_source_addr[14:9] == 6'h00))? cart_do:                                 //100-1FF Cart Header
                         (((cpu_addr[14:12] == 3'h0) || (hdma_rd&& hdma_source_addr[14:12] == 3'h0)) && boot_rom_enabled)?gbc_bios_do:        //200-8FF bootrom 2nd part
                         cart_do:                                                            //rest of card
-                    ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?fast_boot?fast_boot_rom_do:boot_rom_do:cart_do;    //GB
+                    ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?isSGB?boot_rom_sgb_do:fast_boot?fast_boot_rom_do:boot_rom_do:cart_do;    //GB
 
 
 wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
@@ -845,6 +840,12 @@ fast_boot_rom fast_boot_rom (
 	.addr    ( cpu_addr[7:0] ),
 	.clk     ( clk_sys       ),
 	.data    ( fast_boot_rom_do )
+);
+
+boot_rom_sgb boot_rom_sgb (
+	.addr    ( cpu_addr[7:0] ),
+	.clk     ( clk_sys       ),
+	.data    ( boot_rom_sgb_do)
 );
 
 // --------------------------------------------------------------------
