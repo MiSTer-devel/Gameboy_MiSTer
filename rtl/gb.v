@@ -30,6 +30,7 @@ module gb (
 	input [7:0] joystick,
 	input isGBC,
 	input isGBC_game,
+	input isSGB,
 
 	// cartridge interface
 	// can adress up to 1MB ROM
@@ -119,9 +120,12 @@ wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 wire [53:0] SS_Top;
 wire [53:0] SS_Top_BACK;
 
-wire [63:0] default_dmg = 64'h0000000000800001;
-wire [63:0] default_cgb = 64'h0000000000800061;
-wire [63:0] default_SAVESTATE_Top = isGBC ? default_cgb : default_dmg;
+wire [63:0] default_dmg = 64'h0000000000800001; // joypad P54 startup value is 1'b00
+wire [63:0] default_cgb = 64'h0000000000800061; // joypad P54 startup value is 1'b11
+wire [63:0] default_sgb = 64'h0000000000800061; // joypad P54 startup value is 1'b11
+wire [63:0] default_SAVESTATE_Top = isGBC ? default_cgb : 
+									isSGB ? default_sgb : 
+									default_dmg;
 eReg_SavestateVariableDefault #(0, 31, 53, 0) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top, default_SAVESTATE_Top);  
 
 // include cpu
