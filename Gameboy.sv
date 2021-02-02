@@ -674,6 +674,7 @@ gb gb (
 
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
+	.isSGB       ( ~sgb_en[1] & ~isGBC ),
 
 	.joy_p54     ( joy_p54     ),
 	.joy_din     ( joy_do_sgb  ),

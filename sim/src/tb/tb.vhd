@@ -166,6 +166,7 @@ begin
       joystick                => x"FF",
       isGBC                   => is_CGB,
       isGBC_game              => is_CGB,
+      isSGB                   => '0',
    
       -- cartridge interface
       -- can adress up to 1MB ROM
