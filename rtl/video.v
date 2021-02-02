@@ -84,7 +84,7 @@ wire [62:0] SS_Video3_BACK;
 
 eReg_SavestateV #(0,  9, 58, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
 eReg_SavestateV #(0, 10, 53, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
-eReg_SavestateV #(0, 27, 62, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
+eReg_SavestateV #(0, 27, 62, 0, 64'h0000000000000000) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
 
 wire [63:0] SS_BPAL [7:0];
 wire [63:0] SS_BPAL_BACK [7:0];
@@ -256,7 +256,7 @@ always @(posedge clk) begin
 			// Vblank is latched a few cycles after line end.
 			// This causes an OAM interrupt at the beginning of line 144.
 			// It also makes the OAM interrupt at line 0 after Vblank a few cycles late.
-			if (h_cnt[1:0] == 2'b10) begin
+			if (h_cnt[1:0] == 2'b11) begin
 				vblank_l <= vblank;
 			end
 			// end_of_line is active for 4 cycles

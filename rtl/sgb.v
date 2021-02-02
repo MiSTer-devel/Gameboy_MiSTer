@@ -52,6 +52,11 @@ localparam CMD_PCT_TRN  = 5'h14;
 localparam CMD_ATTR_TRN = 5'h15;
 localparam CMD_ATTR_SET = 5'h16;
 localparam CMD_MASK_EN  = 5'h17;
+// Below are used by the bios to transfer the cart header to the SNES.
+// These do not include the length in byte 0.
+// https://tcrf.net/Super_Game_Boy#Fx_Command_Group_Used_by_The_SGB_Boot_ROM
+localparam CMD_CART_1   = 5'h1E;
+localparam CMD_CART_2   = 5'h1F;
 
 
 
@@ -150,7 +155,12 @@ always @(posedge clk_sys) begin
 			byte_done <= 0;
 			byte_cnt <= byte_cnt + 1'b1;
 
-			if (!packet_cnt && !byte_cnt) {cmd,length} <= data;
+			if (!packet_cnt && !byte_cnt) begin
+				{cmd,length} <= data;
+				if (data[7:3] == CMD_CART_1 || data[7:3] == CMD_CART_2) begin
+					length <= 1; // Unused. Fixed length 1
+				end
+			end
 
 			case (cmd)
 				CMD_MLT_REQ: begin
