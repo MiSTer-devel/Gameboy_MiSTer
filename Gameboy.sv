@@ -40,8 +40,9 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output [11:0] VIDEO_ARX,
-	output [11:0] VIDEO_ARY,
+	//if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
+	output [12:0] VIDEO_ARX,
+	output [12:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -52,6 +53,9 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+
+	input  [11:0] HDMI_WIDTH,
+	input  [11:0] HDMI_HEIGHT,
 
 `ifdef USE_FB
 	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
@@ -183,18 +187,13 @@ assign LED_POWER = 0;
 assign BUTTONS   = 0;
 assign VGA_SCALER= 0;
 
-wire [1:0] ar = status[4:3];
-
-assign VIDEO_ARX = (!ar) ? 12'd10 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd9  : 12'd0;
-
 assign AUDIO_MIX = status[8:7];
 
 // Status Bit Map:
 // 0         1         2         3 
 // 01234567890123456789012345678901
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXX  XXXXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -222,6 +221,8 @@ localparam CONF_STR = {
 	"O5,Stabilize video(buffer),Off,On;",
 	"OG,Frame blend,Off,On;",
 	"h4OU,Colors,Corrected,Raw;",
+	"OLM,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
+	"-;",
 	"O78,Stereo mix,none,25%,50%,100%;",
 	"-;",
 	"OB,Boot,Normal,Fast;",
@@ -753,7 +754,7 @@ assign AUDIO_L = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_L;
 assign AUDIO_R = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_R;
 
 // the lcd to vga converter
-wire [7:0] video_r, video_g, video_b;
+wire [7:0] R,G,B;
 wire video_hs, video_vs;
 wire HBlank, VBlank;
 wire ce_pix;
@@ -795,9 +796,9 @@ lcd lcd
 	.vs     ( video_vs   ),
 	.hbl    ( HBlank     ),
 	.vbl    ( VBlank     ),
-	.r      ( video_r    ),
-	.g      ( video_g    ),
-	.b      ( video_b    ),
+	.r      ( R          ),
+	.g      ( G          ),
+	.b      ( B          ),
 	.ce_pix ( ce_pix     ),
 	.h_cnt  ( h_cnt      ),
 	.v_cnt  ( v_cnt      )
@@ -848,11 +849,11 @@ sgb sgb (
 	.sgb_lcd_vsync   ( sgb_lcd_vsync   )
 );
 
-reg hs_o, vs_o;
+reg HSync, VSync;
 always @(posedge CLK_VIDEO) begin
 	if(ce_pix) begin
-		hs_o <= video_hs;
-		if(~hs_o & video_hs) vs_o <= video_vs;
+		HSync <= video_hs;
+		if(~HSync & video_hs) VSync <= video_vs;
 	end
 end
 
@@ -866,19 +867,21 @@ wire       scandoubler = (scale || forced_scandoubler);
 video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 (
 	.*,
+	.hq2x(scale==1)
+);
 
-	.clk_vid(CLK_VIDEO),
-	.ce_pix_out(CE_PIXEL),
+wire [1:0] ar = status[4:3];
+video_freak video_freak
+(
+	.*,
+	.VGA_DE_IN(VGA_DE),
+	.VGA_DE(),
 
-	.scanlines(0),
-	.hq2x(scale==1),
-	.mono(0),
-
-	.HSync(hs_o),
-	.VSync(vs_o),
-	.R(video_r),
-	.G(video_g),
-	.B(video_b)
+	.ARX((!ar) ? 12'd10 : (ar - 1'd1)),
+	.ARY((!ar) ? 12'd9  : 12'd0),
+	.CROP_SIZE(0),
+	.CROP_OFF(0),
+	.SCALE(status[22:21])
 );
 
 //////////////////////////////// CE ////////////////////////////////////
