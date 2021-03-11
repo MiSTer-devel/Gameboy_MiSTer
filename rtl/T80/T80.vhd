@@ -698,7 +698,11 @@ begin
 					end if;
 				end if;
 				if TState = 3 and MCycle = "110" then
-					TmpAddr <= std_logic_vector(signed(RegBusC) + signed(DI_Reg));
+					if (Mode = 3) then
+						TmpAddr <= std_logic_vector(signed(RegBusC) + signed(DInst));
+					else
+						TmpAddr <= std_logic_vector(signed(RegBusC) + signed(DI_Reg));
+					end if;
 				end if;
 
 				if (TState = 2 and Wait_n = '1') or (TState = 4 and MCycle = "001") then
@@ -732,10 +736,18 @@ begin
 
 			if TState = 3 then
 				if LDZ = '1' then
-					TmpAddr(7 downto 0) <= DI_Reg;
+					if (Mode = 3) then
+						TmpAddr(7 downto 0) <= DInst;
+					else
+						TmpAddr(7 downto 0) <= DI_Reg;
+					end if;
 				end if;
 				if LDW = '1' then
-					TmpAddr(15 downto 8) <= DI_Reg;
+					if (Mode = 3) then
+						TmpAddr(15 downto 8) <= DInst;
+					else
+						TmpAddr(15 downto 8) <= DI_Reg;
+					end if;
 				end if;
 
 				if Special_LD(2) = '1' then
