@@ -195,6 +195,9 @@ wire hdma_active;
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
 
+wire oam_cpu_allow;
+wire vram_cpu_allow;
+
 wire [7:0] joy_do;
 wire [7:0] sb_o;
 wire [7:0] timer_do;
@@ -226,11 +229,11 @@ wire [7:0] cpu_di =
 		sel_sc?sc_r:				// serial transfer control register
 		sel_timer?timer_do:     // timer registers
 		sel_video_reg?video_do: // video registers
-		(sel_video_oam&&!(lcd_mode==3 || lcd_mode==2))?video_do: // video object attribute memory
+		(sel_video_oam&&oam_cpu_allow)?video_do: // video object attribute memory
 		sel_audio?audio_do:                                // audio registers
 		sel_rom?rom_do:                                    // boot rom + cartridge rom
 		sel_cram?rom_do:                                   // cartridge ram
-		(sel_vram&&lcd_mode!=3)?(isGBC&&vram_bank)?vram1_do:vram_do:       // vram (GBC bank 0+1)
+		(sel_vram&&vram_cpu_allow)?(isGBC&&vram_bank)?vram1_do:vram_do:       // vram (GBC bank 0+1)
 		sel_zpram?zpram_do:     // zero page ram
 		sel_iram?iram_do:       // internal ram
 		sel_ie?ie_r:  // interrupt enable register
@@ -286,6 +289,7 @@ GBse cpu (
    .DI                ( genie_ovr ? genie_data : cpu_di),
    .DO                ( cpu_do          ),
 	.STOP              ( cpu_stop        ),
+    .isGBC             ( isGBC           ),
    // savestates
    .SaveStateBus_Din  (SaveStateBus_Din ), 
    .SaveStateBus_Adr  (SaveStateBus_Adr ),
@@ -601,6 +605,8 @@ video video (
 	.mode        ( lcd_mode      ),
 	.lcd_vsync   ( lcd_vsync     ),
 
+	.oam_cpu_allow  ( oam_cpu_allow  ),
+	.vram_cpu_allow ( vram_cpu_allow ),
 	.vram_rd     ( video_rd      ),
 	.vram_addr   ( video_addr    ),
 	.vram_data   ( vram_do       ),
@@ -625,7 +631,7 @@ video video (
 );
 
 // total 8k/16k (CGB) vram from $8000 to $9fff
-wire cpu_wr_vram = sel_vram && !cpu_wr_n && lcd_mode!=3;
+wire cpu_wr_vram = sel_vram && !cpu_wr_n && vram_cpu_allow;
 
 wire hdma_rd;
 wire is_hdma_cart_addr;

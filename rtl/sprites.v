@@ -36,9 +36,9 @@ module sprites (
 	input sprite_fetch_done,
 	output sprite_fetch,
 
-	input oam_eval,
 	input oam_fetch,
 	input oam_eval_reset,
+	output oam_eval,
 
 	output [10:0] sprite_addr,
 	output reg [7:0] sprite_attr,
@@ -65,6 +65,9 @@ localparam SPRITES_PER_LINE = 10;
 reg [7:0] oam_spr_addr;
 wire [7:0] oam_fetch_addr;
 reg [7:0] oam_q;
+
+reg oam_eval_en;
+assign oam_eval = lcd_on & ~oam_eval_end & oam_eval_en & ~oam_eval_reset;
 
 wire [7:0] oam_addr = dma_active ? oam_addr_in :
 						oam_eval ? oam_spr_addr :
@@ -107,54 +110,37 @@ assign oam_eval_end = (spr_index == 6'd40);
 wire [0:9] sprite_x_matches;
 
 reg old_fetch_done;
+integer spr_i = 0;
 always @(posedge clk) begin
 	if (ce) begin
 
 		if (oam_eval_reset | ~lcd_on) begin
 			sprite_cnt <= 0;
-			spr_index <= 0;
+			spr_index <= ~lcd_on ? 6'd1 : 6'd0;
 			sprite_cycle <= 0;
 			oam_spr_addr <= 0;
-			sprite_x[0] <= 8'hFF;
-			sprite_x[1] <= 8'hFF;
-			sprite_x[2] <= 8'hFF;
-			sprite_x[3] <= 8'hFF;
-			sprite_x[4] <= 8'hFF;
-			sprite_x[5] <= 8'hFF;
-			sprite_x[6] <= 8'hFF;
-			sprite_x[7] <= 8'hFF;
-			sprite_x[8] <= 8'hFF;
-			sprite_x[9] <= 8'hFF;
-			sprite_no[0] <= 6'd0;
-			sprite_no[1] <= 6'd0;
-			sprite_no[2] <= 6'd0;
-			sprite_no[3] <= 6'd0;
-			sprite_no[4] <= 6'd0;
-			sprite_no[5] <= 6'd0;
-			sprite_no[6] <= 6'd0;
-			sprite_no[7] <= 6'd0;
-			sprite_no[8] <= 6'd0;
-			sprite_no[9] <= 6'd0;
+			oam_eval_en <= oam_eval_reset ? 1'b1 : 1'b0; // OAM evaluation does not run on the first line after enabling the lcd
+			for (spr_i=0; spr_i < SPRITES_PER_LINE; spr_i=spr_i+1) begin
+				sprite_x[spr_i] <= 8'hFF;
+				sprite_no[spr_i] <= 6'd0;
+			end
 		end else begin
 
-			if (oam_eval) begin
+			if (~oam_eval_end) begin
+				if (sprite_cycle) spr_index <= spr_index + 1'b1;
 
-				if (spr_index < 6'd40) begin
-					if (sprite_cycle) spr_index <= spr_index + 1'b1;
-
-					if (sprite_cnt < SPRITES_PER_LINE) begin
-						if (~sprite_cycle) begin
-							spr_y <= oam_do;
-							oam_spr_addr <= {spr_index,2'b01};
-						end else begin
-							if (sprite_on_line) begin
-								sprite_no[sprite_cnt] <= spr_index;
-								sprite_x[sprite_cnt] <= oam_do;
-								sprite_y[sprite_cnt] <= v_cnt[3:0] - spr_y[3:0];
-								sprite_cnt <= sprite_cnt + 1'b1;
-							end
-							oam_spr_addr <= {spr_index+1'b1, 2'b00};
+				if (oam_eval_en && sprite_cnt < SPRITES_PER_LINE) begin
+					if (~sprite_cycle) begin
+						spr_y <= oam_do;
+						oam_spr_addr <= {spr_index,2'b01};
+					end else begin
+						if (sprite_on_line) begin
+							sprite_no[sprite_cnt] <= spr_index;
+							sprite_x[sprite_cnt] <= oam_do;
+							sprite_y[sprite_cnt] <= v_cnt[3:0] - spr_y[3:0];
+							sprite_cnt <= sprite_cnt + 1'b1;
 						end
+						oam_spr_addr <= {spr_index+1'b1, 2'b00};
 					end
 				end
 

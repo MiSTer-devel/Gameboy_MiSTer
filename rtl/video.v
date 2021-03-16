@@ -46,6 +46,8 @@ module video (
 
 	// vram connection
 	output [1:0] mode,
+	output oam_cpu_allow,
+	output vram_cpu_allow,
 	output vram_rd,
 	output [12:0] vram_addr,
 	input [7:0] vram_data,
@@ -75,15 +77,15 @@ module video (
 localparam SAVESTATE_MODULES    = 19;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
-wire [58:0] SS_Video1;
-wire [58:0] SS_Video1_BACK;
-wire [53:0] SS_Video2;
-wire [53:0] SS_Video2_BACK;
+wire [60:0] SS_Video1;
+wire [60:0] SS_Video1_BACK;
+wire [61:0] SS_Video2;
+wire [61:0] SS_Video2_BACK;
 wire [62:0] SS_Video3;
 wire [62:0] SS_Video3_BACK;
 
-eReg_SavestateV #(0,  9, 58, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
-eReg_SavestateV #(0, 10, 53, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
+eReg_SavestateV #(0,  9, 60, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
+eReg_SavestateV #(0, 10, 61, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
 eReg_SavestateV #(0, 27, 62, 0, 64'h0000000000000000) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
 
 wire [63:0] SS_BPAL [7:0];
@@ -130,7 +132,7 @@ reg [9:0] dma_cnt;     // dma runs 4*160 clock cycles = 160us @ 4MHz
 
 // give dma access to oam
 wire [7:0] oam_addr = dma_active?dma_addr[7:0]:cpu_addr;
-wire oam_wr = dma_active?(dma_cnt[1:0] == 2):(cpu_wr && cpu_sel_oam && !(mode==3 || mode==2));
+wire oam_wr = dma_active?(dma_cnt[1:0] == 2):(cpu_wr && cpu_sel_oam && oam_cpu_allow);
 wire [7:0] oam_di = dma_active?dma_data:cpu_di;
 
 // $ff40 LCDC
@@ -161,12 +163,14 @@ reg [7:0] scy;
 reg [7:0] scx;
 
 // ff44 line counter
-reg [8:0] h_cnt;            // max 455
+reg [6:0] h_cnt;            // 0-113 at 1MHz
+reg [1:0] h_div_cnt;        // Divide by 4
 reg [7:0] v_cnt;            // max 153
 wire [7:0] ly = v_cnt;
 
 // ff45 line counter compare
-reg [7:0] lyc;
+reg [7:0] lyc_r_dmg, lyc_r_gbc;
+wire [7:0] lyc = (isGBC ? lyc_r_gbc : lyc_r_dmg);
 wire lyc_match = (ly == lyc);
 
 reg [7:0] bgp;
@@ -228,60 +232,80 @@ end
 // interrupt to trigger only on a Mode 3 to Hblank transition.
 // OAM follows immediately after Hblank/Vblank so no OAM interrupt is triggered.
 
-wire h455 = (h_cnt == 9'd455);
+wire h_clk_en     = (lcd_on && h_div_cnt == 2'd0);
+wire h_clk_en_neg = (lcd_on && h_div_cnt == 2'd2);
+
+wire hcnt_end = (h_cnt == 7'd113);
 wire vblank  = (v_cnt >= 144);
 
-reg vblank_l, end_of_line, end_of_line_l, end_of_line_ll, lyc_match_l;
+reg vblank_l, vblank_t, vblank_ll;
+reg end_of_line, end_of_line_l;
+reg lyc_match_l, lyc_match_t;
 
 assign SS_Video3_BACK[0] = vblank_l;
 assign SS_Video3_BACK[1] = end_of_line;
 assign SS_Video3_BACK[2] = end_of_line_l;
-assign SS_Video3_BACK[3] = end_of_line_ll;
-assign SS_Video3_BACK[4] = lyc_match_l;
+assign SS_Video3_BACK[3] = vblank_ll;
+assign SS_Video3_BACK[6] = vblank_t;
 
 always @(posedge clk) begin
 	if (reset) begin
 		vblank_l       <= SS_Video3[0]; //1'b0;
 		end_of_line    <= SS_Video3[1]; //1'b0;
 		end_of_line_l  <= SS_Video3[2]; //1'b0;
-		end_of_line_ll <= SS_Video3[3]; //1'b0;
+		vblank_ll      <= SS_Video3[3]; //1'b0;
+		vblank_t       <= SS_Video3[6]; //1'b0;
 	end else if (!lcd_on) begin
 		vblank_l       <= 1'b0;
 		end_of_line    <= 1'b0;
 		end_of_line_l  <= 1'b0;
-		end_of_line_ll <= 1'b0;
+		vblank_ll      <= 1'b0;
+		vblank_t       <= 1'b0;
 	end else if (ce) begin
-		if (h455) end_of_line <= 1'b1;
+		vblank_l <= vblank_t;
+		vblank_ll <= vblank_l;
+
+		if (h_clk_en_neg & hcnt_end)
+			end_of_line <= 1'b1;
 		else if (end_of_line) begin
 			// Vblank is latched a few cycles after line end.
 			// This causes an OAM interrupt at the beginning of line 144.
 			// It also makes the OAM interrupt at line 0 after Vblank a few cycles late.
-			if (h_cnt[1:0] == 2'b11) begin
-				vblank_l <= vblank;
+			if (h_clk_en) begin
+				vblank_t <= vblank;
+				if (vblank_t & ~vblank & ~isGBC) begin // DMG: vblank falling edge must be 1 cycle faster to pass some tests.
+					vblank_l <= vblank;
+				end
 			end
 			// end_of_line is active for 4 cycles
-			if (&h_cnt[1:0]) begin
+			if (h_clk_en_neg) begin
 				end_of_line <= 1'b0;
 			end
 		end
 
 		end_of_line_l <= end_of_line;
-		end_of_line_ll <= end_of_line_l;
 	end
 end
 
+assign SS_Video3_BACK[4] = lyc_match_l;
+
 always @(posedge clk) begin
 	if (reset) begin
-		lyc_match_l <= SS_Video3[4]; // 1'b0; // lyc_match does not reset when lcd is off
+		lyc_match_l <= SS_Video3[4]; // 1'b0; // lyc_match_l does not reset when lcd is off
 	end else if (ce) begin
-		if (h_cnt[1:0] == 2'b11) begin
-			lyc_match_l <= lyc_match;
+		lyc_match_l <= lyc_match_t;
+
+		if (h_clk_en) begin
+			lyc_match_t <= lyc_match;
+			if (lyc_match_t & ~lyc_match & ~isGBC) begin // DMG: lyc_match falling edge must be 1 cycle faster to pass Wilbertpol LYC tests.
+				lyc_match_l <= lyc_match;
+			end
 		end
 	end
 end
 
 wire pcnt_reset, pcnt_end;
-wire mode3_end = isGBC ? pcnt_end : (~sprite_found & pcnt_end);
+wire mode3_end = (lcd_clk & pcnt == 8'd167) | pcnt_end;
 
 reg mode3_end_l;
 
@@ -301,25 +325,44 @@ always @(posedge clk) begin
 end
 
 wire int_lyc = (stat[6] & lyc_match_l);
-wire int_oam = (stat[5] & end_of_line_ll & ~vblank_l);
+wire int_oam = (stat[5] & end_of_line_l & (isGBC ? ~vblank_l : ~vblank_ll) );
 wire int_vbl = (stat[4] & vblank_l);
-wire int_hbl = (stat[3] & mode3_end & ~vblank_l);
+wire int_hbl = (stat[3] & mode3_end_l & ~vblank_l);
 
 assign irq = (int_lyc | int_oam | int_hbl | int_vbl);
 assign vblank_irq = vblank_l;
 
-// end_of_line is active for 4 cycles at the beginning of a line so
-// OAM evaluation starts at cycle 4.
-// Except on the first line when the LCD is enabled after being disabled
-// where it starts at cycle 0.
-wire oam     = lcd_on & ~oam_eval_end;
-wire mode3   = lcd_on & (isGBC ? ~mode3_end : ~mode3_end_l) & oam_eval_end;
+wire oam_eval;
+wire mode3   = lcd_on & ~mode3_end_l & oam_eval_end;
+
+reg mode3_l, oam_eval_l;
+
+assign SS_Video1_BACK[59] = mode3_l;
+assign SS_Video1_BACK[60] = oam_eval_l;
+
+// Delay mode 2/3 to pass Mooneye/Wilbertpol Lcd on timing tests.
+// The CPU cannot read from OAM/VRAM 1 cycle before Mode 2/3 is read
+always @(posedge clk) begin
+	if (reset) begin
+		mode3_l    <= SS_Video1[59]; // 1'b0;
+		oam_eval_l <= SS_Video1[60]; // 1'b0;
+	end else if (~lcd_on) begin
+		mode3_l    <= 1'b0;
+		oam_eval_l <= 1'b0;
+	end else if (ce) begin
+		mode3_l    <= mode3;
+		oam_eval_l <= oam_eval;
+	end
+end
 
 assign mode = 
-	vblank_l ? 2'b01 :
-	oam      ? 2'b10 :
-	mode3    ? 2'b11 :
-	           2'b00;
+	vblank_l             ? 2'b01 :
+	oam_eval_l           ? 2'b10 :
+	mode3_l & ~mode3_end ? 2'b11 :
+	                       2'b00;
+
+assign oam_cpu_allow = ~(oam_eval | mode3);
+assign vram_cpu_allow = ~mode3;
 
 // --------------------------------------------------------------------
 // --------------------- CPU register interface -----------------------
@@ -340,7 +383,8 @@ assign SS_Video2_BACK[37:32] = bgpi;
 assign SS_Video2_BACK[43:38] = obpi;
 assign SS_Video2_BACK[   44] = bgpi_ai;
 assign SS_Video2_BACK[   45] = obpi_ai;
-assign SS_Video2_BACK[53:46] = lyc;
+assign SS_Video2_BACK[53:46] = lyc_r_gbc;
+assign SS_Video2_BACK[61:54] = lyc_r_dmg;
 
 genvar palI;
 generate
@@ -364,12 +408,28 @@ generate
 	end
 endgenerate
 
+
+// Use negedge on some registers to pass tests
+always @(negedge clk) begin
+	if(reset) begin
+		lcdc      <= SS_Video1[26:19]; // 8'h00;  // screen must be off since dmg rom writes to vram
+		lyc_r_dmg <= SS_Video2[61:54]; // 8'h00;
+	end else if (ce_cpu) begin
+		if(cpu_sel_reg && cpu_wr) begin
+			case(cpu_addr)
+				8'h40:	lcdc <= cpu_di;
+				8'h45:	lyc_r_dmg <= cpu_di;
+			endcase
+		end
+	end
+
+end
+
 always @(posedge clk) begin
 
 	if(reset) begin
 	
 		dma     <= SS_Video1[18:11]; // 8'h00;
-		lcdc    <= SS_Video1[26:19]; // 8'h00;  // screen must be off since dmg rom writes to vram
 		scy     <= SS_Video1[34:27]; // 8'h00;
 		scx     <= SS_Video1[42:35]; // 8'h00;
 		wy      <= SS_Video1[50:43]; // 8'h00;
@@ -382,7 +442,7 @@ always @(posedge clk) begin
 		obpi    <= SS_Video2[43:38]; // 6'h0;
 		bgpi_ai <= SS_Video2[   44]; // 1'b0;
 		obpi_ai <= SS_Video2[   45]; // 1'b0;
-		lyc     <= SS_Video2[53:46]; // 8'h00;
+		lyc_r_gbc <= SS_Video2[53:46]; // 8'h00;
 
 		bgpd[ 0] <= SS_BPAL[0][ 7: 0]; bgpd[16] <= SS_BPAL[2][ 7: 0]; bgpd[32] <= SS_BPAL[4][ 7: 0]; bgpd[48] <= SS_BPAL[6][ 7: 0]; //8'h00;
 		bgpd[ 1] <= SS_BPAL[0][15: 8]; bgpd[17] <= SS_BPAL[2][15: 8]; bgpd[33] <= SS_BPAL[4][15: 8]; bgpd[49] <= SS_BPAL[6][15: 8]; //8'h00;
@@ -421,12 +481,10 @@ always @(posedge clk) begin
 	end else if (ce_cpu) begin
 		if(cpu_sel_reg && cpu_wr) begin
 			case(cpu_addr)
-				8'h40:	lcdc <= cpu_di;
 				8'h41:	stat_r <= cpu_di;
 				8'h42:	scy <= cpu_di;
 				8'h43:	scx <= cpu_di;
-				// a write to 4 is supposed to reset the v_cnt
-				8'h45:	lyc <= cpu_di;
+				8'h45:	lyc_r_gbc <= cpu_di;
 				8'h46:	dma <= cpu_di;
 				8'h47:	bgp <= cpu_di;
 				8'h48:	obp0 <= cpu_di;
@@ -440,7 +498,7 @@ always @(posedge clk) begin
 							bgpi_ai <= cpu_di[7];
 						 end
 				8'h69: begin
-							if (mode != 3) begin
+							if (vram_cpu_allow) begin
 								bgpd[bgpi] <= cpu_di;
 							end
 							//"Writing to FF69 during rendering still causes auto-increment to occur."
@@ -451,7 +509,7 @@ always @(posedge clk) begin
 							obpi_ai <= cpu_di[7];
 						 end
 				8'h6B: begin
-							if (mode != 3) begin
+							if (vram_cpu_allow) begin
 								obpd[obpi] <= cpu_di;
 							end
 							if (obpi_ai) obpi <= obpi + 6'h1;
@@ -460,6 +518,7 @@ always @(posedge clk) begin
 		end
 	end
 end
+
 
 assign cpu_do =
 	cpu_sel_oam?oam_do:
@@ -477,9 +536,9 @@ assign cpu_do =
 	(cpu_addr == 8'h4b)?wx:
 	isGBC?
 		(cpu_addr == 8'h68)?{bgpi_ai,1'd1,bgpi}:
-		(cpu_addr == 8'h69 && isGBC_game && mode != 3)?bgpd[bgpi]:
+		(cpu_addr == 8'h69 && isGBC_game && vram_cpu_allow)?bgpd[bgpi]:
 		(cpu_addr == 8'h6a)?{obpi_ai,1'd1,obpi}:
-		(cpu_addr == 8'h6b && isGBC_game && mode != 3)?obpd[obpi]:
+		(cpu_addr == 8'h6b && isGBC_game && vram_cpu_allow)?obpd[obpi]:
 		8'hff:
 	8'hff;
 
@@ -487,44 +546,41 @@ assign cpu_do =
 // -------------- counters & background tilemap address----------------
 // --------------------------------------------------------------------
 
-reg skip_en;
+reg skip_done;
 reg [2:0] skip_cnt;
 reg [7:0] pcnt;
 wire sprite_fetch_hold;
 wire bg_shift_empty;
+wire skip_end = (skip_cnt == scx[2:0] || &skip_cnt);
+wire skip_en = ~skip_done & ~skip_end;
 
-assign pcnt_end = ( pcnt == (isGBC ? 8'd168 : 8'd167) );
-assign pcnt_reset = (h_cnt[1:0] == 2'b11) & end_of_line & ~vblank;
+assign pcnt_end = ( pcnt == 8'd168 );
+assign pcnt_reset = h_clk_en & end_of_line & ~vblank;
 
-assign SS_Video3_BACK[    6] = skip_en;
 assign SS_Video3_BACK[ 9: 7] = skip_cnt;
 assign SS_Video3_BACK[17:10] = pcnt;
-assign SS_Video3_BACK[22:18] = 5'd0;
+assign SS_Video3_BACK[   18] = skip_done;
+assign SS_Video3_BACK[21:19] = 0;
 
 always @(posedge clk) begin
 	if (reset) begin
-		skip_en  <= SS_Video3[    6]; // 1'b0;
-		skip_cnt <= SS_Video3[ 9: 7]; // 3'd0;
-		pcnt     <= SS_Video3[17:10]; // 8'd0;
+		skip_cnt  <= SS_Video3[ 9: 7]; // 3'd0;
+		pcnt      <= SS_Video3[17:10]; // 8'd0;
+		skip_done <= SS_Video3[   18]; // 1'd0;
 	end else if (!lcd_on) begin
-		skip_en  <= 1'b0;
 		skip_cnt <= 3'd0;
 		pcnt     <= 8'd0;
+		skip_done <= 1'b0;
 	end else if (ce) begin
 		// Only skip when not paused for sprites and fifo is not empty.
-		// This makes it skip pixels when pcnt = 1 after the first tile fetch.
-		// If window_x = 0 then window starts at pcnt = 1 when it is skipping pixels which scrolls the window.
+		// Skipping pixels must happen at pcnt = 0 to pass Wilbertpol intr2_mode0_scx_timing tests.
 		if (~sprite_fetch_hold & ~bg_shift_empty) begin
-			if ((pcnt == 0) && |scx[2:0]) begin
-				skip_cnt <= 3'd1;
-				skip_en <= 1'b1;
-			end
 
-			if (skip_en) begin
-				if(skip_cnt == scx[2:0] || &skip_cnt)
-					skip_en <= 1'b0;
-				else
+			if (~skip_done) begin
+				if (~skip_end)
 					skip_cnt <= skip_cnt + 1'd1;
+				else
+					skip_done <= 1'd1;
 			end
 
 			// Pixels 0-7 are for fetching partially offscreen sprites and window.
@@ -536,45 +592,58 @@ always @(posedge clk) begin
 
 		if (pcnt_reset) begin
 			pcnt <= 8'd0;
+			skip_done <= 1'b0;
+			skip_cnt <= 3'd0;
 		end
+
 	end
 end
 
-// vcnt_reset goes high a few cycles after v_cnt is incremented to 153.
-// It resets v_cnt back to 0 and keeps it in reset until the following line.
-// This results in v_cnt 0 lasting for almost 2 lines.
+
 wire line153 = (v_cnt == 8'd153);
 reg vcnt_reset;
 reg vsync;
+reg vcnt_eol_l;
 
+assign SS_Video3_BACK[   22] = vcnt_eol_l;
 assign SS_Video3_BACK[   23] = vcnt_reset;
 assign SS_Video3_BACK[31:24] = v_cnt;
 assign SS_Video3_BACK[   32] = vsync;
 
 always @(posedge clk) begin
 	if (reset) begin
+		vcnt_eol_l <= SS_Video3[   22]; // 1'b0;
 		vcnt_reset <= SS_Video3[   23]; // 1'b0;
 		v_cnt      <= SS_Video3[31:24]; // 8'd0;
 		vsync      <= SS_Video3[   32]; // 1'b0;
 	end else if (!lcdc_on) begin
+		vcnt_eol_l <= 1'b0;
 		vcnt_reset <= 1'b0;
 		v_cnt      <= 8'd0;
 		vsync      <= 1'b0;
 	end else if (ce) begin
-		if (~vcnt_reset && h455) begin
+		if (~vcnt_reset & h_clk_en_neg & hcnt_end) begin
 			v_cnt <= v_cnt + 1'b1;
 		end
 
-		if (end_of_line && &h_cnt[1:0]) begin
-			vcnt_reset <= line153;
-			if (line153) begin
-				v_cnt <= 8'd0;
+		// Line 153->0 reset happens a few cycles later on GBC
+		if ( (~isGBC & h_clk_en) | (isGBC & h_clk_en_neg) ) begin
+			vcnt_eol_l <= end_of_line;
+			if (vcnt_eol_l & ~end_of_line) begin
+				// vcnt_reset goes high a few cycles after v_cnt is incremented to 153.
+				// It resets v_cnt back to 0 and keeps it in reset until the following line.
+				// This results in v_cnt 0 lasting for almost 2 lines.
+				vcnt_reset <= line153;
+				if (line153) begin
+					v_cnt <= 8'd0;
+				end
+
+				// VSync goes high on line 0 but it takes a full frame after the LCD is enabled
+				// because the first line where end_of_line is high after LCD is enabled is line 1.
+				vsync <= !v_cnt;
 			end
 		end
 
-		// VSync goes high on line 0 but it takes a full frame after the LCD is enabled
-		// because the first line where end_of_line is high after LCD is enabled is line 1.
-		if (end_of_line) vsync <= !v_cnt;
 	end
 end
 
@@ -602,7 +671,8 @@ reg window_match, window_ena_d;
 wire win_start = mode3 && lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy) && (pcnt == wx) && (wx < 8'hA7);
 assign window_ena = window_match & ~pcnt_reset & lcdc_win_ena;
 
-assign SS_Video3_BACK[41:33] = h_cnt       ;
+assign SS_Video3_BACK[39:33] = h_cnt       ;
+assign SS_Video3_BACK[41:40] = h_div_cnt   ;
 assign SS_Video3_BACK[   42] = window_match;
 assign SS_Video3_BACK[   43] = window_ena_d;
 assign SS_Video3_BACK[48:44] = win_col     ;
@@ -611,20 +681,26 @@ assign SS_Video3_BACK[56:49] = win_line    ;
 always @(posedge clk) begin
 
 	if (reset) begin
-		h_cnt        <= SS_Video3[41:33]; // 9'd0;
+		h_cnt        <= SS_Video3[39:33]; // 7'd0;
+		h_div_cnt    <= SS_Video3[41:40]; // 2'd0;
 		window_match <= SS_Video3[   42]; // 1'b0;
 		window_ena_d <= SS_Video3[   43]; // 1'b0;
 		win_col      <= SS_Video3[48:44]; // 5'd0;
 		win_line     <= SS_Video3[56:49]; // 8'd0;
 	end else if (!lcdc_on) begin
 		//reset counters
-		h_cnt        <= 9'd0;
+		h_cnt        <= 7'd0;
+		h_div_cnt    <= 2'd0;
 		window_match <= 1'b0;
 		window_ena_d <= 1'b0;
 		win_col      <= 5'd0;
 		win_line     <= 8'd0;
 	end else if (ce) begin
-		h_cnt <= h455 ? 9'd0 : h_cnt + 9'd1;
+
+		h_div_cnt <= h_div_cnt + 1'b1;
+		if (h_clk_en) begin
+			h_cnt <= hcnt_end ? 7'd0 : h_cnt + 1'b1;
+		end
 
 		if(win_start) begin
 			window_match <= 1'b1;
@@ -861,10 +937,10 @@ sprites sprites (
 	.v_cnt    ( v_cnt        ),
 	.h_cnt    ( pcnt        ),
 
-	.oam_eval  ( oam ),
-	.oam_fetch ( mode3 ),
-	.oam_eval_reset ( pcnt_reset ),
-	.oam_eval_end ( oam_eval_end ),
+	.oam_eval       ( oam_eval     ),
+	.oam_fetch      ( mode3        ),
+	.oam_eval_reset ( pcnt_reset   ),
+	.oam_eval_end   ( oam_eval_end ),
 
 	.sprite_fetch (sprite_found),
 	.sprite_addr ( sprite_addr                 ),
