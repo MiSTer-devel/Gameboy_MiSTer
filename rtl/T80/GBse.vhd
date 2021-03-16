@@ -100,6 +100,7 @@ entity GBse is
 		A                 : out    std_logic_vector(15 downto 0);
 		DI                : in     std_logic_vector(7 downto 0);
 		DO                : out    std_logic_vector(7 downto 0);
+		isGBC             : in     std_logic; -- Gameboy Color
 		-- savestates              
 		SaveStateBus_Din  : in     std_logic_vector(BUS_buswidth-1 downto 0);
 		SaveStateBus_Adr  : in     std_logic_vector(BUS_busadr-1 downto 0);
@@ -183,6 +184,7 @@ begin
 			MC         => MCycle,
 			TS         => TState,
 			IntCycle_n => IntCycle_n,
+			isGBC      => isGBC,
 			-- savestates
 			SaveStateBus_Din  => SaveStateBus_Din, 
 			SaveStateBus_Adr  => SaveStateBus_Adr, 
