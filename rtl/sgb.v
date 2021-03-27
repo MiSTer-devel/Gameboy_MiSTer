@@ -26,6 +26,11 @@ module sgb (
 	input [1:0]  joy_p54,
 	output [3:0] joy_do,
 
+	input        border_download,
+	input        ioctl_wr,
+	input [13:0] ioctl_addr,
+	input [15:0] ioctl_dout,
+
 	output reg [15:0] sgb_border_pix,
 
 	output reg        sgb_pal_en,
@@ -403,13 +408,13 @@ reg [8:0] tile_offset;
 reg [6:0] trn_data_h, trn_data_l;
 reg output_border = 0;
 reg pct_trn_done, chr_trn_done;
+reg old_border_download;
 
 wire [8:0] tile_number = {tile_offset+pix_x[7:3]};
 
 wire [13:0] pixel_wr_addr = {tile_number[7:0], pix_y[2:0],pix_x[2:0]};
 
-// Convert 2x 2bpp tiles to 1x 4bpp tile for border output
-wire [13:0] tile_addr = {tile_number[7:1], pix_y[2:0],pix_x[2:0], tile_number[0]};
+wire [10:0] tile_addr = {tile_number[7:0], pix_y[2:0]};
 
 wire [15:0] trn_data = {trn_data_h,lcd_data[1],trn_data_l,lcd_data[0]};
 
@@ -471,55 +476,70 @@ always @(posedge clk_sys) begin
 		end
 	end
 
+	old_border_download <= border_download;
+	if (old_border_download ^ border_download) begin
+		output_border <= ~border_download;
+	end
+
 end
 
+localparam TILE_RAM_SIZE = 14'd8192;
+localparam TILE_MAP_SIZE = 14'd1792;
+localparam TILE_PAL_SIZE = 14'd0128;
 
 (* ramstyle="no_rw_check" *) reg [15:0] tile_map_ram[32*28];
 (* ramstyle="no_rw_check" *) reg [14:0] tile_pal_ram[4*16];
 (* ramstyle="no_rw_check" *) reg [14:0] sys_pal_ram[512*4];
 (* ramstyle="no_rw_check" *) reg [15:0] attr_files_ram[45*45];
 
-wire trn_data_wr = (lcd_clkena && trn_en && &pix_x[2:0] && !tile_number[8]);
+wire trn_data_wr = (ce && lcd_clkena && trn_en && &pix_x[2:0] && !tile_number[8]);
+
+wire tile_map_download = (border_download && ioctl_wr && ioctl_addr >= TILE_RAM_SIZE && ioctl_addr < TILE_RAM_SIZE+TILE_MAP_SIZE);
+wire [9:0] tile_map_wr_addr = tile_map_download ? ioctl_addr[10:1] : pixel_wr_addr[12:3];
+wire [15:0] tile_map_wr_data = tile_map_download ? ioctl_dout : trn_data;
+
+wire tile_pal_download = (border_download && ioctl_wr && ioctl_addr >= TILE_RAM_SIZE+TILE_MAP_SIZE && ioctl_addr < TILE_RAM_SIZE+TILE_MAP_SIZE+TILE_PAL_SIZE);
+wire [5:0] tile_pal_wr_addr = tile_pal_download ? ioctl_addr[6:1] : pixel_wr_addr[8:3];
+wire [14:0] tile_pal_wr_data = tile_pal_download ? ioctl_dout[14:0] : trn_data[14:0];
 
 always @(posedge clk_sys) begin
-	if (ce) begin
 
-		if (trn_data_wr) begin
-			// PCT_TRN Tile 0-111
-			if (cmd == CMD_PCT_TRN && pixel_wr_addr[13:6] < 8'd112) begin
-				tile_map_ram[pixel_wr_addr[12:3]] <= trn_data;
-			end
-
-			// PCT_TRN Tile 128-135
-			if (cmd == CMD_PCT_TRN && pixel_wr_addr[13:9] == 6'b10000) begin
-				tile_pal_ram[pixel_wr_addr[8:3]] <= trn_data[14:0];
-			end
-
-			if (cmd == CMD_PAL_TRN) begin
-				sys_pal_ram[pixel_wr_addr[13:3]] <= trn_data[14:0];
-			end
-
-			if (cmd == CMD_ATTR_TRN && pixel_wr_addr[13:3] < 11'd2025) begin
-				attr_files_ram[pixel_wr_addr[13:3]] <= {trn_data[7:0],trn_data[15:8]};
-			end
+		// PCT_TRN Tile 0-111
+		if ( (trn_data_wr && cmd == CMD_PCT_TRN && pixel_wr_addr[13:6] < 8'd112) || tile_map_download ) begin
+			tile_map_ram[tile_map_wr_addr] <= tile_map_wr_data;
 		end
 
-	end
+		// PCT_TRN Tile 128-135
+		if ( (trn_data_wr && cmd == CMD_PCT_TRN && pixel_wr_addr[13:9] == 6'b10000) || tile_pal_download ) begin
+			tile_pal_ram[tile_pal_wr_addr] <= tile_pal_wr_data;
+		end
+
+		if (trn_data_wr && cmd == CMD_PAL_TRN) begin
+			sys_pal_ram[pixel_wr_addr[13:3]] <= trn_data[14:0];
+		end
+
+		if (trn_data_wr && cmd == CMD_ATTR_TRN && pixel_wr_addr[13:3] < 11'd2025) begin
+			attr_files_ram[pixel_wr_addr[13:3]] <= {trn_data[7:0],trn_data[15:8]};
+		end
 
 end
 
-dpram_dif #(15,2, 14,4) tile_ram (
-	.clock    ( clk_vid ),
+wire tile_ram_download = (border_download && ioctl_wr && ioctl_addr < TILE_RAM_SIZE);
+wire [11:0] tile_ram_wr_addr = tile_ram_download ? ioctl_addr[12:1] : {char_trn_tile,tile_addr};
+wire [15:0] tile_ram_wr_data = tile_ram_download ? ioctl_dout : trn_data;
 
-	.address_a  ( {char_trn_tile,tile_addr} ),
-	.wren_a     ( lcd_clkena && trn_en && cmd == CMD_CHR_TRN && !tile_number[8] ),
-	.data_a     ( lcd_data ),
+dpram #(12,16) tile_ram (
+	.clock_a    ( clk_sys ),
+	.address_a  ( tile_ram_wr_addr ),
+	.wren_a     ( (trn_data_wr && cmd == CMD_CHR_TRN) || tile_ram_download ),
+	.data_a     ( tile_ram_wr_data ),
 	.q_a        (),
 
-	.address_b (tile_rd_addr),
-	.wren_b (1'b0),
-	.data_b (),
-	.q_b (tile_data)
+	.clock_b    ( clk_vid ),
+	.address_b  ( tile_rd_addr ),
+	.wren_b     ( 1'b0 ),
+	.data_b     (),
+	.q_b        ( tile_data )
 );
 
 reg [14:0] sys_pal_data, pal_wr_data;
@@ -812,31 +832,59 @@ always @(posedge clk_sys) begin
 	end
 end
 
+function [7:0] bit_reverse;
+	input [7:0] a;
+	begin
+		bit_reverse = {a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7]};
+	end
+endfunction
+
 reg [15:0] bg_map_data;
 reg [1:0] bg_pal_no;
-reg [13:0] tile_rd_addr;
-reg [3:0] tile_data;
-reg [14:0] pal_data;
-reg pix_visible;
+reg [11:0] tile_rd_addr;
+reg [15:0] tile_data;
+reg [7:0] tile_plane_0, tile_plane_1, tile_plane_2, tile_plane_3;
+reg [7:0] tile_out_0, tile_out_1, tile_out_2, tile_out_3;
+reg [2:0] tile_fetch_cnt;
 
 wire [8:0] bg_vcnt = v_cnt >= 9'd65 ? (v_cnt-9'd65) : (v_cnt+9'd264-9'd65);
+wire [3:0] pix_data = {tile_out_3[7], tile_out_2[7], tile_out_1[7], tile_out_0[7]};
+wire [14:0] pal_data = |pix_data ? tile_pal_ram[{bg_pal_no, pix_data}] : palette[0][0:14];
 
-reg [8:0] h_cnt_r, v_cnt_r;
 // border output
 always @(posedge clk_vid) begin
 	if (ce_pix) begin
 
 		bg_map_data <= tile_map_ram[{bg_vcnt[7:3],h_cnt[7:3]}];
-		h_cnt_r <= h_cnt;
-		v_cnt_r <= bg_vcnt;
 
-		bg_pal_no <= bg_map_data[11:10];
-		tile_rd_addr <= {bg_map_data[7:0],bg_map_data[15] ? ~v_cnt_r[2:0] : v_cnt_r[2:0],bg_map_data[14] ? ~h_cnt_r[2:0] : h_cnt_r[2:0]};
+		if (h_cnt == 9'd424) // end of line
+			tile_fetch_cnt <= 0;
+		else
+			tile_fetch_cnt <= tile_fetch_cnt + 1'b1;
 
-		pix_visible <= |tile_data;
-		pal_data <= |tile_data ? tile_pal_ram[{bg_pal_no, tile_data}] : palette[0][0:14];
+		if (tile_fetch_cnt == 3'd1 || tile_fetch_cnt == 3'd2) begin
+			tile_rd_addr <= {bg_map_data[7:0],(tile_fetch_cnt == 3'd1 ? 1'b0 : 1'b1),(bg_map_data[15] ? ~bg_vcnt[2:0] : bg_vcnt[2:0])};
+		end
 
-		sgb_border_pix <= output_border ? {pix_visible, pal_data} : 16'd0;
+		if (tile_fetch_cnt == 3'd2) {tile_plane_1, tile_plane_0} <= tile_data;
+
+		if (tile_fetch_cnt == 3'd3) {tile_plane_3, tile_plane_2} <= tile_data;
+
+		if (&tile_fetch_cnt) begin
+			if (bg_map_data[14])
+				{tile_out_0, tile_out_1, tile_out_2, tile_out_3} <= {bit_reverse(tile_plane_0), bit_reverse(tile_plane_1), bit_reverse(tile_plane_2), bit_reverse(tile_plane_3)};
+			else
+				{tile_out_0, tile_out_1, tile_out_2, tile_out_3} <= {tile_plane_0, tile_plane_1, tile_plane_2, tile_plane_3};
+
+			bg_pal_no <= bg_map_data[11:10];
+		end else begin
+			tile_out_0 <= tile_out_0 << 1;
+			tile_out_1 <= tile_out_1 << 1;
+			tile_out_2 <= tile_out_2 << 1;
+			tile_out_3 <= tile_out_3 << 1;
+		end
+
+		sgb_border_pix <= output_border ? {|pix_data, pal_data} : 16'd0;
 
 	end
 

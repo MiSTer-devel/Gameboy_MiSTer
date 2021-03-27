@@ -201,13 +201,14 @@ localparam CONF_STR = {
 	"FS1,GBCGB ,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
 	"ONO,Super Game Boy,Off,Palette,On;",
+	"d5FC2,SGB,Load SGB border;",
 	"-;",
 	"C,Cheats;",
 	"h0OH,Cheats enabled,Yes,No;",
 	"-;",
 	"OC,Inverted color,No,Yes;",
 	"O12,Custom Palette,Off,Auto,On;",
-	"h1F2,GBP,Load Palette;",
+	"h1FC3,GBP,Load Palette;",
 	"-;",
 	"h2R9,Load Backup RAM;",
 	"h2RA,Save Backup RAM;",
@@ -325,7 +326,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({isGBC,cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
 	.forced_scandoubler(forced_scandoubler),
@@ -346,8 +347,9 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
-wire palette_download = ioctl_download && (filetype == 2 || !filetype);
+wire palette_download = ioctl_download && (filetype == 3 || !filetype);
 wire bios_download = ioctl_download && (filetype == 8'h40);
+wire sgb_border_download = ioctl_download && (filetype == 2);
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
 wire [15:0] sdram_do;
@@ -675,7 +677,7 @@ gb gb (
 
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
-	.isSGB       ( ~sgb_en[1] & ~isGBC ),
+	.isSGB       ( |sgb_en & ~isGBC ),
 
 	.joy_p54     ( joy_p54     ),
 	.joy_din     ( joy_do_sgb  ),
@@ -789,7 +791,7 @@ lcd lcd
 
 	.sgb_border_pix ( sgb_border_pix),
 	.sgb_pal_en     ( sgb_pal_en ),
-	.sgb_en         ( !sgb_en     ),
+	.sgb_en         ( sgb_border_en ),
 
 	.clk_vid( CLK_VIDEO  ),
 	.hs     ( video_hs   ),
@@ -811,7 +813,8 @@ wire [15:0] sgb_border_pix;
 wire sgb_lcd_clkena, sgb_lcd_on, sgb_lcd_vsync;
 wire [1:0] sgb_lcd_mode;
 wire sgb_pal_en;
-wire [1:0] sgb_en = {~status[24] ^ status[23], status[23]};
+wire [1:0] sgb_en = status[24:23];
+wire sgb_border_en = sgb_en[1];
 
 sgb sgb (
 	.reset       ( reset       ),
@@ -828,7 +831,7 @@ sgb sgb (
 	.joy_p54     ( joy_p54     ),
 	.joy_do      ( joy_do_sgb  ),
 
-	.sgb_en      ( ~sgb_en[1] & isSGB_game & ~isGBC ),
+	.sgb_en      ( |sgb_en & isSGB_game & ~isGBC ),
 	.tint        ( tint[1]     ),
 
 	.lcd_on      ( lcd_on      ),
@@ -839,6 +842,11 @@ sgb sgb (
 
 	.h_cnt       ( h_cnt      ),
 	.v_cnt       ( v_cnt      ),
+
+	.border_download (sgb_border_download),
+	.ioctl_wr        (ioctl_wr),
+	.ioctl_addr      (ioctl_addr),
+	.ioctl_dout      (ioctl_dout),
 
 	.sgb_border_pix  ( sgb_border_pix  ),
 	.sgb_pal_en      ( sgb_pal_en      ),
@@ -877,8 +885,8 @@ video_freak video_freak
 	.VGA_DE_IN(VGA_DE),
 	.VGA_DE(),
 
-	.ARX((!ar) ? 12'd10 : (ar - 1'd1)),
-	.ARY((!ar) ? 12'd9  : 12'd0),
+	.ARX((!ar) ? (sgb_border_en ? 12'd16 : 12'd10) : (ar - 1'd1)),
+	.ARY((!ar) ? (sgb_border_en ? 12'd14 : 12'd9 ) : 12'd0),
 	.CROP_SIZE(0),
 	.CROP_OFF(0),
 	.SCALE(status[22:21])
