@@ -114,7 +114,7 @@ parameter HTOTAL = H+HFP+HS+HBP;
 
 parameter H_BORDER = 48;
 parameter V_BORDER = 40;
-parameter H_START   = 4+H_BORDER;
+parameter H_START   = 9+H_BORDER;
 
 parameter V        = 144; // height of visible area
 parameter VS_START = 37;  // start of vsync

@@ -125,6 +125,7 @@ entity T80 is
 		IntCycle_n      : out std_logic;
 		IntE            : out std_logic;
 		Stop            : out 	 std_logic;
+		isGBC           : in  std_logic := '0'; -- Gameboy Color
 		-- savestates              
 		SaveStateBus_Din  : in  std_logic_vector(BUS_buswidth-1 downto 0);
 		SaveStateBus_Adr  : in  std_logic_vector(BUS_busadr-1 downto 0);
@@ -178,7 +179,6 @@ architecture rtl of T80 is
 	signal NMI_s                : std_logic;
 	signal OldNMI_n             : std_logic;
 	signal INT_s                : std_logic;
-	signal INT_d                : std_logic;
 	signal IStatus              : std_logic_vector(1 downto 0);
 
 	signal DI_Reg               : std_logic_vector(7 downto 0);
@@ -506,6 +506,16 @@ begin
 				Z16_r <= '0';
 			end if;
 
+			if (MCycle /= "001" and TState = 2 and Wait_n = '1') or (MCycle = "001" and ((Mode = 3 and TState = 3) or (Mode /= 3 and TState = 4))) then
+				if IncDec_16(2 downto 0) = "111" then
+					if IncDec_16(3) = '1' then
+						SP <= SP - 1;
+					else
+						SP <= SP + 1;
+					end if;
+				end if;
+			end if;
+
 			if MCycle  = "001" and TState(2) = '0' then
 			-- MCycle = 1 and TState = 1, 2, or 3
 
@@ -516,13 +526,15 @@ begin
 						R(6 downto 0) <= R(6 downto 0) + 1;
 					end if;
 
-					if Jump = '0' and Call = '0' and NMICycle = '0' and IntCycle = '0' and not (Halt_FF = '1' or Halt = '1') then
+					if Jump = '0' and Call = '0' and NMICycle = '0' and IntCycle = '0' and not (Halt_FF = '1' or Halt = '1')
+						and not (Mode = 3 and IntE_FF1 = '1' and INT_s = '1' and Prefix = "00") then --GB: Run NOP instead of instruction if INT_s is active here
 						PC <= PC + 1;
 					end if;
 
 					if IntCycle = '1' and IStatus = "01" then
 						IR <= "11111111";
-					elsif Halt_FF = '1' or (IntCycle = '1' and IStatus = "10") or NMICycle = '1' then
+					elsif Halt_FF = '1' or (IntCycle = '1' and IStatus = "10") or NMICycle = '1'
+							or (Mode = 3 and IntE_FF1 = '1' and INT_s = '1' and Prefix = "00") then --GB: Run NOP instead of instruction if INT_s is active here
 						IR <= "00000000";
 					else
 						IR <= DInst;
@@ -698,19 +710,13 @@ begin
 					end if;
 				end if;
 				if TState = 3 and MCycle = "110" then
-					TmpAddr <= std_logic_vector(signed(RegBusC) + signed(DI_Reg));
-				end if;
-
-				if (TState = 2 and Wait_n = '1') or (TState = 4 and MCycle = "001") then
-					if IncDec_16(2 downto 0) = "111" then
-						if IncDec_16(3) = '1' then
-							SP <= SP - 1;
-						else
-							SP <= SP + 1;
-						end if;
+					if (Mode = 3) then
+						TmpAddr <= std_logic_vector(signed(RegBusC) + signed(DInst));
+					else
+						TmpAddr <= std_logic_vector(signed(RegBusC) + signed(DI_Reg));
 					end if;
 				end if;
-				
+
 				if ADDSPdd = '1' and TState = 2 then
 				   TmpAddr<=std_logic_vector(SP);
 					SP <= unsigned(signed(SP)+signed(Save_Mux));
@@ -732,10 +738,18 @@ begin
 
 			if TState = 3 then
 				if LDZ = '1' then
-					TmpAddr(7 downto 0) <= DI_Reg;
+					if (Mode = 3) then
+						TmpAddr(7 downto 0) <= DInst;
+					else
+						TmpAddr(7 downto 0) <= DI_Reg;
+					end if;
 				end if;
 				if LDW = '1' then
-					TmpAddr(15 downto 8) <= DI_Reg;
+					if (Mode = 3) then
+						TmpAddr(15 downto 8) <= DInst;
+					else
+						TmpAddr(15 downto 8) <= DI_Reg;
+					end if;
 				end if;
 
 				if Special_LD(2) = '1' then
@@ -1145,12 +1159,12 @@ begin
 		if CLK_n'event and CLK_n = '1' then
 			if RESET_n = '0' then
 				BusReq_s <= SS_4(49); -- '0';
-				INT_d    <= SS_4(50); -- '0';
+				INT_s    <= SS_4(50); -- '0';
 				NMI_s    <= SS_4(51); -- '0';
 				OldNMI_n <= SS_4(52); -- '0';
 			elsif CEN = '1' then
 				BusReq_s <= not BUSRQ_n;
-				INT_d <= not INT_n;
+				INT_s <= not INT_n;
 				if NMICycle = '1' then
 					NMI_s <= '0';
 				elsif NMI_n = '0' and OldNMI_n = '1' then
@@ -1160,8 +1174,6 @@ begin
 			end if;
 		end if;
 	end process;
-
-	INT_s <= not INT_n when Mode = 3 else INT_d; -- GB: No delay on INT_n signal
 
 -------------------------------------------------------------------------
 --
@@ -1206,6 +1218,11 @@ begin
 			No_BTR <= (I_BT and (not IR(4) or not F(Flag_P))) or
 					(I_BC and (not IR(4) or F(Flag_Z) or not F(Flag_P))) or
 					(I_BTR and (not IR(4) or F(Flag_Z)));
+			if TState = 1 then
+				if (Mode = 3 and INT_n = '0' and isGBC = '0') then
+					Halt_FF <= '0'; --GB: Exit Halt here so interrupt or next instruction starts earlier
+				end if;
+			end if;
 			if TState = 2 then
 				if SetEI = '1' then
 					IntE_FF1 <= '1';
@@ -1265,7 +1282,8 @@ begin
 							if NMI_s = '1' and Prefix = "00" then
 								NMICycle <= '1';
 								IntE_FF1 <= '0';
-							elsif (IntE_FF1 = '1' and INT_s = '1') and Prefix = "00" and SetEI = '0' then
+							elsif (IntE_FF1 = '1' and INT_s = '1')  and Prefix = "00" and SetEI = '0'
+									and ((MCycle = "001" and Halt_FF = '0') or Mode /= 3) then -- GB: Interrupt only on single cycle instructions and not Halted
 								IntCycle <= '1';
 								IntE_FF1 <= '0';
 								IntE_FF2 <= '0';
@@ -1293,7 +1311,7 @@ begin
 	process (IntCycle, NMICycle, MCycle)
 	begin
 		Auto_Wait <= '0';
-		if IntCycle = '1' or NMICycle = '1' then
+		if (Mode /= 3 and (IntCycle = '1' or NMICycle = '1')) then
 			if MCycle = "001" then
 				Auto_Wait <= '1';
 			end if;

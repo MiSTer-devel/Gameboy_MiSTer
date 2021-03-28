@@ -100,6 +100,7 @@ entity GBse is
 		A                 : out    std_logic_vector(15 downto 0);
 		DI                : in     std_logic_vector(7 downto 0);
 		DO                : out    std_logic_vector(7 downto 0);
+		isGBC             : in     std_logic; -- Gameboy Color
 		-- savestates              
 		SaveStateBus_Din  : in     std_logic_vector(BUS_buswidth-1 downto 0);
 		SaveStateBus_Adr  : in     std_logic_vector(BUS_busadr-1 downto 0);
@@ -183,6 +184,7 @@ begin
 			MC         => MCycle,
 			TS         => TState,
 			IntCycle_n => IntCycle_n,
+			isGBC      => isGBC,
 			-- savestates
 			SaveStateBus_Din  => SaveStateBus_Din, 
 			SaveStateBus_Adr  => SaveStateBus_Adr, 
@@ -206,7 +208,7 @@ begin
 				IORQ_n <= '1';
 				MREQ_n <= '1';
 				if MCycle = "001" then
-					if TState = "001" or (TState = "010" and Wait_n = '0') then
+					if TState = "001" or TState = "010" then
 						RD_n <= not IntCycle_n;
 						MREQ_n <= not IntCycle_n;
 					end if;
@@ -214,11 +216,11 @@ begin
 						MREQ_n <= '0';
 					end if;
 				elsif MCycle = "011" and IntCycle_n = '0' then
-					if TState = "001" then
+					if TState = "010" then
 						IORQ_n <= '0'; -- Acknowledge IRQ
 					end if;
 				else
-					if (TState = "001" or (TState = "010" and Wait_n = '0')) and NoRead = '0' and Write = '0' then
+					if (TState = "001" or TState = "010") and (NoRead = '0' and Write = '0') then
 						RD_n <= '0';
 						IORQ_n <= not IORQ;
 						MREQ_n <= IORQ;
@@ -237,7 +239,7 @@ begin
 						end if;
 					end if;
 				end if;
-				if TState = "010" and Wait_n = '1' then
+				if TState = "011" and Wait_n = '1' then
 					DI_Reg <= DI;
 				end if;
 			end if;
