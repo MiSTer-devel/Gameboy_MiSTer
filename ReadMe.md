@@ -24,7 +24,6 @@ This now includes the open source boot ROMs from [https://github.com/LIJI32/Same
 Core supports custom palettes (*.gbp) which should be placed into Gameboy folder. Some examples are available in palettes folder.
 
 ## Autoload
-To autoload custom palette at startup rename it to boot0.rom
 To autoload favorite game at startup rename it to boot2.rom
 
 ## Video output

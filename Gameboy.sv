@@ -352,7 +352,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 ///////////////////////////////////////////////////
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
-wire palette_download = ioctl_download && (filetype == 3 || !filetype);
+wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 wire sgb_border_download = ioctl_download && (filetype == 2);
 
