@@ -11,6 +11,8 @@ module mappers(
 	input         mbc2,
 	input         mbc3,
 	input         mbc5,
+	input         huc1,
+	input         gb_camera,
 
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
@@ -55,7 +57,7 @@ tri0 [15:0] savestate_back_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | huc1 | gb_camera);
 
 mbc1 map_mbc1 (
 	.enable           ( mbc1 ),
@@ -167,6 +169,63 @@ mbc5 map_mbc5 (
 	.savestate_back_b ( savestate_back_b ),
 
 	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_bank_b       ( mbc_bank_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
+huc1 map_huc1 (
+	.enable           ( huc1 ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data ),
+	.savestate_back_b ( savestate_back_b ),
+
+	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_bank_b       ( mbc_bank_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
+gb_camera map_gb_camera (
+	.enable           ( gb_camera ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data ),
+	.savestate_back_b ( savestate_back_b ),
+
 	.ram_mask         ( ram_mask ),
 	.rom_mask         ( rom_mask ),
 

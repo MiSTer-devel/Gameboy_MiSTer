@@ -94,6 +94,8 @@ mappers mappers (
 	.mbc2 ( mbc2 ),
 	.mbc3 ( mbc3 ),
 	.mbc5 ( mbc5 ),
+	.huc1 ( HuC1 ),
+	.gb_camera ( gb_camera ),
 
 	.RTC_time          ( RTC_time         ),
 	.RTC_timestampOut  ( RTC_timestampOut ),
@@ -169,10 +171,11 @@ wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
+wire gb_camera = (cart_mbc_type == 252);
 //wire tama5 = (cart_mbc_type == 253);
 //wire tama6 = (cart_mbc_type == ???);
-//wire HuC1 = (cart_mbc_type == 254);
-//wire HuC3 = (cart_mbc_type == 255);
+//wire HuC3 = (cart_mbc_type == 254);
+wire HuC1 = (cart_mbc_type == 255);
 
 
 assign isGBC_game = (cart_cgb_flag == 8'h80 || cart_cgb_flag == 8'hC0);
