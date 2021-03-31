@@ -1,0 +1,308 @@
+module cart_top (
+	input         reset,
+
+	input         clk_sys,
+	input         ce_cpu,
+	input         ce_cpu2x,
+	input         speed,
+
+	input  [15:0] cart_addr,
+	input         cart_rd,
+	input         cart_wr,
+	output  [7:0] cart_do,
+	input   [7:0] cart_di, // data from cpu to cart
+	output  [9:0] mbc_bank,
+
+	output reg    dn_write,
+	output        cart_ready,
+
+	output        cram_rd,
+	output        cram_wr,
+
+	input         cart_download,
+
+	output  [7:0] ram_mask_file,
+	output  [7:0] ram_size,
+	output        has_save,
+
+	output        isGBC_game,
+	output        isSGB_game,
+
+	input         ioctl_download,
+	input         ioctl_wr,
+	input  [24:0] ioctl_addr,
+	input  [15:0] ioctl_dout,
+	output        ioctl_wait,
+
+	input         bk_wr,
+	input         bk_rtc_wr,
+	input  [16:0] bk_addr,
+	input  [15:0] bk_data,
+	output [15:0] bk_q,
+	input  [63:0] img_size,
+
+	input  [15:0] sdram_di,
+
+	input  [32:0] RTC_time,
+	output [31:0] RTC_timestampOut,
+	output [31:0] RTC_savedtimeOut,
+	output        RTC_inuse,
+
+	input  [63:0] SaveStateExt_Din,
+	input   [9:0] SaveStateExt_Adr,
+	input         SaveStateExt_wren,
+	input         SaveStateExt_rst,
+	output [63:0] SaveStateExt_Dout,
+	input         savestate_load,
+	input         sleep_savestate,
+
+	input  [19:0] Savestate_CRAMAddr,
+	input         Savestate_CRAMRWrEn,
+	input   [7:0] Savestate_CRAMWriteData,
+	output  [7:0] Savestate_CRAMReadData
+);
+///////////////////////////////////////////////////
+
+
+// http://fms.komkon.org/GameBoy/Tech/Carts.html
+
+// 32MB SDRAM memory map using word addresses
+// 2 2 2 2 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 D
+// 3 2 1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0 S
+// -------------------------------------------------
+// 0 0 0 0 X X X X X X X X X X X X X X X X X X X X X up to 2MB used as ROM (MBC1-3), 8MB for MBC5 
+// 0 0 0 0 R R B B B B B C C C C C C C C C C C C C C MBC1 ROM (R=RAM bank in mode 0)
+
+wire [15:0] SS_Ext;
+wire [15:0] SS_Ext_BACK;
+
+eReg_SavestateV #(0, 32, 15, 0, 64'h0000000000000001) iREG_SAVESTATE_Ext (clk_sys, SaveStateExt_Din, SaveStateExt_Adr, SaveStateExt_wren, SaveStateExt_rst, SaveStateExt_Dout, SS_Ext_BACK, SS_Ext);  
+
+wire [7:0] cram_do;
+wire [16:0] mbc_cram_addr;
+wire mbc_ram_enable, mbc_battery;
+
+mappers mappers (
+	.reset ( reset ),
+	.clk_sys   ( clk_sys ),
+	.ce_cpu    ( ce_cpu ),
+	.ce_cpu2x  ( ce_cpu2x ),
+	.speed ( speed ),
+
+	.mbc1 ( mbc1 ),
+	.mbc1m ( mbc1m ),
+	.mbc2 ( mbc2 ),
+	.mbc3 ( mbc3 ),
+	.mbc5 ( mbc5 ),
+
+	.RTC_time          ( RTC_time         ),
+	.RTC_timestampOut  ( RTC_timestampOut ),
+	.RTC_savedtimeOut  ( RTC_savedtimeOut ),
+	.RTC_inuse         ( RTC_inuse        ),
+
+	.bk_wr          ( bk_wr          ),
+	.bk_rtc_wr      ( bk_rtc_wr      ),
+	.bk_addr        ( bk_addr        ),
+	.bk_data        ( bk_data        ),
+	.img_size       ( img_size       ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( SS_Ext         ),
+	.savestate_back   ( SS_Ext_BACK    ),
+
+	.has_ram  ( |cart_ram_size ),
+	.ram_mask ( ram_mask ),
+	.rom_mask ( rom_mask ),
+
+	.cart_addr ( cart_addr ),
+	.cart_mbc_type ( cart_mbc_type ),
+
+	.cart_wr   ( cart_wr ),
+	.cart_di   ( cart_di ),
+
+	.cram_di   ( cram_q  ),
+	.cram_do   ( cram_do  ),
+	.cram_addr ( mbc_cram_addr ),
+
+	.mbc_bank    ( mbc_bank ),
+	.ram_enabled ( mbc_ram_enable ),
+	.has_battery ( mbc_battery )
+
+);
+
+// extract header fields extracted from cartridge
+// during download
+reg [7:0] cart_mbc_type;
+reg [7:0] cart_rom_size;
+reg [7:0] cart_ram_size;
+reg [7:0] cart_cgb_flag;
+reg [7:0] cart_sgb_flag;
+reg [7:0] cart_old_licensee;
+reg [15:0] cart_logo_data[0:7];
+
+// RAM size
+wire [3:0] ram_mask =               	// 0 - no ram
+	   (cart_ram_size == 1)?4'b0000:   	// 1 - 2k, 1 bank
+	   (cart_ram_size == 2)?4'b0000:   	// 2 - 8k, 1 bank
+	   (cart_ram_size == 3)?4'b0011:		// 3 - 32k, 4 banks
+		4'b1111;   						   	// 4 - 128k 16 banks
+
+// ROM size
+wire [8:0] rom_mask =
+	   (cart_rom_size == 0)? 9'b000000001:  // 0 - 2 banks, 32k direct mapped
+	   (cart_rom_size == 1)? 9'b000000011:  // 1 - 4 banks = 64k
+	   (cart_rom_size == 2)? 9'b000000111:  // 2 - 8 banks = 128k
+	   (cart_rom_size == 3)? 9'b000001111:  // 3 - 16 banks = 256k
+	   (cart_rom_size == 4)? 9'b000011111:  // 4 - 32 banks = 512k
+	   (cart_rom_size == 5)? 9'b000111111:  // 5 - 64 banks = 1M
+	   (cart_rom_size == 6)? 9'b001111111:  // 6 - 128 banks = 2M
+		(cart_rom_size == 7)? 9'b011111111:  // 7 - 256 banks = 4M
+		(cart_rom_size == 8)? 9'b111111111:  // 8 - 512 banks = 8M
+		(cart_rom_size == 82)?9'b001111111:  //$52 - 72 banks = 1.1M
+		(cart_rom_size == 83)?9'b001111111:  //$53 - 80 banks = 1.2M
+		(cart_rom_size == 84)?9'b001111111:
+                            9'b001111111;  //$54 - 96 banks = 1.5M
+
+wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
+wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
+//wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
+wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
+//wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
+wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
+//wire tama5 = (cart_mbc_type == 253);
+//wire tama6 = (cart_mbc_type == ???);
+//wire HuC1 = (cart_mbc_type == 254);
+//wire HuC3 = (cart_mbc_type == 255);
+
+
+assign isGBC_game = (cart_cgb_flag == 8'h80 || cart_cgb_flag == 8'hC0);
+assign isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);
+
+
+// MBC1M detect
+reg [7:0] cart_logo_check;
+reg [2:0] cart_logo_idx;
+wire mbc1m = &cart_logo_check;
+
+reg old_cart_download;
+always @(posedge clk_sys) begin
+
+	old_cart_download <= cart_download;
+	if(~old_cart_download & cart_download) begin
+		cart_logo_idx <= 3'd0;
+		cart_logo_check <= 8'd0;
+		cart_mbc_type <= 8'd0;
+	end
+
+	if(cart_download & ioctl_wr) begin
+		case(ioctl_addr)
+			'h142: cart_cgb_flag <= ioctl_dout[15:8];
+			'h146: {cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
+			'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
+			'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
+		endcase
+
+		//Store cart logo data
+		if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
+			cart_logo_data[cart_logo_idx] <= ioctl_dout;
+			cart_logo_idx <= cart_logo_idx + 1'b1;
+		end
+
+		// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank
+		if (ioctl_addr >= 'h40104 && ioctl_addr <= 'h40112) begin
+			cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
+			cart_logo_idx <= cart_logo_idx + 1'b1;
+		end
+
+	end
+
+end
+
+assign ram_size = cart_ram_size;
+
+reg cart_ready_r = 0;
+reg ioctl_wait_r;
+always @(posedge clk_sys) begin
+	if(ioctl_wr) ioctl_wait_r <= 1;
+
+	if(speed?ce_cpu2x:ce_cpu) begin
+		dn_write <= ioctl_wait_r;
+		if(dn_write) {ioctl_wait_r, dn_write} <= 0;
+		if(dn_write) cart_ready_r <= 1;
+	end
+end
+
+assign cart_ready = cart_ready_r;
+assign ioctl_wait = ioctl_wait_r;
+
+reg [7:0] cart_do_r;
+always @* begin
+	if (~cart_ready)
+		cart_do_r = 8'h00;
+	else if (cram_rd)
+		cart_do_r = cram_do;
+	else
+		cart_do_r = (cart_addr[0]) ? sdram_di[15:8] : sdram_di[7:0];
+end
+
+assign cart_do = cart_do_r;
+
+reg read_low = 0;
+always @(posedge clk_sys) begin
+	read_low <= cram_addr[0];
+end
+
+assign Savestate_CRAMReadData = read_low ? cram_q_h : cram_q_l;
+
+wire [7:0] cram_q = cram_addr[0] ? cram_q_h : cram_q_l;
+wire [7:0] cram_q_h;
+wire [7:0] cram_q_l;
+
+wire is_cram_addr = (cart_addr[15:13] == 3'b101);
+assign cram_rd = cart_rd & is_cram_addr;
+assign cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr & mbc_ram_enable;
+
+wire [16:0] cram_addr = sleep_savestate ? Savestate_CRAMAddr[16:0] : mbc_cram_addr;
+wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : cart_di;
+
+// RAM size
+assign ram_mask_file =  											// 0 - no ram
+		(mbc2)?8'h01:														// mbc2 512x4bits
+	   (cart_ram_size == 1)?8'h03:   								// 1 - 2k, 1 bank		 sd_lba[1:0]
+	   (cart_ram_size == 2)?8'h0F:   								// 2 - 8k, 1 bank		 sd_lba[3:0]
+	   (cart_ram_size == 3)?8'h3F:									// 3 - 32k, 4 banks	 sd_lba[5:0]
+		8'hFF;   						   								// 4 - 128k 16 banks  sd_lba[7:0] 1111
+
+assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2);
+
+// Up to 8kb * 16banks of Cart Ram (128kb)
+
+dpram #(16) cram_l (
+	.clock_a (clk_sys),
+	.address_a (cram_addr[16:1]),
+	.wren_a (cram_wr & ~cram_addr[0]),
+	.data_a (cram_di),
+	.q_a (cram_q_l),
+
+	.clock_b (clk_sys),
+	.address_b (bk_addr[15:0]),
+	.wren_b (bk_wr),
+	.data_b (bk_data[7:0]),
+	.q_b (bk_q[7:0])
+);
+
+dpram #(16) cram_h (
+	.clock_a (clk_sys),
+	.address_a (cram_addr[16:1]),
+	.wren_a (cram_wr & cram_addr[0]),
+	.data_a (cram_di),
+	.q_a (cram_q_h),
+
+	.clock_b (clk_sys),
+	.address_b (bk_addr[15:0]),
+	.wren_b (bk_wr),
+	.data_b (bk_data[15:8]),
+	.q_b (bk_q[15:8])
+);
+
+endmodule
