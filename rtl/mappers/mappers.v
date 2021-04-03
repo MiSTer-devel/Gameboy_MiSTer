@@ -11,8 +11,11 @@ module mappers(
 	input         mbc2,
 	input         mbc3,
 	input         mbc5,
+	input         mbc7,
 	input         huc1,
 	input         gb_camera,
+
+	input  [15:0] joystick_analog_0,
 
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
@@ -28,6 +31,8 @@ module mappers(
 	input         savestate_load,
 	input  [15:0] savestate_data,
 	output [15:0] savestate_back,
+	input  [63:0] savestate_data2,
+	output [63:0] savestate_back2,
 
 	input         has_ram,
 	input   [3:0] ram_mask,
@@ -39,9 +44,12 @@ module mappers(
 	input         cart_wr,
 	input   [7:0] cart_di,
 
-	input   [7:0] cram_di,
-	output  [7:0] cram_do,
+	input   [7:0] cram_di,    // input from Cart RAM q
+	output  [7:0] cram_do,    // output to CPU
 	output [16:0] cram_addr,
+
+	output  [7:0] cram_wr_do, // For writing to Cart RAM directly without CPU (MBC7 EEPROM)
+	output        cram_wr,
 
 	output  [9:0] mbc_bank,
 	output        ram_enabled,
@@ -54,10 +62,13 @@ tri0 [9:0] mbc_bank_b;
 tri0 [16:0] cram_addr_b;
 tri0 ram_enabled_b, has_battery_b;
 tri0 [15:0] savestate_back_b;
+tri0 [63:0] savestate_back2_b;
+tri0 [7:0] cram_wr_do_b;
+tri0 cram_wr_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | huc1 | gb_camera);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc7 | huc1 | gb_camera);
 
 mbc1 map_mbc1 (
 	.enable           ( mbc1 ),
@@ -187,6 +198,44 @@ mbc5 map_mbc5 (
 	.has_battery_b    ( has_battery_b )
 );
 
+mbc7 map_mbc7 (
+	.enable           ( mbc7 ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+	.ce_1x            ( ce_cpu ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data ),
+	.savestate_back_b ( savestate_back_b ),
+	.savestate_data2  ( savestate_data2 ),
+	.savestate_back2_b( savestate_back2_b ),
+
+	.joystick_analog_x  ( joystick_analog_0[7:0] ),
+	.joystick_analog_y  ( joystick_analog_0[15:8] ),
+
+	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.cram_wr_do_b     ( cram_wr_do_b ),
+	.cram_wr_b        ( cram_wr_b ),
+
+	.mbc_bank_b       ( mbc_bank_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
 huc1 map_huc1 (
 	.enable           ( huc1 ),
 
@@ -244,7 +293,8 @@ gb_camera map_gb_camera (
 	.has_battery_b    ( has_battery_b )
 );
 
-assign { cram_do, ram_enabled, savestate_back } = { cram_do_b, ram_enabled_b, savestate_back_b };
+assign { cram_do, ram_enabled, savestate_back, savestate_back2 } = { cram_do_b, ram_enabled_b, savestate_back_b, savestate_back2_b };
+assign { cram_wr_do, cram_wr } = { cram_wr_do_b, cram_wr_b };
 assign mbc_bank = no_mapper ? {8'd0, cart_addr[14:13]} : mbc_bank_b;
 assign cram_addr = no_mapper ? {4'd0, cart_addr[12:0]} : cram_addr_b;
 assign has_battery = no_mapper ? (cart_mbc_type == 8'h09) : has_battery_b;

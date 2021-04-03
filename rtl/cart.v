@@ -43,6 +43,8 @@ module cart_top (
 
 	input  [15:0] sdram_di,
 
+	input  [15:0] joystick_analog_0,
+
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
 	output [31:0] RTC_savedtimeOut,
@@ -75,12 +77,21 @@ module cart_top (
 
 wire [15:0] SS_Ext;
 wire [15:0] SS_Ext_BACK;
+wire [63:0] SS_Ext2;
+wire [63:0] SS_Ext2_BACK;
 
-eReg_SavestateV #(0, 32, 15, 0, 64'h0000000000000001) iREG_SAVESTATE_Ext (clk_sys, SaveStateExt_Din, SaveStateExt_Adr, SaveStateExt_wren, SaveStateExt_rst, SaveStateExt_Dout, SS_Ext_BACK, SS_Ext);  
+wire [63:0] SaveStateBus_Dout_or[0:1];
+
+eReg_SavestateV #(0, 32, 15, 0, 64'h0000000000000001) iREG_SAVESTATE_Ext  (clk_sys, SaveStateExt_Din, SaveStateExt_Adr, SaveStateExt_wren, SaveStateExt_rst, SaveStateBus_Dout_or[0], SS_Ext_BACK,  SS_Ext);
+eReg_SavestateV #(0, 37, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_Ext2 (clk_sys, SaveStateExt_Din, SaveStateExt_Adr, SaveStateExt_wren, SaveStateExt_rst, SaveStateBus_Dout_or[1], SS_Ext2_BACK, SS_Ext2);
+
+assign SaveStateExt_Dout = SaveStateBus_Dout_or[0] | SaveStateBus_Dout_or[1];
 
 wire [7:0] cram_do;
 wire [16:0] mbc_cram_addr;
 wire mbc_ram_enable, mbc_battery;
+wire mbc_cram_wr;
+wire [7:0] mbc_cram_wr_do;
 
 mappers mappers (
 	.reset ( reset ),
@@ -94,8 +105,11 @@ mappers mappers (
 	.mbc2 ( mbc2 ),
 	.mbc3 ( mbc3 ),
 	.mbc5 ( mbc5 ),
+	.mbc7 ( mbc7 ),
 	.huc1 ( HuC1 ),
 	.gb_camera ( gb_camera ),
+
+	.joystick_analog_0 ( joystick_analog_0 ),
 
 	.RTC_time          ( RTC_time         ),
 	.RTC_timestampOut  ( RTC_timestampOut ),
@@ -111,6 +125,8 @@ mappers mappers (
 	.savestate_load   ( savestate_load ),
 	.savestate_data   ( SS_Ext         ),
 	.savestate_back   ( SS_Ext_BACK    ),
+	.savestate_data2  ( SS_Ext2        ),
+	.savestate_back2  ( SS_Ext2_BACK   ),
 
 	.has_ram  ( |cart_ram_size ),
 	.ram_mask ( ram_mask ),
@@ -125,6 +141,9 @@ mappers mappers (
 	.cram_di   ( cram_q  ),
 	.cram_do   ( cram_do  ),
 	.cram_addr ( mbc_cram_addr ),
+
+	.cram_wr_do ( mbc_cram_wr_do ),
+	.cram_wr    ( mbc_cram_wr ),
 
 	.mbc_bank    ( mbc_bank ),
 	.ram_enabled ( mbc_ram_enable ),
@@ -171,6 +190,7 @@ wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
+wire mbc7 = (cart_mbc_type == 34);
 wire gb_camera = (cart_mbc_type == 252);
 //wire tama5 = (cart_mbc_type == 253);
 //wire tama6 = (cart_mbc_type == ???);
@@ -263,20 +283,20 @@ wire [7:0] cram_q_l;
 
 wire is_cram_addr = (cart_addr[15:13] == 3'b101);
 assign cram_rd = cart_rd & is_cram_addr;
-assign cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : cart_wr & is_cram_addr & mbc_ram_enable;
+assign cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : mbc_cram_wr || (cart_wr & is_cram_addr & mbc_ram_enable);
 
 wire [16:0] cram_addr = sleep_savestate ? Savestate_CRAMAddr[16:0] : mbc_cram_addr;
-wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : cart_di;
+wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : mbc_cram_wr ? mbc_cram_wr_do : cart_di;
 
 // RAM size
-assign ram_mask_file =  											// 0 - no ram
-		(mbc2)?8'h01:														// mbc2 512x4bits
-	   (cart_ram_size == 1)?8'h03:   								// 1 - 2k, 1 bank		 sd_lba[1:0]
-	   (cart_ram_size == 2)?8'h0F:   								// 2 - 8k, 1 bank		 sd_lba[3:0]
-	   (cart_ram_size == 3)?8'h3F:									// 3 - 32k, 4 banks	 sd_lba[5:0]
-		8'hFF;   						   								// 4 - 128k 16 banks  sd_lba[7:0] 1111
+assign ram_mask_file =              // 0 - no ram
+		(mbc2 || mbc7)?8'h01:       // mbc2 512x4bits, mbc7 256 bytes EEPROM
+	   (cart_ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
+	   (cart_ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
+	   (cart_ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
+		8'hFF;                      // 4 - 128k 16 banks  sd_lba[7:0] 1111
 
-assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2);
+assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7);
 
 // Up to 8kb * 16banks of Cart Ram (128kb)
 

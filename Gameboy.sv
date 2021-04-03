@@ -284,6 +284,7 @@ wire [15:0] ioctl_dout;
 wire        ioctl_wait;
 
 wire [15:0] joystick_0, joystick_1, joystick_2, joystick_3;
+wire [15:0] joystick_analog_0;
 wire [10:0] ps2_key;
 
 wire [7:0]  filetype;
@@ -340,6 +341,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.joystick_1(joystick_1),
 	.joystick_2(joystick_2),
 	.joystick_3(joystick_3),
+	.joystick_analog_0(joystick_analog_0),
 	
 	.ps2_key(ps2_key),
 	
@@ -455,6 +457,8 @@ cart_top cart (
 	.img_size       ( img_size       ),
 
 	.sdram_di       ( sdram_do       ),
+
+	.joystick_analog_0 ( joystick_analog_0 ),
 
 	.RTC_time         ( RTC_time         ),
 	.RTC_timestampOut ( RTC_timestampOut ),
