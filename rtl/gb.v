@@ -117,10 +117,10 @@ wire [4:0] Savestate_RAMRWrEn;
 localparam SAVESTATE_MODULES    = 7;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
-wire [53:0] SS_Top;
-wire [53:0] SS_Top_BACK;
+wire [54:0] SS_Top;
+wire [54:0] SS_Top_BACK;
 
-eReg_SavestateV #(0, 31, 53, 0, 64'h0000000000800001) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
+eReg_SavestateV #(0, 31, 54, 0, 64'h0000000000800001) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
 
 // include cpu
 reg boot_rom_enabled;
@@ -263,6 +263,15 @@ always  @ (posedge clk) begin
 	reset_r <= reset;
 end
 
+reg old_cpu_wr_n;
+
+assign SS_Top_BACK[54] = old_cpu_wr_n;
+
+always @(posedge clk_sys) begin
+	if(reset_ss) old_cpu_wr_n <= SS_Top[54]; // 1'b0
+	else if (cpu_clken) old_cpu_wr_n <= cpu_wr_n;
+end
+wire cpu_wr_n_edge = ~(old_cpu_wr_n & ~cpu_wr_n);
 
 wire cpu_stop;
 
@@ -328,7 +337,7 @@ always @(posedge clk_sys) begin
 		cpu_speed      <= SS_Top[3]; // 1'b0;
 		prepare_switch <= SS_Top[4]; // 1'b0;
 	end
-	else if (ce_2x && sel_key1 && !cpu_wr_n)begin
+	else if (ce_2x && sel_key1 && !cpu_wr_n_edge)begin
 		prepare_switch <= cpu_do[0];
 	end
 	
@@ -343,7 +352,7 @@ end
 // --------------------------------------------------------------------
 
 wire audio_rd = !cpu_rd_n && sel_audio;
-wire audio_wr = !cpu_wr_n && sel_audio;
+wire audio_wr = !cpu_wr_n_edge && sel_audio;
 
 gbc_snd audio (
 	.clk				( clk_sys			),
@@ -384,7 +393,7 @@ link link (
 
   .sel_sc(sel_sc),
   .sel_sb(sel_sb),
-  .cpu_wr_n(cpu_wr_n),
+  .cpu_wr_n(cpu_wr_n_edge),
   .sc_start_in(cpu_do[7]),
   .sc_int_clock_in(cpu_do[0]),
 
@@ -417,7 +426,7 @@ assign SS_Top_BACK[6:5] = p54;
 
 always @(posedge clk_sys) begin
 	if(reset_ss) p54 <= SS_Top[6:5]; //2'b00 for DMG, 2'b11 for CGB/SGB will be written by BIOS
-	else if(ce_cpu && sel_joy && !cpu_wr_n)	p54 <= cpu_do[5:4];
+	else if(ce_cpu && sel_joy && !cpu_wr_n_edge)	p54 <= cpu_do[5:4];
 end
 
 assign joy_do = { 2'b11, p54, joy_din };
@@ -438,7 +447,7 @@ always @(posedge clk_sys) begin
 		FF73 <= SS_Top[42:35]; // 0;  
 		FF74 <= SS_Top[50:43]; // 0;  
 		FF75 <= SS_Top[53:51]; // 0;  
-	end else if(ce_cpu && !cpu_wr_n)	begin
+	end else if(ce_cpu && !cpu_wr_n_edge)	begin
 		if (sel_FF72) FF72 <= cpu_do;
 		if (sel_FF73) FF73 <= cpu_do;
 		if (sel_FF74) FF74 <= cpu_do;
@@ -536,11 +545,11 @@ always @(negedge clk_sys) begin //negedge to trigger interrupt earlier
 		end
 	
 		// cpu writes interrupt enable register
-		if(sel_ie && !cpu_wr_n)
+		if(sel_ie && !cpu_wr_n_edge)
 			ie_r <= cpu_do;
 	
 		// cpu writes interrupt flag register
-		if(sel_if && !cpu_wr_n)
+		if(sel_if && !cpu_wr_n_edge)
 			if_r <= cpu_do[4:0];
 			
 	end
@@ -559,7 +568,7 @@ timer timer (
 				 
 	.cpu_sel     		 ( sel_timer     ),
 	.cpu_addr    		 ( cpu_addr[1:0] ),
-	.cpu_wr      		 ( !cpu_wr_n     ),
+	.cpu_wr      		 ( !cpu_wr_n_edge ),
 	.cpu_di      		 ( cpu_do        ),
 	.cpu_do      		 ( timer_do      ),
 	
@@ -595,7 +604,7 @@ video video (
 	.cpu_sel_reg ( sel_video_reg ),
 	.cpu_sel_oam ( sel_video_oam ),
 	.cpu_addr    ( cpu_addr[7:0] ),
-	.cpu_wr      ( !cpu_wr_n     ),
+	.cpu_wr      ( !cpu_wr_n_edge ),
 	.cpu_di      ( cpu_do        ),
 	.cpu_do      ( video_do      ),
 	
@@ -689,7 +698,7 @@ always @(posedge clk_sys) begin
 	if(reset_ss)
 		vram_bank <= SS_Top[22]; // 1'd0;
 	else if (ce_cpu) begin
-		if((cpu_addr == 16'hff4f) && !cpu_wr_n && isGBC)
+		if((cpu_addr == 16'hff4f) && !cpu_wr_n_edge && isGBC)
 			vram_bank <= cpu_do[0];
 	end
 end
@@ -707,7 +716,7 @@ hdma hdma(
 	// cpu register interface
 	.sel_reg 	       ( sel_hdma      ),
 	.addr			       ( cpu_addr[3:0] ),
-	.wr			       ( !cpu_wr_n 	  ),
+	.wr			       ( !cpu_wr_n_edge   ),
 	.dout			       ( hdma_do       ),
 	.din               ( cpu_do        ),
 	
@@ -784,7 +793,7 @@ assign SS_Top_BACK[2:0] = iram_bank;
 always @(posedge clk_sys) begin
 	if(reset_ss)
 		iram_bank <= SS_Top[2:0]; // 3'd1;
-	else if(ce_cpu && sel_iram_bank && !cpu_wr_n) begin
+	else if(ce_cpu && sel_iram_bank && !cpu_wr_n_edge) begin
 		if (cpu_do[2:0]==3'd0) // 0 -> 1;
 			iram_bank <= 3'd1;
 		else
@@ -804,7 +813,7 @@ always @(posedge clk_sys) begin
 	if(reset_ss)
 		boot_rom_enabled <= SS_Top[23]; // 1'b1;
 	else if (ce) begin 
-		if((cpu_addr == 16'hff50) && !cpu_wr_n)
+		if((cpu_addr == 16'hff50) && !cpu_wr_n_edge)
           if ((isGBC && cpu_do[7:0]==8'h11) || (!isGBC && cpu_do[0]))
 		          boot_rom_enabled <= 1'b0;
 	end
@@ -830,7 +839,7 @@ assign is_hdma_cart_addr = (hdma_sel_rom || hdma_sel_cram); //rom or external ra
 assign cart_di = cpu_do;
 assign cart_addr = (isGBC&&hdma_rd&&is_hdma_cart_addr)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
 assign cart_rd = (isGBC&&hdma_rd&&is_hdma_cart_addr) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
-assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n && !hdma_rd;
+assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n_edge && !hdma_rd;
 
 assign gbc_bios_addr = hdma_rd?hdma_source_addr[11:0]:cpu_addr[11:0];
 

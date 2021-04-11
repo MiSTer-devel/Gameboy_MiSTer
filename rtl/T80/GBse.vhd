@@ -77,7 +77,7 @@ use work.pReg_savestates.all;
 
 entity GBse is
 	generic(
-		T2Write : integer := 1;  -- 0 => WR_n active in T3, /=0 => WR_n active in T2
+		T2Write : integer := 2;  -- 0 => WR_n active in T3, 1 => WR_n active in T2, Other => WR_n active in T2+T3
 		IOWait : integer := 1   -- 0 => Single cycle I/O, 1 => Std I/O cycle
 	);
 	port(
@@ -231,8 +231,14 @@ begin
 							IORQ_n <= not IORQ;
 							MREQ_n <= IORQ;
 						end if;
-					else
+					elsif T2Write = 1 then
 						if (TState = "001" or (TState = "010" and Wait_n = '0')) and Write = '1' then
+							WR_n <= '0';
+							IORQ_n <= not IORQ;
+							MREQ_n <= IORQ;
+						end if;
+					else
+						if (TState = "001" or TState = "010") and Write = '1' then
 							WR_n <= '0';
 							IORQ_n <= not IORQ;
 							MREQ_n <= IORQ;
