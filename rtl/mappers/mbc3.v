@@ -101,7 +101,7 @@ always @(posedge clk_sys) begin
 						mbc_ram_bank_reg <= cart_di[1:0]; //write to RAM bank register
 					end
 				end
-				2'b11: ; // TODO: Latch RTC data
+				2'b11: ; // Latch RTC data. Done below
 			endcase
 		end
 	end
@@ -130,14 +130,15 @@ assign ram_enabled = mbc_ram_enable & has_ram;
 reg [2:0]  rtc_index;
 
 reg [25:0] rtc_subseconds;
-reg [5:0]  rtc_seconds;
-reg [5:0]  rtc_minutes;
-reg [4:0]  rtc_hours;
-reg [9:0]  rtc_days;
-reg        rtc_overflow;
+reg [5:0]  rtc_seconds, rtc_seconds_latch;
+reg [5:0]  rtc_minutes, rtc_minutes_latch;
+reg [4:0]  rtc_hours, rtc_hours_latch;
+reg [9:0]  rtc_days, rtc_days_latch;
+reg        rtc_overflow, rtc_overflow_latch;
 reg        rtc_halt;
 
 wire [7:0] rtc_return;
+wire       rtc_subseconds_end = (rtc_subseconds >= 33554432);
 
 wire        RTC_timestampNew = RTC_time[32];
 wire [31:0] RTC_timestampIn  = RTC_time[31:0];	
@@ -147,9 +148,11 @@ reg [31:0] RTC_savedtimeIn = 0;
 reg        RTC_saveLoaded = 0;
 
 reg rtc_change;
+reg rtc_latch;
 reg RTC_saveLoaded_1;
 reg RTC_timestampNew_1; 
 reg [31:0] diffSeconds;
+wire       diffSeconds_fast_count = (diffSeconds > 0 && ~rtc_change);
 
 reg reset_1;
 
@@ -160,6 +163,7 @@ always @(posedge clk_sys) begin
 	if(!reset_1 && reset) begin
 		rtc_halt  <= 1'b0;
 		RTC_inuse <= 1'b0;
+		rtc_latch <= 1'b0;
 	end else begin
 
 		if (rtc_change == 1'b0) begin // when RTC hasn't changed recently, update the register which will be written after savegame
@@ -199,10 +203,13 @@ always @(posedge clk_sys) begin
 
 			RTC_inuse    <= 1'b1;
 
-		end else if(cart_wr && (cart_addr[15:13] == 3'b101) && mbc3_mode == 1'b1) begin // setting RTC registers from game
+		end else if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b101) && mbc3_mode == 1'b1) begin // setting RTC registers from game
 
 			case (rtc_index)
-				0: rtc_seconds	  <= cart_di[5:0]; 
+				0: begin
+					rtc_seconds    <= cart_di[5:0];
+					rtc_subseconds <= 26'd0;
+				end
 				1: rtc_minutes	  <= cart_di[5:0]; 
 				2: rtc_hours	  <= cart_di[4:0]; 
 				3: rtc_days[7:0] <= cart_di; 
@@ -215,28 +222,47 @@ always @(posedge clk_sys) begin
 
 		end else begin  // normal counting
 
-			if (rtc_halt == 1'b0) begin
-				if (rtc_seconds >= 60)	 begin rtc_seconds <= 6'd0;  rtc_minutes  <= rtc_minutes + 1'd1; rtc_change <= 1'b1; end
-				if (rtc_minutes >= 60)	 begin rtc_minutes <= 6'd0;  rtc_hours    <= rtc_hours + 1'd1;	  rtc_change <= 1'b1; end
-				if (rtc_hours   >= 24)	 begin rtc_hours   <= 5'd0;  rtc_days     <= rtc_days + 1'd1;    rtc_change <= 1'b1; end
-				if (rtc_days    >= 512)	 begin rtc_days    <= 10'd0; rtc_overflow <= 1'b1;               rtc_change <= 1'b1; end
+			if (rtc_subseconds_end) begin
+				rtc_subseconds   <= 26'd0;
+				RTC_timestampOut <= RTC_timestampOut + 1'd1;
+			end else if (diffSeconds_fast_count) begin // fast counting loaded seconds
+				diffSeconds	<= diffSeconds - 1'd1;
 			end
 
-			if (rtc_subseconds >= 33554432) begin 
-				rtc_subseconds	  <= 26'd0; 
-				RTC_timestampOut	<= RTC_timestampOut + 1'd1;
-				if (rtc_halt == 1'b0) begin
-					rtc_seconds	  <= rtc_seconds + 1'd1;
-					rtc_change	<= 1'b1; 
-				end
-			end else if (diffSeconds > 0 && rtc_change == 1'b0) begin // fast counting loaded seconds
-				diffSeconds		  <= diffSeconds - 1'd1; 
-				if (rtc_halt == 1'b0) begin
-					rtc_seconds	  <= rtc_seconds + 1'd1;
-					rtc_change		<= 1'b1; 
+			if (rtc_subseconds_end | diffSeconds_fast_count) begin
+				if (~rtc_halt) begin
+					rtc_change	<= 1'b1;
+					rtc_seconds	<= rtc_seconds + 1'd1;
+					if (rtc_seconds == 59) begin
+						rtc_seconds <= 6'd0;
+						rtc_minutes <= rtc_minutes + 1'd1;
+						if (rtc_minutes == 59) begin
+							rtc_minutes <= 6'd0;
+							rtc_hours   <= rtc_hours + 1'd1;
+							if (rtc_hours == 23) begin
+								rtc_hours <= 5'd0;
+								rtc_days  <= rtc_days + 1'd1;
+								if (rtc_days == 511) begin
+									rtc_days     <= 10'd0;
+									rtc_overflow <= 1'b1;
+								end
+							end
+						end
+					end
 				end
 			end
 
+		end
+
+		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b011) && ~|cart_di[7:1]) begin // 6000-7FFF - Latch Clock Data
+			rtc_latch <= cart_di[0];
+			if (~rtc_latch & cart_di[0]) begin
+				rtc_seconds_latch  <= rtc_seconds;
+				rtc_minutes_latch  <= rtc_minutes;
+				rtc_hours_latch    <= rtc_hours;
+				rtc_days_latch     <= rtc_days;
+				rtc_overflow_latch <= rtc_overflow;
+			end
 		end
 
 		RTC_timestampNew_1 <= RTC_timestampNew;  // saving timestamp from HPS
@@ -248,11 +274,11 @@ always @(posedge clk_sys) begin
 end
 
 assign rtc_return = 
-	(rtc_index == 0) ? rtc_seconds   :
-	(rtc_index == 1) ? rtc_minutes   :
-	(rtc_index == 2) ? rtc_hours     :
-	(rtc_index == 3) ? rtc_days[7:0] :
-	(rtc_index == 4) ? {rtc_overflow, rtc_halt, 5'b00000, rtc_days[8]} :
+	(rtc_index == 0) ? rtc_seconds_latch   :
+	(rtc_index == 1) ? rtc_minutes_latch   :
+	(rtc_index == 2) ? rtc_hours_latch     :
+	(rtc_index == 3) ? rtc_days_latch[7:0] :
+	(rtc_index == 4) ? {rtc_overflow_latch, rtc_halt, 5'b00000, rtc_days_latch[8]} :
 	8'hFF;
 
 endmodule
