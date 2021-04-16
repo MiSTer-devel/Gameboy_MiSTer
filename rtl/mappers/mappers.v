@@ -10,6 +10,7 @@ module mappers(
 	input         mbc1m,
 	input         mbc2,
 	input         mbc3,
+	input         mbc30,
 	input         mbc5,
 	input         mbc7,
 	input         huc1,
@@ -131,6 +132,7 @@ mbc2 map_mbc2 (
 mbc3 map_mbc3 (
 	.enable            ( mbc3 ),
 	.reset             ( reset ),
+	.mbc30             ( mbc30 ),
 
 	.clk_sys           ( clk_sys ),
 	.ce_cpu            ( ce ),

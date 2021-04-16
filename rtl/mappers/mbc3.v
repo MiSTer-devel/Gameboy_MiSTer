@@ -1,6 +1,7 @@
 module mbc3 (
 	input             enable,
 	input             reset,
+	input             mbc30,
 
 	input             clk_sys,
 	input             ce_cpu,
@@ -21,8 +22,8 @@ module mbc3 (
 	input      [63:0] img_size,
 
 	input             has_ram,
-	input       [1:0] ram_mask,
-	input       [6:0] rom_mask,
+	input       [2:0] ram_mask,
+	input       [7:0] rom_mask,
 
 	input      [15:0] cart_addr,
 	input       [7:0] cart_mbc_type,
@@ -53,61 +54,60 @@ assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
 assign has_battery_b    = enable ? has_battery    :  1'hZ;
 assign savestate_back_b = enable ? savestate_back : 16'hZ;
 
-wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg[1:0] & ram_mask[1:0];
-
-// 0x0000-0x3FFF = Bank 0
-wire [6:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 7'd0 : mbc_rom_bank_reg;
-
-// mask address lines to enable proper mirroring
-wire [6:0] mbc3_rom_bank = mbc_rom_bank[6:0] & rom_mask[6:0];  //128
-
-
 // --------------------- CPU register interface ------------------
 
-reg [6:0] mbc_rom_bank_reg;
-reg [1:0] mbc_ram_bank_reg;
+reg [7:0] mbc_rom_bank_reg;
+reg [2:0] mbc_ram_bank_reg;
 reg mbc_ram_enable;
 reg mbc3_mode;
 
-assign savestate_back[ 6: 0] = mbc_rom_bank_reg;
-assign savestate_back[ 8: 7] = 0;
-assign savestate_back[10: 9] = mbc_ram_bank_reg;
-assign savestate_back[13:11] = 0;
+assign savestate_back[ 7: 0] = mbc_rom_bank_reg;
+assign savestate_back[    8] = 0;
+assign savestate_back[11: 9] = mbc_ram_bank_reg;
+assign savestate_back[13:12] = 0;
 assign savestate_back[   14] = mbc3_mode;
 assign savestate_back[   15] = mbc_ram_enable;
 
 always @(posedge clk_sys) begin
 	if(savestate_load & enable) begin
-		mbc_rom_bank_reg <= savestate_data[ 6: 0]; //7'd1;
-		mbc_ram_bank_reg <= savestate_data[10: 9]; //2'd0;
+		mbc_rom_bank_reg <= savestate_data[ 7: 0]; //8'd1;
+		mbc_ram_bank_reg <= savestate_data[11: 9]; //3'd0;
 		mbc3_mode        <= savestate_data[   14]; //1'b0;
 		mbc_ram_enable   <= savestate_data[   15]; //1'b0;
 	end else if(~enable) begin
-		mbc_rom_bank_reg <= 7'd1;
-		mbc_ram_bank_reg <= 2'd0;
+		mbc_rom_bank_reg <= 8'd1;
+		mbc_ram_bank_reg <= 3'd0;
 		mbc3_mode        <= 1'b0;
 		mbc_ram_enable   <= 1'b0;
 	end else if(ce_cpu) begin
 		if (cart_wr & ~cart_addr[15]) begin
 			case(cart_addr[14:13])
 				2'b00: mbc_ram_enable <= (cart_di[3:0] == 4'ha); //RAM enable/disable
-				2'b01: mbc_rom_bank_reg <= (cart_di[6:0] == 7'd0) ? 7'd1 : cart_di[6:0]; //write to ROM bank register
+				2'b01: mbc_rom_bank_reg <= ({cart_di[7] & mbc30, cart_di[6:0]} == 8'd0) ? 8'd1 : cart_di[7:0]; //write to ROM bank register
 				2'b10: begin
 					if (cart_di[3]) begin
 						mbc3_mode <= 1'b1; //enable RTC
 						rtc_index <= cart_di[2:0];
 					end else begin
 						mbc3_mode <= 1'b0; //enable RAM
-						mbc_ram_bank_reg <= cart_di[1:0]; //write to RAM bank register
+						mbc_ram_bank_reg <= cart_di[2:0]; //write to RAM bank register
 					end
 				end
-				2'b11: ; // TODO: Latch RTC data
+				2'b11: ; // Latch RTC data. Done below
 			endcase
 		end
 	end
 end
 
-assign mbc_bank = { 2'b00, mbc3_rom_bank, cart_addr[13] };	// 16k ROM Bank 0-127
+wire [2:0] mbc3_ram_bank = mbc_ram_bank_reg[2:0] & ram_mask[2:0];
+
+// 0x0000-0x3FFF = Bank 0
+wire [7:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 8'd0 : mbc_rom_bank_reg;
+
+// mask address lines to enable proper mirroring
+wire [7:0] mbc3_rom_bank = mbc_rom_bank[7:0] & rom_mask[7:0]; // 16k ROM Bank 0-127, MBC30: 0-255
+
+assign mbc_bank = { 1'b0, mbc3_rom_bank, cart_addr[13] };
 
 reg [7:0] cram_do_r;
 always @* begin
@@ -121,7 +121,7 @@ always @* begin
 end
 
 assign cram_do = cram_do_r;
-assign cram_addr = { 2'b00, mbc3_ram_bank, cart_addr[12:0] };
+assign cram_addr = { 1'b0, mbc3_ram_bank, cart_addr[12:0] };
 
 assign has_battery = (cart_mbc_type == 8'h0F || cart_mbc_type == 8'h10 || cart_mbc_type == 8'h13);
 assign ram_enabled = mbc_ram_enable & has_ram;
@@ -130,14 +130,15 @@ assign ram_enabled = mbc_ram_enable & has_ram;
 reg [2:0]  rtc_index;
 
 reg [25:0] rtc_subseconds;
-reg [5:0]  rtc_seconds;
-reg [5:0]  rtc_minutes;
-reg [4:0]  rtc_hours;
-reg [9:0]  rtc_days;
-reg        rtc_overflow;
+reg [5:0]  rtc_seconds, rtc_seconds_latch;
+reg [5:0]  rtc_minutes, rtc_minutes_latch;
+reg [4:0]  rtc_hours, rtc_hours_latch;
+reg [9:0]  rtc_days, rtc_days_latch;
+reg        rtc_overflow, rtc_overflow_latch;
 reg        rtc_halt;
 
 wire [7:0] rtc_return;
+wire       rtc_subseconds_end = (rtc_subseconds >= 33554432);
 
 wire        RTC_timestampNew = RTC_time[32];
 wire [31:0] RTC_timestampIn  = RTC_time[31:0];	
@@ -147,9 +148,11 @@ reg [31:0] RTC_savedtimeIn = 0;
 reg        RTC_saveLoaded = 0;
 
 reg rtc_change;
+reg rtc_latch;
 reg RTC_saveLoaded_1;
 reg RTC_timestampNew_1; 
 reg [31:0] diffSeconds;
+wire       diffSeconds_fast_count = (diffSeconds > 0 && ~rtc_change);
 
 reg reset_1;
 
@@ -160,6 +163,7 @@ always @(posedge clk_sys) begin
 	if(!reset_1 && reset) begin
 		rtc_halt  <= 1'b0;
 		RTC_inuse <= 1'b0;
+		rtc_latch <= 1'b0;
 	end else begin
 
 		if (rtc_change == 1'b0) begin // when RTC hasn't changed recently, update the register which will be written after savegame
@@ -199,10 +203,13 @@ always @(posedge clk_sys) begin
 
 			RTC_inuse    <= 1'b1;
 
-		end else if(cart_wr && (cart_addr[15:13] == 3'b101) && mbc3_mode == 1'b1) begin // setting RTC registers from game
+		end else if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b101) && mbc3_mode == 1'b1) begin // setting RTC registers from game
 
 			case (rtc_index)
-				0: rtc_seconds	  <= cart_di[5:0]; 
+				0: begin
+					rtc_seconds    <= cart_di[5:0];
+					rtc_subseconds <= 26'd0;
+				end
 				1: rtc_minutes	  <= cart_di[5:0]; 
 				2: rtc_hours	  <= cart_di[4:0]; 
 				3: rtc_days[7:0] <= cart_di; 
@@ -215,28 +222,47 @@ always @(posedge clk_sys) begin
 
 		end else begin  // normal counting
 
-			if (rtc_halt == 1'b0) begin
-				if (rtc_seconds >= 60)	 begin rtc_seconds <= 6'd0;  rtc_minutes  <= rtc_minutes + 1'd1; rtc_change <= 1'b1; end
-				if (rtc_minutes >= 60)	 begin rtc_minutes <= 6'd0;  rtc_hours    <= rtc_hours + 1'd1;	  rtc_change <= 1'b1; end
-				if (rtc_hours   >= 24)	 begin rtc_hours   <= 5'd0;  rtc_days     <= rtc_days + 1'd1;    rtc_change <= 1'b1; end
-				if (rtc_days    >= 512)	 begin rtc_days    <= 10'd0; rtc_overflow <= 1'b1;               rtc_change <= 1'b1; end
+			if (rtc_subseconds_end) begin
+				rtc_subseconds   <= 26'd0;
+				RTC_timestampOut <= RTC_timestampOut + 1'd1;
+			end else if (diffSeconds_fast_count) begin // fast counting loaded seconds
+				diffSeconds	<= diffSeconds - 1'd1;
 			end
 
-			if (rtc_subseconds >= 33554432) begin 
-				rtc_subseconds	  <= 26'd0; 
-				RTC_timestampOut	<= RTC_timestampOut + 1'd1;
-				if (rtc_halt == 1'b0) begin
-					rtc_seconds	  <= rtc_seconds + 1'd1;
-					rtc_change	<= 1'b1; 
-				end
-			end else if (diffSeconds > 0 && rtc_change == 1'b0) begin // fast counting loaded seconds
-				diffSeconds		  <= diffSeconds - 1'd1; 
-				if (rtc_halt == 1'b0) begin
-					rtc_seconds	  <= rtc_seconds + 1'd1;
-					rtc_change		<= 1'b1; 
+			if (rtc_subseconds_end | diffSeconds_fast_count) begin
+				if (~rtc_halt) begin
+					rtc_change	<= 1'b1;
+					rtc_seconds	<= rtc_seconds + 1'd1;
+					if (rtc_seconds == 59) begin
+						rtc_seconds <= 6'd0;
+						rtc_minutes <= rtc_minutes + 1'd1;
+						if (rtc_minutes == 59) begin
+							rtc_minutes <= 6'd0;
+							rtc_hours   <= rtc_hours + 1'd1;
+							if (rtc_hours == 23) begin
+								rtc_hours <= 5'd0;
+								rtc_days  <= rtc_days + 1'd1;
+								if (rtc_days == 511) begin
+									rtc_days     <= 10'd0;
+									rtc_overflow <= 1'b1;
+								end
+							end
+						end
+					end
 				end
 			end
 
+		end
+
+		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b011) && ~|cart_di[7:1]) begin // 6000-7FFF - Latch Clock Data
+			rtc_latch <= cart_di[0];
+			if (~rtc_latch & cart_di[0]) begin
+				rtc_seconds_latch  <= rtc_seconds;
+				rtc_minutes_latch  <= rtc_minutes;
+				rtc_hours_latch    <= rtc_hours;
+				rtc_days_latch     <= rtc_days;
+				rtc_overflow_latch <= rtc_overflow;
+			end
 		end
 
 		RTC_timestampNew_1 <= RTC_timestampNew;  // saving timestamp from HPS
@@ -248,11 +274,11 @@ always @(posedge clk_sys) begin
 end
 
 assign rtc_return = 
-	(rtc_index == 0) ? rtc_seconds   :
-	(rtc_index == 1) ? rtc_minutes   :
-	(rtc_index == 2) ? rtc_hours     :
-	(rtc_index == 3) ? rtc_days[7:0] :
-	(rtc_index == 4) ? {rtc_overflow, rtc_halt, 5'b00000, rtc_days[8]} :
+	(rtc_index == 0) ? rtc_seconds_latch   :
+	(rtc_index == 1) ? rtc_minutes_latch   :
+	(rtc_index == 2) ? rtc_hours_latch     :
+	(rtc_index == 3) ? rtc_days_latch[7:0] :
+	(rtc_index == 4) ? {rtc_overflow_latch, rtc_halt, 5'b00000, rtc_days_latch[8]} :
 	8'hFF;
 
 endmodule

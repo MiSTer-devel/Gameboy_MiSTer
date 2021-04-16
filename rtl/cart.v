@@ -104,6 +104,7 @@ mappers mappers (
 	.mbc1m ( mbc1m ),
 	.mbc2 ( mbc2 ),
 	.mbc3 ( mbc3 ),
+	.mbc30( mbc30 ),
 	.mbc5 ( mbc5 ),
 	.mbc7 ( mbc7 ),
 	.huc1 ( HuC1 ),
@@ -162,11 +163,12 @@ reg [7:0] cart_old_licensee;
 reg [15:0] cart_logo_data[0:7];
 
 // RAM size
-wire [3:0] ram_mask =               	// 0 - no ram
-	   (cart_ram_size == 1)?4'b0000:   	// 1 - 2k, 1 bank
-	   (cart_ram_size == 2)?4'b0000:   	// 2 - 8k, 1 bank
-	   (cart_ram_size == 3)?4'b0011:		// 3 - 32k, 4 banks
-		4'b1111;   						   	// 4 - 128k 16 banks
+wire [3:0] ram_mask =                  // 0 - no ram
+	   (cart_ram_size == 1)?4'b0000:   // 1 - 2k, 1 bank
+	   (cart_ram_size == 2)?4'b0000:   // 2 - 8k, 1 bank
+	   (cart_ram_size == 3)?4'b0011:   // 3 - 32k, 4 banks
+	   (cart_ram_size == 5)?4'b0111:   // 5 - 64k, 8 banks
+	   4'b1111;                        // 4 - 128k 16 banks
 
 // ROM size
 wire [8:0] rom_mask =
@@ -188,6 +190,7 @@ wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3)
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 //wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
+wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
 wire mbc7 = (cart_mbc_type == 34);
@@ -294,6 +297,7 @@ assign ram_mask_file =              // 0 - no ram
 	   (cart_ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
 	   (cart_ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
 	   (cart_ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
+	   (cart_ram_size == 5)?8'h7F:  // 5 - 64k, 8 banks	 sd_lba[6:0]
 		8'hFF;                      // 4 - 128k 16 banks  sd_lba[7:0] 1111
 
 assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7);
