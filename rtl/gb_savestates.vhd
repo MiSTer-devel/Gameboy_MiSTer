@@ -13,6 +13,7 @@ entity gb_savestates is
             
       load_done               : out    std_logic := '0';
             
+      increaseSSHeaderCount   : in     std_logic; 
       save                    : in     std_logic;  
       load                    : in     std_logic;
       savestate_address       : in     integer;
@@ -47,6 +48,7 @@ entity gb_savestates is
       bus_out_Adr             : buffer std_logic_vector(25 downto 0) := (others => '0');
       bus_out_rnw             : out    std_logic := '0';
       bus_out_ena             : out    std_logic := '0';
+      bus_out_be              : out    std_logic_vector(7 downto 0) := (others => '0');
       bus_out_done            : in     std_logic
    );
 end entity;
@@ -125,9 +127,7 @@ begin
          reset_out     <= '0';
          load_done     <= '0';
          
-         --if (reset_in = '1') then 
-         --   header_amount <= (others => '0');
-         --end if;
+         bus_out_be    <= x"FF";
          
          case (cart_ram_size) is
             when x"00"  => savetypes(4) <=    512; -- for MBC2
@@ -208,6 +208,9 @@ begin
                   bus_out_Adr    <= std_logic_vector(to_unsigned(savestate_address, 26));
                   bus_out_Din    <= std_logic_vector(to_unsigned(STATESIZE, 32)) & std_logic_vector(header_amount);
                   bus_out_ena    <= '1';
+                  if (increaseSSHeaderCount = '0') then
+                     bus_out_be  <= x"F0";
+                  end if;
                end if;
                
             when SAVEMEMORY_FIRST =>
@@ -263,7 +266,7 @@ begin
                
             when LOAD_HEADERAMOUNTCHECK =>
                if (bus_out_done = '1') then
-                  if (bus_out_Dout(31 downto 0) /= x"00000000") then
+                  if (bus_out_Dout(63 downto 32) = std_logic_vector(to_unsigned(STATESIZE, 32))) then
                      header_amount        <= unsigned(bus_out_Dout(31 downto 0));
                      state                <= LOADINTERNALS_READ;
                      bus_out_Adr          <= std_logic_vector(to_unsigned(savestate_address + HEADERCOUNT, 26));

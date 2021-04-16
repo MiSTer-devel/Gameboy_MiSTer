@@ -74,6 +74,7 @@ module gb (
 	output serial_data_out,
 	
 	// savestates
+	input        increaseSSHeaderCount,
 	input  [7:0] cart_ram_size,
 	input        save_state,
 	input        load_state,
@@ -98,6 +99,7 @@ module gb (
 	output [25:0] SAVE_out_Adr,  	// all addresses are DWORD addresses!
 	output        SAVE_out_rnw,     // read = 1, write = 0
 	output        SAVE_out_ena,     // one cycle high for each action
+	output  [7:0] SAVE_out_be,     
 	input         SAVE_out_done,    // should be one cycle high when write is done or read value is valid
 	
 	input         rewind_on,
@@ -894,6 +896,7 @@ gb_savestates gb_savestates (
    
    .load_done              (state_loaded),
    
+   .increaseSSHeaderCount  (increaseSSHeaderCount),
    .save                   (savestate_savestate),
    .load                   (savestate_loadstate),
    .savestate_address      (savestate_address),
@@ -928,6 +931,7 @@ gb_savestates gb_savestates (
    .bus_out_Adr            (SAVE_out_Adr),   
    .bus_out_rnw            (SAVE_out_rnw),   
    .bus_out_ena            (SAVE_out_ena),   
+   .bus_out_be             (SAVE_out_be),   
    .bus_out_done           (SAVE_out_done)  
 );
 

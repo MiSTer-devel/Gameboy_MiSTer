@@ -29,4 +29,16 @@ To autoload favorite game at startup rename it to boot2.rom
 ## Video output
 The Gameboy can disable video output at any time which causes problems with vsync_adjust=2 or analog video during screen transitions. Enable the Stabilize video option to fix this at the cost of some latency.
 
+# Savestates
+Core provides 4 slots to save and restore the state. 
+Those can be saved to SDCard or reside only in memory for temporary use(OSD Option). 
+Usage with either Keyboard, Gamepad mappable button or OSD.
 
+Keyboard Hotkeys for save states:
+- Alt-F1..F4 - save the state
+- F1...F4 - restore
+
+Gamepad:
+- Savestatebutton+Left or Right switches the savestate slot
+- Savestatebutton+Start+Down saves to the selected slot
+- Savestatebutton+Start+Up loads from the selected slot
