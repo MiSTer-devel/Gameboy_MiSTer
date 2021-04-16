@@ -1,6 +1,7 @@
 module mbc3 (
 	input             enable,
 	input             reset,
+	input             mbc30,
 
 	input             clk_sys,
 	input             ce_cpu,
@@ -21,8 +22,8 @@ module mbc3 (
 	input      [63:0] img_size,
 
 	input             has_ram,
-	input       [1:0] ram_mask,
-	input       [6:0] rom_mask,
+	input       [2:0] ram_mask,
+	input       [7:0] rom_mask,
 
 	input      [15:0] cart_addr,
 	input       [7:0] cart_mbc_type,
@@ -53,52 +54,43 @@ assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
 assign has_battery_b    = enable ? has_battery    :  1'hZ;
 assign savestate_back_b = enable ? savestate_back : 16'hZ;
 
-wire [1:0] mbc3_ram_bank = mbc_ram_bank_reg[1:0] & ram_mask[1:0];
-
-// 0x0000-0x3FFF = Bank 0
-wire [6:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 7'd0 : mbc_rom_bank_reg;
-
-// mask address lines to enable proper mirroring
-wire [6:0] mbc3_rom_bank = mbc_rom_bank[6:0] & rom_mask[6:0];  //128
-
-
 // --------------------- CPU register interface ------------------
 
-reg [6:0] mbc_rom_bank_reg;
-reg [1:0] mbc_ram_bank_reg;
+reg [7:0] mbc_rom_bank_reg;
+reg [2:0] mbc_ram_bank_reg;
 reg mbc_ram_enable;
 reg mbc3_mode;
 
-assign savestate_back[ 6: 0] = mbc_rom_bank_reg;
-assign savestate_back[ 8: 7] = 0;
-assign savestate_back[10: 9] = mbc_ram_bank_reg;
-assign savestate_back[13:11] = 0;
+assign savestate_back[ 7: 0] = mbc_rom_bank_reg;
+assign savestate_back[    8] = 0;
+assign savestate_back[11: 9] = mbc_ram_bank_reg;
+assign savestate_back[13:12] = 0;
 assign savestate_back[   14] = mbc3_mode;
 assign savestate_back[   15] = mbc_ram_enable;
 
 always @(posedge clk_sys) begin
 	if(savestate_load & enable) begin
-		mbc_rom_bank_reg <= savestate_data[ 6: 0]; //7'd1;
-		mbc_ram_bank_reg <= savestate_data[10: 9]; //2'd0;
+		mbc_rom_bank_reg <= savestate_data[ 7: 0]; //8'd1;
+		mbc_ram_bank_reg <= savestate_data[11: 9]; //3'd0;
 		mbc3_mode        <= savestate_data[   14]; //1'b0;
 		mbc_ram_enable   <= savestate_data[   15]; //1'b0;
 	end else if(~enable) begin
-		mbc_rom_bank_reg <= 7'd1;
-		mbc_ram_bank_reg <= 2'd0;
+		mbc_rom_bank_reg <= 8'd1;
+		mbc_ram_bank_reg <= 3'd0;
 		mbc3_mode        <= 1'b0;
 		mbc_ram_enable   <= 1'b0;
 	end else if(ce_cpu) begin
 		if (cart_wr & ~cart_addr[15]) begin
 			case(cart_addr[14:13])
 				2'b00: mbc_ram_enable <= (cart_di[3:0] == 4'ha); //RAM enable/disable
-				2'b01: mbc_rom_bank_reg <= (cart_di[6:0] == 7'd0) ? 7'd1 : cart_di[6:0]; //write to ROM bank register
+				2'b01: mbc_rom_bank_reg <= ({cart_di[7] & mbc30, cart_di[6:0]} == 8'd0) ? 8'd1 : cart_di[7:0]; //write to ROM bank register
 				2'b10: begin
 					if (cart_di[3]) begin
 						mbc3_mode <= 1'b1; //enable RTC
 						rtc_index <= cart_di[2:0];
 					end else begin
 						mbc3_mode <= 1'b0; //enable RAM
-						mbc_ram_bank_reg <= cart_di[1:0]; //write to RAM bank register
+						mbc_ram_bank_reg <= cart_di[2:0]; //write to RAM bank register
 					end
 				end
 				2'b11: ; // Latch RTC data. Done below
@@ -107,7 +99,15 @@ always @(posedge clk_sys) begin
 	end
 end
 
-assign mbc_bank = { 2'b00, mbc3_rom_bank, cart_addr[13] };	// 16k ROM Bank 0-127
+wire [2:0] mbc3_ram_bank = mbc_ram_bank_reg[2:0] & ram_mask[2:0];
+
+// 0x0000-0x3FFF = Bank 0
+wire [7:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 8'd0 : mbc_rom_bank_reg;
+
+// mask address lines to enable proper mirroring
+wire [7:0] mbc3_rom_bank = mbc_rom_bank[7:0] & rom_mask[7:0]; // 16k ROM Bank 0-127, MBC30: 0-255
+
+assign mbc_bank = { 1'b0, mbc3_rom_bank, cart_addr[13] };
 
 reg [7:0] cram_do_r;
 always @* begin
@@ -121,7 +121,7 @@ always @* begin
 end
 
 assign cram_do = cram_do_r;
-assign cram_addr = { 2'b00, mbc3_ram_bank, cart_addr[12:0] };
+assign cram_addr = { 1'b0, mbc3_ram_bank, cart_addr[12:0] };
 
 assign has_battery = (cart_mbc_type == 8'h0F || cart_mbc_type == 8'h10 || cart_mbc_type == 8'h13);
 assign ram_enabled = mbc_ram_enable & has_ram;
