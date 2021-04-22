@@ -866,9 +866,10 @@ always @(posedge clk_vid) begin
 			tile_rd_addr <= {bg_map_data[7:0],(tile_fetch_cnt == 3'd1 ? 1'b0 : 1'b1),(bg_map_data[15] ? ~bg_vcnt[2:0] : bg_vcnt[2:0])};
 		end
 
-		if (tile_fetch_cnt == 3'd2) {tile_plane_1, tile_plane_0} <= tile_data;
+		// Tile number >= 256 is out of range. Read back as empty tile.
+		if (tile_fetch_cnt == 3'd2) {tile_plane_1, tile_plane_0} <= |bg_map_data[9:8] ? 16'd0 : tile_data;
 
-		if (tile_fetch_cnt == 3'd3) {tile_plane_3, tile_plane_2} <= tile_data;
+		if (tile_fetch_cnt == 3'd3) {tile_plane_3, tile_plane_2} <= |bg_map_data[9:8] ? 16'd0 : tile_data;
 
 		if (&tile_fetch_cnt) begin
 			if (bg_map_data[14])
