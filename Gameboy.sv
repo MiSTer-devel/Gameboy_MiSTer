@@ -194,7 +194,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -229,6 +229,7 @@ localparam CONF_STR = {
 	"P1O5,Stabilize video(buffer),Off,On;",
 	"P1OG,Frame blend,Off,On;",
 	"d4P1OU,GBC Colors,Corrected,Raw;",
+	"P1o2,Analog width,Narrow,Wide;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
 
@@ -620,6 +621,7 @@ wire HBlank, VBlank;
 wire ce_pix;
 wire [8:0] h_cnt, v_cnt;
 wire [1:0] tint = status[2:1];
+wire h_end;
 
 lcd lcd
 (
@@ -640,6 +642,7 @@ lcd lcd
 	.double_buffer( status[5]),
 	.frame_blend( status[16] ),
 	.originalcolors( status[30] ),
+	.analog_wide ( status[34] ),
 
 	// Palettes
 	.pal1   (palette[127:104]),
@@ -661,7 +664,8 @@ lcd lcd
 	.b      ( B          ),
 	.ce_pix ( ce_pix     ),
 	.h_cnt  ( h_cnt      ),
-	.v_cnt  ( v_cnt      )
+	.v_cnt  ( v_cnt      ),
+	.h_end  ( h_end      )
 );
 
 wire [1:0] joy_p54;
@@ -700,6 +704,7 @@ sgb sgb (
 
 	.h_cnt       ( h_cnt      ),
 	.v_cnt       ( v_cnt      ),
+	.h_end       ( h_end      ),
 
 	.border_download (sgb_border_download),
 	.ioctl_wr        (ioctl_wr),

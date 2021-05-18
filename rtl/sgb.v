@@ -17,6 +17,7 @@ module sgb (
 
 	input [8:0]  h_cnt,
 	input [8:0]  v_cnt,
+	input        h_end,
 
 	input [7:0]  joystick_0,
 	input [7:0]  joystick_1,
@@ -857,7 +858,7 @@ always @(posedge clk_vid) begin
 
 		bg_map_data <= tile_map_ram[{bg_vcnt[7:3],h_cnt[7:3]}];
 
-		if (h_cnt == 9'd424) // end of line
+		if (h_end) // end of line
 			tile_fetch_cnt <= 0;
 		else
 			tile_fetch_cnt <= tile_fetch_cnt + 1'b1;
