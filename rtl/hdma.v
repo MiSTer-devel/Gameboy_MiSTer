@@ -33,19 +33,18 @@ wire [44:0] SS_HDMA_BACK;
 
 eReg_SavestateV #(0, 7, 44, 0, 64'h0000000001FFFFF0) iREG_SAVESTATE_HDMA (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_HDMA_BACK, SS_HDMA);  
 
-
 //"The preparation time (4 clocks) is the same in single and double speed mode"
 localparam START_DELAY = 3'd4;
 
 
-//ff51-ff55 HDMA1-5 (GBC)
-reg [11:0] hdma_source;        // ff51, ff52 only top 4 bits used
-reg [8:0] hdma_target;	       // ff53 only lowest 5 bits used, ff54 only top 4 bits used
+// ff51-ff55 HDMA1-5 (GBC)
+reg [11:0] hdma_source;  // ff51, ff52 only top 4 bits used
+reg [8:0]  hdma_target;  // ff53 only lowest 5 bits used, ff54 only top 4 bits used
 
-reg hdma_mode; 					// ff55 bit 7  - 1=General Purpose DMA 0=H-Blank DMA
-reg hdma_enabled;					// ff55 !bit 7 when read
-reg [7:0] hdma_length;			// ff55 bit 6:0 - dma transfer length (hdma_length+1)*16 bytes
-reg hdma_end;
+reg        hdma_mode;    // ff55 bit 7 - 0 = General Purpose DMA / 1 = H-Blank DMA
+reg        hdma_enabled; // ff55 !bit 7 when read
+reg [7:0]  hdma_length;  // ff55 bit 6:0 - dma transfer length (hdma_length+1)*16 bytes
+reg        hdma_end;
 // it takes about 8us to transfer a block of 16 bytes. -> 500ns per byte -> 2Mhz
 // 32 cycles in Normal Speed Mode, and 64 'fast' cycles in Double Speed Mode
 reg [3:0] byte_cnt;  // 16bytes
