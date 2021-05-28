@@ -194,7 +194,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -241,6 +241,8 @@ localparam CONF_STR = {
 	"P2OP,FastForward Sound,On,Off;",
 	"P2OQ,Pause when OSD is open,Off,On;",
 	"P2OR,Rewind Capture,Off,On;",
+	"P2-;",
+	"P2o3,Super Game Boy + GBC,Off,On;",
 
 	"-;",
 	"R0,Reset;",
@@ -504,6 +506,7 @@ end
 wire lcd_clkena;
 wire [14:0] lcd_data;
 wire [1:0] lcd_mode;
+wire [1:0] lcd_data_gb;
 wire lcd_on;
 wire lcd_vsync;
 
@@ -558,6 +561,7 @@ gb gb (
 	// interface to the lcd
 	.lcd_clkena  ( lcd_clkena ),
 	.lcd_data    ( lcd_data   ),
+	.lcd_data_gb ( lcd_data_gb ),
 	.lcd_mode    ( lcd_mode   ),
 	.lcd_on      ( lcd_on     ),
 	.lcd_vsync   ( lcd_vsync  ),
@@ -693,12 +697,14 @@ sgb sgb (
 	.joy_p54     ( joy_p54     ),
 	.joy_do      ( joy_do_sgb  ),
 
-	.sgb_en      ( |sgb_en & isSGB_game & ~isGBC ),
+	.sgb_en      ( |sgb_en & isSGB_game & (~isGBC | status[35]) ),
 	.tint        ( tint[1]     ),
+	.isGBC_game  ( isGBC & isGBC_game ),
 
 	.lcd_on      ( lcd_on      ),
 	.lcd_clkena  ( lcd_clkena  ),
 	.lcd_data    ( lcd_data    ),
+	.lcd_data_gb ( lcd_data_gb ),
 	.lcd_mode    ( lcd_mode    ),
 	.lcd_vsync   ( lcd_vsync   ),
 

@@ -277,7 +277,7 @@ endfunction
 
 reg [7:0] r_tmp, g_tmp, b_tmp;
 always@(*) begin
-	if (isGBC & !originalcolors) begin
+	if (~sgb_pal_en & isGBC & !originalcolors) begin
 		r_tmp = r10[8:1];
 		g_tmp = {g10[6:0],1'b0};
 		b_tmp = b10[8:1];

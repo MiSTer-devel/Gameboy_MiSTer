@@ -8,9 +8,11 @@ module sgb (
 
 	input        sgb_en,
 	input        tint,
+	input        isGBC_game,
 
 	input        lcd_clkena,
 	input [14:0] lcd_data,
+	input [1:0]  lcd_data_gb,
 	input [1:0]  lcd_mode,
 	input        lcd_on,
 	input        lcd_vsync,
@@ -417,7 +419,7 @@ wire [13:0] pixel_wr_addr = {tile_number[7:0], pix_y[2:0],pix_x[2:0]};
 
 wire [10:0] tile_addr = {tile_number[7:0], pix_y[2:0]};
 
-wire [15:0] trn_data = {trn_data_h,lcd_data[1],trn_data_l,lcd_data[0]};
+wire [15:0] trn_data = {trn_data_h,lcd_data_gb[1],trn_data_l,lcd_data_gb[0]};
 
 
 always @(posedge clk_sys) begin
@@ -446,8 +448,8 @@ always @(posedge clk_sys) begin
 
 			if (trn_en) begin
 				// HLHLHLHLHLHLHLHL -> HHHHHHHH LLLLLLLL
-				trn_data_h <= {trn_data_h[5:0],lcd_data[1]};
-				trn_data_l <= {trn_data_l[5:0],lcd_data[0]};
+				trn_data_h <= {trn_data_h[5:0],lcd_data_gb[1]};
+				trn_data_l <= {trn_data_l[5:0],lcd_data_gb[0]};
 			end
 
 			if (pix_x == 8'd159 && pix_y == 8'd103) begin // 256 tiles
@@ -894,11 +896,12 @@ end
 
 
 reg [14:0] lcd_data_r;
+reg [1:0] lcd_data_gb_r;
 reg [1:0] pal_no;
 reg lcd_clkena_r, lcd_on_r, lcd_vsync_r;
 reg [1:0] lcd_mode_r;
 reg [1:0] mask_en_r;
-wire [1:0] lcd_data_2 = lcd_data_r[1:0];
+
 // Lcd pixel output
 always @(posedge clk_sys) begin
 	if (ce) begin
@@ -907,25 +910,26 @@ always @(posedge clk_sys) begin
 
 		pal_no <= attr_file[tile_number*2 +: 2];
 		lcd_data_r <= lcd_data;
+		lcd_data_gb_r <= lcd_data_gb;
 		lcd_clkena_r <= lcd_clkena;
 		lcd_mode_r <= lcd_mode;
 		lcd_on_r <= lcd_on;
 		lcd_vsync_r <= lcd_vsync;
 
-		if (~sgb_en | ((~output_sgb_pal | tint) & !mask_en_r) ) begin
+		if (~sgb_en | ((~output_sgb_pal | tint | isGBC_game) & !mask_en_r) ) begin
 			sgb_lcd_data <= lcd_data_r;
 		end else if (mask_en_r == 2'd2) begin
 			sgb_lcd_data <= 0;
-		end else if (!lcd_data_2 || mask_en_r == 2'd3) begin
+		end else if (!lcd_data_gb_r || mask_en_r == 2'd3) begin
 			sgb_lcd_data <= palette[0][0:14];
 		end else begin
-			sgb_lcd_data <= palette[pal_no][lcd_data_2*15 +:15];
+			sgb_lcd_data <= palette[pal_no][lcd_data_gb_r*15 +:15];
 		end
 
 		sgb_lcd_clkena <= (~sgb_en || mask_en_r != 2'd1) ? lcd_clkena_r : 1'b0;
 		sgb_lcd_mode <= lcd_mode_r;
 		sgb_lcd_on <= lcd_on_r;
-		sgb_pal_en <= sgb_en & ( (output_sgb_pal & ~tint) || |mask_en_r);
+		sgb_pal_en <= sgb_en & ( (output_sgb_pal & ~tint & ~isGBC_game) || |mask_en_r);
 		sgb_lcd_vsync <= lcd_vsync_r;
 	end
 
