@@ -30,6 +30,7 @@ module lcd
 	input        inv,
 	input        frame_blend,
 	input        originalcolors,
+	input        analog_wide,
 
 	input        on,
 
@@ -44,7 +45,8 @@ module lcd
 	output reg [8:0] v_cnt,
 	output reg [7:0] r,
 	output reg [7:0] g,
-	output reg [7:0] b
+	output reg [7:0] b,
+	output           h_end
 );
 
 reg [14:0] vbuffer_inptr;
@@ -105,30 +107,45 @@ always @(posedge clk_sys) if(pix_wr) vbuffer[{vbuffer_in_bank, vbuffer_inptr}] <
 // Mode 10:  oam
 // Mode 11:  oam and vram	
 
-parameter H      = 160;   // width of visible area
-parameter HFP    = 103;   // unused time before hsync
-parameter HS     = 32;    // width of hsync
-parameter HBP    = 130;   // unused time after hsync
+// Narrow
+parameter H      = 9'd160;   // width of visible area
+parameter HFP    = 9'd103;   // unused time before hsync
+parameter HS     = 9'd32;    // width of hsync
+parameter HBP    = 9'd130;   // unused time after hsync
 parameter HTOTAL = H+HFP+HS+HBP;
 // total = 425
 
-parameter H_BORDER = 48;
-parameter V_BORDER = 40;
-parameter H_START   = 9+H_BORDER;
+// Wide
+parameter HFP_W    = 9'd76;
+parameter HS_W     = 9'd26;
+parameter HBP_W    = 9'd92;
+parameter HTOTAL_W = H+HFP_W+HS_W+HBP_W;
+// total = 354
+
+parameter H_BORDER = 9'd48;
+parameter V_BORDER = 9'd40;
+parameter H_START  = 9'd9+H_BORDER;
 
 parameter V        = 144; // height of visible area
 parameter VS_START = 37;  // start of vsync
 parameter VSTART   = 105; // start of active video
 parameter VTOTAL   = 264;
 
+wire [8:0] h_total  = analog_wide ? HTOTAL_W : HTOTAL;
+wire [8:0] hs_start = analog_wide ? (H_START+H+HFP_W)      : (H_START+H+HFP);
+wire [8:0] hs_end   = analog_wide ? (H_START+H+HFP_W+HS_W) : (H_START+H+HFP+HS);
+assign     h_end    = (h_cnt == h_total-1);
+
 // (67108864 / 32 / 228 / 154) == (67108864 / 10 /  425.6 / 264) == 59.7275Hz
 // We need 4256 cycles per line so 1 pixel clock cycle needs to be 6 cycles longer.
-// 424x10 + 1x16 cycles
+// Narrow: 424x10 + 1x16 cycles
+// Wide:   352x12 + 2x16 cycles
 reg [3:0] pix_div_cnt;
 reg ce_pix_n;
 always @(posedge clk_vid) begin
 	pix_div_cnt <= pix_div_cnt + 1'd1;
-	if (h_cnt != HTOTAL-1 && pix_div_cnt == 4'd9) // Longer cycle at the last pixel
+	// Longer cycle at the last pixel(s)
+	if ( (~analog_wide && ~h_end && pix_div_cnt == 4'd9) || (analog_wide && h_cnt < h_total-2 && pix_div_cnt == 4'd11) )
 		pix_div_cnt <= 0;
 
 	ce_pix <= !pix_div_cnt;
@@ -150,8 +167,9 @@ always @(posedge clk_vid) begin
 
 	if (ce_pix_n) begin
 		// generate positive hsync signal
-		if(h_cnt == H_START+H+HFP+HS) hs <= 0;
-		if(h_cnt == H_START+H+HFP)    begin
+		if(h_cnt == hs_end)
+			hs <= 0;
+		if(h_cnt == hs_start) begin
 			hs <= 1;
 
 			// generate positive vsync signal
@@ -177,7 +195,7 @@ always @(posedge clk_vid) begin
 	if(ce_pix) begin
 
 		h_cnt <= h_cnt + 1'd1;
-		if(h_cnt == HTOTAL-1) begin
+		if(h_end) begin
 			h_cnt <= 0;
 			if(~(vb & wait_vbl) | double_buffer) v_cnt <= v_cnt + 1'd1;
 			if(v_cnt >= VTOTAL-1) v_cnt <= 0;
@@ -259,7 +277,7 @@ endfunction
 
 reg [7:0] r_tmp, g_tmp, b_tmp;
 always@(*) begin
-	if (isGBC & !originalcolors) begin
+	if (~sgb_pal_en & isGBC & !originalcolors) begin
 		r_tmp = r10[8:1];
 		g_tmp = {g10[6:0],1'b0};
 		b_tmp = b10[8:1];

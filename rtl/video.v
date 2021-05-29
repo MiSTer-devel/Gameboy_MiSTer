@@ -39,6 +39,7 @@ module video (
 	output lcd_on,
 	output lcd_clkena,
 	output [14:0] lcd_data,
+	output  [1:0] lcd_data_gb,
 	output lcd_vsync,
 
 	output irq,
@@ -1033,12 +1034,14 @@ wire [14:0] sprite_pix = isGBC ? {obpd[sprite_palette_index+1][6:0],obpd[sprite_
 wire lcd_clk = mode3 && ~skip_en && ~sprite_fetch_hold && ~bg_shift_empty && (pcnt >= 8);
 
 reg [14:0] lcd_data_out;
+reg  [1:0] lcd_data_gb_out;
 reg lcd_clk_out;
 always @(posedge clk) begin
 	if (ce) begin
 		lcd_clk_out <= lcd_clk;
 		if (lcd_clk) begin
 			lcd_data_out <= (sprite_pixel_visible) ? sprite_pix : pix_rgb_data;
+			lcd_data_gb_out <= (sprite_pixel_visible) ? obp_data : bgp_data;
 		end
 
 		// Output blank pixels if lcd is off.
@@ -1047,6 +1050,7 @@ always @(posedge clk) begin
 end
 
 assign lcd_data = lcd_data_out;
+assign lcd_data_gb = lcd_data_gb_out;
 assign lcd_clkena = lcd_clk_out;
 
 endmodule

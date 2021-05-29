@@ -51,6 +51,7 @@ module gb (
 	// lcd interface
 	output lcd_clkena,
 	output [14:0] lcd_data,
+	output [1:0] lcd_data_gb,
 	output [1:0] lcd_mode,
 	output lcd_on,
 	output lcd_vsync,
@@ -613,6 +614,7 @@ video video (
 	.lcd_on      ( lcd_on        ),
 	.lcd_clkena  ( lcd_clkena    ),
 	.lcd_data    ( lcd_data      ),
+	.lcd_data_gb ( lcd_data_gb   ),
 	.mode        ( lcd_mode      ),
 	.lcd_vsync   ( lcd_vsync     ),
 
