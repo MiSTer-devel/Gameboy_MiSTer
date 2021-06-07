@@ -13,8 +13,10 @@ module mappers(
 	input         mbc30,
 	input         mbc5,
 	input         mbc7,
+	input         mmm01,
 	input         huc1,
 	input         gb_camera,
+	input         tama,
 
 	input  [15:0] joystick_analog_0,
 
@@ -45,6 +47,7 @@ module mappers(
 	input         cart_wr,
 	input   [7:0] cart_di,
 
+	input         cram_rd,
 	input   [7:0] cram_di,    // input from Cart RAM q
 	output  [7:0] cram_do,    // output to CPU
 	output [16:0] cram_addr,
@@ -69,7 +72,7 @@ tri0 cram_wr_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc7 | huc1 | gb_camera);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc7 | mmm01 | huc1 | gb_camera | tama);
 
 mbc1 map_mbc1 (
 	.enable           ( mbc1 ),
@@ -238,6 +241,35 @@ mbc7 map_mbc7 (
 	.has_battery_b    ( has_battery_b )
 );
 
+mmm01 map_mmm01 (
+	.enable           ( mmm01 ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data2 ),
+	.savestate_back_b ( savestate_back2_b ),
+
+	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_bank_b       ( mbc_bank_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
 huc1 map_huc1 (
 	.enable           ( huc1 ),
 
@@ -289,6 +321,41 @@ gb_camera map_gb_camera (
 	.cram_di          ( cram_di ),
 	.cram_do_b        ( cram_do_b ),
 	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_bank_b       ( mbc_bank_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
+// TODO: TAMA RTC
+tama map_tama (
+	.enable           ( tama ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+	.ce_1x            ( ce_cpu ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data2 ),
+	.savestate_back_b ( savestate_back2_b ),
+
+	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_rd          ( cram_rd ),
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.cram_wr_do_b     ( cram_wr_do_b ),
+	.cram_wr_b        ( cram_wr_b ),
 
 	.mbc_bank_b       ( mbc_bank_b ),
 	.ram_enabled_b    ( ram_enabled_b ),

@@ -107,8 +107,10 @@ mappers mappers (
 	.mbc30( mbc30 ),
 	.mbc5 ( mbc5 ),
 	.mbc7 ( mbc7 ),
+	.mmm01 ( mmm01 ),
 	.huc1 ( HuC1 ),
 	.gb_camera ( gb_camera ),
+	.tama ( tama ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -139,6 +141,7 @@ mappers mappers (
 	.cart_wr   ( cart_wr ),
 	.cart_di   ( cart_di ),
 
+	.cram_rd   ( cram_rd  ),
 	.cram_di   ( cram_q  ),
 	.cram_do   ( cram_do  ),
 	.cram_addr ( mbc_cram_addr ),
@@ -195,8 +198,8 @@ wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
 wire mbc7 = (cart_mbc_type == 34);
 wire gb_camera = (cart_mbc_type == 252);
-//wire tama5 = (cart_mbc_type == 253);
-//wire tama6 = (cart_mbc_type == ???);
+wire tama = (cart_mbc_type == 253);
+
 //wire HuC3 = (cart_mbc_type == 254);
 wire HuC1 = (cart_mbc_type == 255);
 
@@ -208,7 +211,12 @@ assign isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);
 // MBC1M detect
 reg [7:0] cart_logo_check;
 reg [2:0] cart_logo_idx;
-wire mbc1m = &cart_logo_check;
+reg mbc1m, mmm01;
+reg mbc1m_check_end, mmm01_check_end;
+
+wire mbc1m_bank = (~|ioctl_addr[24:20] && ioctl_addr[19:12] == 8'h40); // $40000
+wire mmm01_bank = (ioctl_addr[18:12] == 7'h78); // $78000+
+wire cart_logo_match = &cart_logo_check;
 
 reg old_cart_download;
 always @(posedge clk_sys) begin
@@ -218,15 +226,22 @@ always @(posedge clk_sys) begin
 		cart_logo_idx <= 3'd0;
 		cart_logo_check <= 8'd0;
 		cart_mbc_type <= 8'd0;
+		mbc1m <= 0;
+		mmm01 <= 0;
 	end
 
 	if(cart_download & ioctl_wr) begin
-		case(ioctl_addr)
-			'h142: cart_cgb_flag <= ioctl_dout[15:8];
-			'h146: {cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
-			'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
-			'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
-		endcase
+		if (~|ioctl_addr[24:12] || (mmm01_bank & mmm01) ) // MMM01 header is at the end of ROM
+			case(ioctl_addr[11:0])
+				12'h142: cart_cgb_flag <= ioctl_dout[15:8];
+				12'h146: begin
+					{cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
+					// "Mani 4 in 1" have incorrectly set MBC3 in the header
+					if ( mmm01 && ioctl_dout[15:8] == 8'h11) cart_mbc_type <= 8'h0B;
+				end
+				12'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
+				12'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
+			endcase
 
 		//Store cart logo data
 		if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
@@ -234,12 +249,29 @@ always @(posedge clk_sys) begin
 			cart_logo_idx <= cart_logo_idx + 1'b1;
 		end
 
-		// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank
-		if (ioctl_addr >= 'h40104 && ioctl_addr <= 'h40112) begin
-			cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
-			cart_logo_idx <= cart_logo_idx + 1'b1;
+		// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank ($40000)
+		// MMM01 detect: Compare the last bank every 512KByte ($78000+)
+		if ( mbc1m_bank | mmm01_bank ) begin
+			if (ioctl_addr[11:0] >= 12'h104 && ioctl_addr[11:0] <= 12'h112) begin
+				cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
+				cart_logo_idx <= cart_logo_idx + 1'b1;
+				if (&cart_logo_idx) begin
+					if (mbc1m_bank) mbc1m_check_end <= 1;
+					if (mmm01_bank) mmm01_check_end <= 1;
+				end
+			end
 		end
+	end
 
+	if (mbc1m_check_end) begin
+		mbc1m_check_end <= 0;
+		mbc1m <= cart_logo_match;
+	end
+
+	if (mmm01_check_end) begin
+		mmm01_check_end <= 0;
+		mmm01 <= cart_logo_match;
+		if (cart_logo_match) mbc1m <= 0;
 	end
 
 end
@@ -293,14 +325,14 @@ wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : mbc_cram_wr ? m
 
 // RAM size
 assign ram_mask_file =              // 0 - no ram
-		(mbc2 || mbc7)?8'h01:       // mbc2 512x4bits, mbc7 256 bytes EEPROM
+		(mbc2 || mbc7 || tama)?8'h01:       // mbc2 512x4bits, mbc7 256 bytes EEPROM, TAMA 32 bytes
 	   (cart_ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
 	   (cart_ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
 	   (cart_ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
 	   (cart_ram_size == 5)?8'h7F:  // 5 - 64k, 8 banks	 sd_lba[6:0]
 		8'hFF;                      // 4 - 128k 16 banks  sd_lba[7:0] 1111
 
-assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7);
+assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7 || tama);
 
 // Up to 8kb * 16banks of Cart Ram (128kb)
 
