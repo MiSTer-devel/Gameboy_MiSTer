@@ -12,9 +12,11 @@ module mappers(
 	input         mbc3,
 	input         mbc30,
 	input         mbc5,
+	input         mbc6,
 	input         mbc7,
 	input         mmm01,
 	input         huc1,
+	input         huc3,
 	input         gb_camera,
 	input         tama,
 
@@ -22,7 +24,7 @@ module mappers(
 
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
-	output [31:0] RTC_savedtimeOut,
+	output [47:0] RTC_savedtimeOut,
 	output        RTC_inuse,
 
 	input         bk_wr,
@@ -69,10 +71,13 @@ tri0 [15:0] savestate_back_b;
 tri0 [63:0] savestate_back2_b;
 tri0 [7:0] cram_wr_do_b;
 tri0 cram_wr_b;
+tri0 [31:0] RTC_timestampOut_b;
+tri0 [47:0] RTC_savedtimeOut_b;
+tri0 RTC_inuse_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc7 | mmm01 | huc1 | gb_camera | tama);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama);
 
 mbc1 map_mbc1 (
 	.enable           ( mbc1 ),
@@ -145,9 +150,9 @@ mbc3 map_mbc3 (
 	.savestate_back_b  ( savestate_back_b ),
 
 	.RTC_time          ( RTC_time         ),
-	.RTC_timestampOut  ( RTC_timestampOut ),
-	.RTC_savedtimeOut  ( RTC_savedtimeOut ),
-	.RTC_inuse         ( RTC_inuse        ),
+	.RTC_timestampOut_b( RTC_timestampOut_b ),
+	.RTC_savedtimeOut_b( RTC_savedtimeOut_b ),
+	.RTC_inuse_b       ( RTC_inuse_b      ),
 
 	.bk_wr             ( bk_wr     ),
 	.bk_rtc_wr         ( bk_rtc_wr ),
@@ -183,6 +188,35 @@ mbc5 map_mbc5 (
 	.savestate_load   ( savestate_load ),
 	.savestate_data   ( savestate_data ),
 	.savestate_back_b ( savestate_back_b ),
+
+	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_bank_b       ( mbc_bank_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
+mbc6 map_mbc6 (
+	.enable           ( mbc6 ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data2 ),
+	.savestate_back_b ( savestate_back2_b ),
 
 	.has_ram          ( has_ram  ),
 	.ram_mask         ( ram_mask ),
@@ -299,6 +333,45 @@ huc1 map_huc1 (
 	.has_battery_b    ( has_battery_b )
 );
 
+huc3 map_huc3 (
+	.enable            ( huc3 ),
+
+	.clk_sys           ( clk_sys ),
+	.ce_cpu            ( ce ),
+
+	.savestate_load    ( savestate_load ),
+	.savestate_data    ( savestate_data2 ),
+	.savestate_back_b  ( savestate_back2_b ),
+
+	.RTC_time          ( RTC_time         ),
+	.RTC_timestampOut_b( RTC_timestampOut_b ),
+	.RTC_savedtimeOut_b( RTC_savedtimeOut_b ),
+	.RTC_inuse_b       ( RTC_inuse_b      ),
+
+	.bk_rtc_wr         ( bk_rtc_wr ),
+	.bk_addr           ( bk_addr   ),
+	.bk_data           ( bk_data   ),
+
+	.has_ram           ( has_ram  ),
+	.ram_mask          ( ram_mask ),
+	.rom_mask          ( rom_mask ),
+
+	.cart_addr         ( cart_addr ),
+	.cart_mbc_type     ( cart_mbc_type ),
+
+	.cart_wr           ( cart_wr ),
+	.cart_di           ( cart_di ),
+
+	.cram_di           ( cram_di ),
+	.cram_do_b         ( cram_do_b ),
+	.cram_addr_b       ( cram_addr_b ),
+
+	.mbc_bank_b        ( mbc_bank_b ),
+	.ram_enabled_b     ( ram_enabled_b ),
+	.has_battery_b     ( has_battery_b )
+);
+
+
 gb_camera map_gb_camera (
 	.enable           ( gb_camera ),
 
@@ -362,8 +435,11 @@ tama map_tama (
 	.has_battery_b    ( has_battery_b )
 );
 
-assign { cram_do, ram_enabled, savestate_back, savestate_back2 } = { cram_do_b, ram_enabled_b, savestate_back_b, savestate_back2_b };
+assign { cram_do, ram_enabled } = { cram_do_b, ram_enabled_b };
+assign { savestate_back, savestate_back2 } = { savestate_back_b, savestate_back2_b };
+assign { RTC_timestampOut, RTC_savedtimeOut, RTC_inuse } = { RTC_timestampOut_b, RTC_savedtimeOut_b, RTC_inuse_b };
 assign { cram_wr_do, cram_wr } = { cram_wr_do_b, cram_wr_b };
+
 assign mbc_bank = no_mapper ? {8'd0, cart_addr[14:13]} : mbc_bank_b;
 assign cram_addr = no_mapper ? {4'd0, cart_addr[12:0]} : cram_addr_b;
 assign has_battery = no_mapper ? (cart_mbc_type == 8'h09) : has_battery_b;

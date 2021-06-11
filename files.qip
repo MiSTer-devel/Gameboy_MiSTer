@@ -25,9 +25,11 @@ set_global_assignment -name VERILOG_FILE rtl/mappers/mbc1.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/mbc2.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/mbc3.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/mbc5.v
+set_global_assignment -name VERILOG_FILE rtl/mappers/mbc6.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/mbc7.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/mmm01.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/huc1.v
+set_global_assignment -name VERILOG_FILE rtl/mappers/huc3.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/gb_camera.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/tama.v
 set_global_assignment -name SDC_FILE Gameboy.sdc

@@ -425,7 +425,8 @@ wire [9:0] mbc_bank;
 wire [7:0] ram_mask_file, cart_ram_size;
 wire isGBC_game, isSGB_game;
 wire cart_has_save;
-wire [31:0] RTC_timestampOut, RTC_savedtimeOut;
+wire [31:0] RTC_timestampOut;
+wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
 
 cart_top cart (
@@ -969,6 +970,7 @@ assign sd_buff_din = (sd_lba[7:0] <= ram_mask_file) ? bk_q :  // normal saveram 
 					 (sd_buff_addr == 8'd1) ? RTC_timestampOut[31:16] :
 					 (sd_buff_addr == 8'd2) ? RTC_savedtimeOut[15:0]  :
 					 (sd_buff_addr == 8'd3) ? RTC_savedtimeOut[31:16] :
+					 (sd_buff_addr == 8'd4) ? RTC_savedtimeOut[47:32] :
 					 16'hFFFF;
 
 
