@@ -47,7 +47,7 @@ module cart_top (
 
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
-	output [31:0] RTC_savedtimeOut,
+	output [47:0] RTC_savedtimeOut,
 	output        RTC_inuse,
 
 	input  [63:0] SaveStateExt_Din,
@@ -106,9 +106,11 @@ mappers mappers (
 	.mbc3 ( mbc3 ),
 	.mbc30( mbc30 ),
 	.mbc5 ( mbc5 ),
+	.mbc6 ( mbc6 ),
 	.mbc7 ( mbc7 ),
 	.mmm01 ( mmm01 ),
 	.huc1 ( HuC1 ),
+	.huc3 ( HuC3 ),
 	.gb_camera ( gb_camera ),
 	.tama ( tama ),
 
@@ -196,11 +198,12 @@ wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 
 wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
+wire mbc6 = (cart_mbc_type == 32);
 wire mbc7 = (cart_mbc_type == 34);
 wire gb_camera = (cart_mbc_type == 252);
 wire tama = (cart_mbc_type == 253);
 
-//wire HuC3 = (cart_mbc_type == 254);
+wire HuC3 = (cart_mbc_type == 254);
 wire HuC1 = (cart_mbc_type == 255);
 
 

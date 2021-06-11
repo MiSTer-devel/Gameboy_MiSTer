@@ -11,9 +11,9 @@ module mbc3 (
 	inout      [15:0] savestate_back_b,
 
 	input      [32:0] RTC_time,
-	output reg [31:0] RTC_timestampOut,
-	output reg [31:0] RTC_savedtimeOut,
-	output reg        RTC_inuse,
+	inout      [31:0] RTC_timestampOut_b,
+	inout      [47:0] RTC_savedtimeOut_b,
+	inout             RTC_inuse_b,
 
 	input             bk_wr,
 	input             bk_rtc_wr,
@@ -47,12 +47,19 @@ wire ram_enabled;
 wire has_battery;
 wire [15:0] savestate_back;
 
-assign mbc_bank_b       = enable ? mbc_bank       : 10'hZ;
-assign cram_do_b        = enable ? cram_do        :  8'hZ;
-assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
-assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
-assign has_battery_b    = enable ? has_battery    :  1'hZ;
-assign savestate_back_b = enable ? savestate_back : 16'hZ;
+reg [31:0] RTC_timestampOut;
+reg [47:0] RTC_savedtimeOut;
+reg        RTC_inuse;
+
+assign mbc_bank_b         = enable ? mbc_bank         : 10'hZ;
+assign cram_do_b          = enable ? cram_do          :  8'hZ;
+assign cram_addr_b        = enable ? cram_addr        : 17'hZ;
+assign ram_enabled_b      = enable ? ram_enabled      :  1'hZ;
+assign has_battery_b      = enable ? has_battery      :  1'hZ;
+assign savestate_back_b   = enable ? savestate_back   : 16'hZ;
+assign RTC_timestampOut_b = enable ? RTC_timestampOut : 32'hZ;
+assign RTC_savedtimeOut_b = enable ? RTC_savedtimeOut : 48'hZ;
+assign RTC_inuse_b        = enable ? RTC_inuse        :  1'hZ;
 
 // --------------------- CPU register interface ------------------
 
@@ -165,9 +172,9 @@ always @(posedge clk_sys) begin
 		RTC_inuse <= 1'b0;
 		rtc_latch <= 1'b0;
 	end else begin
-
+		RTC_savedtimeOut[47:29] <= 0;
 		if (rtc_change == 1'b0) begin // when RTC hasn't changed recently, update the register which will be written after savegame
-			RTC_savedtimeOut <= {3'd0, rtc_halt, rtc_overflow, rtc_days, rtc_hours, rtc_minutes, rtc_seconds};
+			RTC_savedtimeOut[28:0] <= {rtc_halt, rtc_overflow, rtc_days, rtc_hours, rtc_minutes, rtc_seconds};
 		end
 
 		rtc_change	  <= 1'b0;
