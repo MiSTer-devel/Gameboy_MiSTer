@@ -1,5 +1,5 @@
 module mbc6 (
-	input        enable,
+    input        enable,
 
 	input        clk_sys,
 	input        ce_cpu,

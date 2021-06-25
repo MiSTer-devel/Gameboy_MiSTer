@@ -439,9 +439,8 @@ assign { cram_do, ram_enabled } = { cram_do_b, ram_enabled_b };
 assign { savestate_back, savestate_back2 } = { savestate_back_b, savestate_back2_b };
 assign { RTC_timestampOut, RTC_savedtimeOut, RTC_inuse } = { RTC_timestampOut_b, RTC_savedtimeOut_b, RTC_inuse_b };
 assign { cram_wr_do, cram_wr } = { cram_wr_do_b, cram_wr_b };
-
 assign mbc_bank = no_mapper ? {8'd0, cart_addr[14:13]} : mbc_bank_b;
 assign cram_addr = no_mapper ? {4'd0, cart_addr[12:0]} : cram_addr_b;
-assign has_battery = no_mapper ? (cart_mbc_type == 8'h09) : has_battery_b;
+assign has_battery = no_mapper ? (cart_mbc_type == 8'h09) : has_battery_b; // ROM+RAM+BATTERY
 
 endmodule
