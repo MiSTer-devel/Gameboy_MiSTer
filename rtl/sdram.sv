@@ -51,8 +51,12 @@ module sdram
 	input       [1:0] ds,         // upper/lower data strobe
 	input 		 		oe,         // cpu/chipset requests read
 	input 		 		we,         // cpu/chipset requests write
-	input 		 		autorefresh,// autorefresh when no read or write required
-	input 		 		refresh     // force refresh when core is paused or fastforward
+	output 		 		ack,        // data ready
+   
+   output reg [15:0] dout2,	   // data output to chipset/cpu
+   input      [23:0] addr2,      // 24 bit word address
+   input 		 		oe2,        // cpu/chipset requests read
+   output 		 		ack2        // data ready
 );
 
 localparam RASCAS_DELAY   = 3'd2;   // tRCD=20ns -> 3 cycles@128MHz
@@ -121,18 +125,19 @@ reg  [1:0] mode;
 reg [15:0] din_r;
 reg  [2:0] stage;
 
+reg channel = 0;
+
+reg [23:0] addr_last;
+reg [23:0] addr2_last;
+
 always @(posedge clk) begin
 	reg [12:0] addr_r;
 	reg        old_sync;
-	reg        old_oe;
 	
 	if(|stage) stage <= stage + 1'd1;
 
 	old_sync <= sync;
-	old_oe   <= oe;
-	if(~old_sync && sync && autorefresh)  stage <= 1; // normal operation with read/write and refresh
-	if(refresh && stage == STATE_FIRST)   stage <= 1; // forced refresh when paused or fastforward
-	if(~old_oe && oe && ~autorefresh)     stage <= 1; // react on request only with fastforward
+	if(~old_sync && sync) stage <= 1; // normal operation with read/write and refresh
 
 	sd_cmd <= CMD_INHIBIT;  // default: idle
 	sd_data <= 16'hZZZZ;
@@ -157,9 +162,16 @@ always @(posedge clk) begin
 
 		// normal operation
 		if(stage == STATE_CMD_START) begin
-			if(we || oe) begin
+         ack  <= 1'b0;
+         ack2 <= 1'b0;
+         
+         if(oe  && (addr_last  == addr )) ack  <= 1'b1;
+         if(oe2 && (addr2_last == addr2)) ack2 <= 1'b1;
+         
+			if(we || (oe & (addr_last != addr))) begin
 
-				mode <= {we, oe};
+				mode    <= {we, oe};
+            channel <= 1'b0;
 
 				// RAS phase
 				sd_cmd  <= CMD_ACTIVE;
@@ -168,10 +180,26 @@ always @(posedge clk) begin
 
 				din_r   <= din;
 				addr_r  <= { we ? ~ds : 2'b00, 2'b10, addr[22], addr[7:0] };  // auto precharge
+            
+            if (oe) addr_last = addr;
 			end
-			else if (autorefresh || refresh) begin
+         else if(oe2 && (addr2_last != addr2)) begin
+
+				mode    <= 2'b01;
+            channel <= 1'b1;
+
+				// RAS phase
+				sd_cmd  <= CMD_ACTIVE;
+				sd_addr <= { 1'b0, addr2[19:8] };
+				sd_ba   <= addr2[21:20];
+            
+				addr_r  <= { 2'b00, 2'b10, addr2[22], addr2[7:0] };  // auto precharge
+            
+            addr2_last = addr2;
+			end
+			else begin
 				sd_cmd <= CMD_AUTO_REFRESH;
-				mode <= 0;
+				mode   <= 0;
 			end
 		end
 
@@ -188,7 +216,14 @@ always @(posedge clk) begin
 		end
 
 		if(stage == STATE_READ && mode) begin
-			dout <= sd_data;
+         if (channel) begin
+            dout2 <= sd_data;
+            ack2  <= 1'b1;
+         end 
+         else begin
+            dout <= sd_data;
+            ack  <= 1'b1;
+         end
 		end
 	end
 end

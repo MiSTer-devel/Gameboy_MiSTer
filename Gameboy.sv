@@ -190,31 +190,29 @@ assign VGA_SCALER= 0;
 
 assign AUDIO_MIX = status[8:7];
 
+assign DDRAM_CLK      = 0;
+assign DDRAM_BURSTCNT = 0;
+assign DDRAM_ADDR     = 0;
+assign DDRAM_RD       = 0;
+assign DDRAM_DIN      = 0;
+assign DDRAM_BE       = 0;
+assign DDRAM_WE       = 0;
+
 // Status Bit Map: (0..31 => "O", 32..63 => "o")
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXX
+// XXXXXX XXXXXXXXXXXXXXXX       X      
 
 `include "build_id.v" 
 localparam CONF_STR = {
-	"GAMEBOY;SS3E000000:40000;",
+	"GAMEBOY2P;SS3E000000:40000;",
 	"FS1,GBCGB ,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color;",
-	"ONO,Super Game Boy,Off,Palette,On;",
-	"d5FC2,SGB,Load SGB border;",
-	"-;",
-	"C,Cheats;",
-	"h0OH,Cheats enabled,Yes,No;",
 	"-;",
 	"h2R9,Load Backup RAM;",
 	"h2RA,Save Backup RAM;",
 	"OD,Autosave,Off,On;",
-	"-;",
-	"OV,Savestates to SDCard,On,Off;",
-	"o01,Savestate Slot,1,2,3,4;",
-	"h3RS,Save state (Alt-F1);",
-	"h3RT,Restore state (F1);",
 	"-;",
 
 	"P1,Audio & Video;",
@@ -226,42 +224,19 @@ localparam CONF_STR = {
 	"P1O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1OLM,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"P1O5,Stabilize video(buffer),Off,On;",
-	"P1OG,Frame blend,Off,On;",
 	"d4P1OU,GBC Colors,Corrected,Raw;",
-	"P1o2,Analog width,Narrow,Wide;",
+	"P1O5,Sync Video,Off,On;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
+   "P1OGH,Audioselect,GB 1,GB 2,Mixed,Split 1=L 2=R;",
 
 	"P2,Misc.;",
 	"P2-;",
 	"P2OB,Boot,Normal,Fast;",
-	"P2O6,Link Port,Disabled,Enabled;",
-	"P2-;",
-	"P2OP,FastForward Sound,On,Off;",
-	"P2OQ,Pause when OSD is open,Off,On;",
-	"P2OR,Rewind Capture,Off,On;",
-	"P2-;",
-	"P2o3,Super Game Boy + GBC,Off,On;",
 
 	"-;",
 	"R0,Reset;",
-	"J1,A,B,Select,Start,FastForward,Savestates,Rewind;",
-	"I,",
-	"Slot=DPAD|Save/Load=Pause+DPAD,",
-	"Active Slot 1,",
-	"Active Slot 2,",
-	"Active Slot 3,",
-	"Active Slot 4,",
-	"Save to state 1,",
-	"Restore state 1,",
-	"Save to state 2,",
-	"Restore state 2,",
-	"Save to state 3,",
-	"Restore state 3,",
-	"Save to state 4,",
-	"Restore state 4,",
-	"Rewinding...;",
+	"J1,A,B,Select,Start;",
 	"V,v",`BUILD_DATE
 };
 
@@ -295,7 +270,7 @@ wire [24:0] ioctl_addr;
 wire [15:0] ioctl_dout;
 wire        ioctl_wait;
 
-wire [15:0] joystick_0, joy0_unmod, joystick_1, joystick_2, joystick_3;
+wire [15:0] joystick_0, joystick_1, joystick_2, joystick_3;
 wire [15:0] joystick_analog_0;
 wire [10:0] ps2_key;
 
@@ -344,14 +319,14 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
-	.status_in({status[63:34],ss_slot,status[31:0]}),
-	.status_set(statusUpdate),
+	.status_menumask({1'b0,isGBC,(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
+	.status_in(status),
+	.status_set(1'b0),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
 	.forced_scandoubler(forced_scandoubler),
 
-	.joystick_0(joy0_unmod),
+	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
 	.joystick_2(joystick_2),
 	.joystick_3(joystick_3),
@@ -359,34 +334,45 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	
 	.ps2_key(ps2_key),
 	
-	.info_req(ss_info_req),
-	.info(ss_info),
+	.info_req(1'b0),
+	.info(0),
 	
 	.TIMESTAMP(RTC_time)
 );
 
-assign joystick_0 = joy0_unmod[9] ? 16'b0 : joy0_unmod;
-
 ///////////////////////////////////////////////////
 
-wire [15:0] cart_addr;
-wire cart_rd;
-wire cart_wr;
-wire [7:0] cart_di, cart_do;
+wire [15:0] cart1_addr;
+wire        cart1_rd;
+wire        cart1_wr;
+wire  [7:0] cart1_di;
+wire  [7:0] cart1_do;
+wire  [9:0] mbc1_bank;
+
+wire [15:0] cart2_addr;
+wire        cart2_rd;
+wire        cart2_wr;
+wire  [7:0] cart2_di;
+wire  [7:0] cart2_do;
+wire  [9:0] mbc2_bank;
+
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
 wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
 wire bios_download = ioctl_download && (filetype == 8'h40);
-wire sgb_border_download = ioctl_download && (filetype == 2);
 
-wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
+wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart1_addr[0], ~cart1_addr[0]};
 wire [15:0] sdram_do;
 wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
-wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_bank, cart_addr[12:1]};
-wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
+wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc1_bank, cart1_addr[12:1]};
+wire sdram_oe = ~cart_download & cart1_rd & ~cram1_rd;
+wire sdram_ack;
 wire sdram_we = cart_download & dn_write;
-wire sdram_refresh_force;
-wire sdram_autorefresh = !ff_on;
+
+wire [15:0] sdram_do2;
+wire [23:0] sdram_addr2 = {2'b00, mbc2_bank, cart2_addr[12:1]};
+wire        sdram_oe2   = ~cart_download & cart2_rd & ~cram2_rd;
+wire        sdram_ack2;
 
 assign SDRAM_CKE = 1;
 
@@ -404,56 +390,83 @@ sdram sdram (
 
     // system interface
    .clk            ( clk_ram                   ),
-   .sync           ( ce_cpu2x                  ),
+   .sync           ( ce_ram2x                  ),
    .init           ( ~pll_locked               ),
 
    // cpu interface
+   .dout           ( sdram_do                  ),
    .din            ( sdram_di                  ),
    .addr           ( sdram_addr                ),
    .ds             ( sdram_ds                  ),
    .we             ( sdram_we                  ),
    .oe             ( sdram_oe                  ),
-   .autorefresh    ( sdram_autorefresh         ),
-   .refresh        ( sdram_refresh_force       ),
-   .dout           ( sdram_do                  )
+   .ack            ( sdram_ack                 ),
+   
+   .dout2          ( sdram_do2                 ),
+   .addr2          ( sdram_addr2               ),
+   .oe2            ( sdram_oe2                 ),
+   .ack2           ( sdram_ack2                )
 );
 
 wire dn_write;
-wire cart_ready;
-wire cram_rd, cram_wr;
-wire [9:0] mbc_bank;
-wire [7:0] ram_mask_file, cart_ram_size;
+wire cart1_ready;
+wire cart2_ready;
+wire cram1_rd, cram1_wr;
+wire cram2_rd, cram2_wr;
+wire [7:0] cart_ram_size;
 wire isGBC_game, isSGB_game;
 wire cart_has_save;
 wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
 
-cart_top cart (
+reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
+
+always @(posedge clk_sys) begin
+	if (palette_download & ioctl_wr) begin
+			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
+	end
+end
+
+assign AUDIO_S = 0;
+
+wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
+
+reg isGBC = 0;
+always @(posedge clk_sys) if(reset) begin
+	if(status[15:14]) isGBC <= status[15];
+	else if(cart_download) isGBC <= !filetype[7:4];
+end
+
+// core 1
+wire speed1;
+wire SaveStateBus_rst1;
+
+cart_top cart1 (
 	.reset	     ( reset      ),
 
 	.clk_sys     ( clk_sys    ),
-	.ce_cpu      ( ce_cpu     ),
-	.ce_cpu2x    ( ce_cpu2x   ),
-	.speed       ( speed      ),
+	.ce_cpu      ( ce1_cpu    ),
+	.ce_cpu2x    ( ce1_cpu2x  ),
+	.speed       ( speed1     ),
 
-	.cart_addr   ( cart_addr  ),
-	.cart_rd     ( cart_rd    ),
-	.cart_wr     ( cart_wr    ),
-	.cart_do     ( cart_do    ),
-	.cart_di     ( cart_di    ),
+	.cart_addr   ( cart1_addr  ),
+	.cart_rd     ( cart1_rd    ),
+	.cart_wr     ( cart1_wr    ),
+	.cart_do     ( cart1_do    ),
+	.cart_di     ( cart1_di    ),
 
-	.mbc_bank    ( mbc_bank   ),
+	.mbc_bank    ( mbc1_bank   ),
 
 	.dn_write    ( dn_write    ),
-	.cart_ready  ( cart_ready  ),
+	.cart_ready  ( cart1_ready  ),
 
-	.cram_rd     ( cram_rd     ),
-	.cram_wr     ( cram_wr     ),
+	.cram_rd     ( cram1_rd     ),
+	.cram_wr     ( cram1_wr     ),
 
 	.cart_download ( cart_download ),
 
-	.ram_mask_file ( ram_mask_file ),
+	.ram_mask_file (  ),
 	.ram_size      ( cart_ram_size ),
 	.has_save      ( cart_has_save ),
 
@@ -466,11 +479,11 @@ cart_top cart (
 	.ioctl_dout     ( ioctl_dout     ),
 	.ioctl_wait     ( ioctl_wait     ),
 
-	.bk_wr          ( bk_wr          ),
-	.bk_rtc_wr      ( bk_rtc_wr      ),
+	.bk_wr          ( bk_wr1         ),
+	.bk_rtc_wr      ( 1'b0           ),
 	.bk_addr        ( bk_addr        ),
 	.bk_data        ( bk_data        ),
-	.bk_q           ( bk_q           ),
+	.bk_q           ( bk_q1          ),
 	.img_size       ( img_size       ),
 
 	.sdram_di       ( sdram_do       ),
@@ -482,142 +495,323 @@ cart_top cart (
 	.RTC_savedtimeOut ( RTC_savedtimeOut ),
 	.RTC_inuse        ( RTC_inuse        ),
 
-	.SaveStateExt_Din ( SaveStateBus_Din  ),
-	.SaveStateExt_Adr ( SaveStateBus_Adr  ),
-	.SaveStateExt_wren( SaveStateBus_wren ),
-	.SaveStateExt_rst ( SaveStateBus_rst  ),
-	.SaveStateExt_Dout( SaveStateBus_Dout ),
-	.savestate_load   ( savestate_load    ),
-	.sleep_savestate  ( sleep_savestate   ),
+	.SaveStateExt_Din ( 0  ),
+	.SaveStateExt_Adr ( 0  ),
+	.SaveStateExt_wren( 0 ),
+	.SaveStateExt_rst ( SaveStateBus_rst1  ),
+	.SaveStateExt_Dout(  ),
+	.savestate_load   ( 0   ),
+	.sleep_savestate  ( 0   ),
 
-	.Savestate_CRAMAddr     ( Savestate_CRAMAddr      ),
-	.Savestate_CRAMRWrEn    ( Savestate_CRAMRWrEn     ),
-	.Savestate_CRAMWriteData( Savestate_CRAMWriteData ),
-	.Savestate_CRAMReadData ( Savestate_CRAMReadData  )
+	.Savestate_CRAMAddr     ( 0  ),
+	.Savestate_CRAMRWrEn    ( 0  ),
+	.Savestate_CRAMWriteData( 0  ),
+	.Savestate_CRAMReadData (    )
 );
 
-reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
-
-always @(posedge clk_sys) begin
-	if (palette_download & ioctl_wr) begin
-			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
-	end
-end
-
-wire lcd_clkena;
-wire [14:0] lcd_data;
-wire [1:0] lcd_mode;
-wire [1:0] lcd_data_gb;
-wire lcd_on;
-wire lcd_vsync;
-
-wire DMA_on;
-
-assign AUDIO_S = 0;
-
-wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
-wire speed;
-
-reg isGBC = 0;
-always @(posedge clk_sys) if(reset) begin
-	if(status[15:14]) isGBC <= status[15];
-	else if(cart_download) isGBC <= !filetype[7:4];
-end
-
-wire [15:0] GB_AUDIO_L;
-wire [15:0] GB_AUDIO_R;
+wire [15:0] AUDIO_L1;
+wire [15:0] AUDIO_R1;
 
 // the gameboy itself
-gb gb (
+gb gb1 (
 	.reset	    ( reset      ),
 	
 	.clk_sys     ( clk_sys    ),
-	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
-	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
+	.ce          ( ce1_cpu    ),   // the whole gameboy runs on 4mhnz
+	.ce_2x       ( ce1_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.fast_boot   ( status[11]  ),
 
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
-	.isSGB       ( |sgb_en & ~isGBC ),
+	.isSGB       ( 1'b0 ),
 
-	.joy_p54     ( joy_p54     ),
-	.joy_din     ( joy_do_sgb  ),
+	.joy_p54     ( joy1_p54     ),
+	.joy_din     ( joy1_do      ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart_addr  ),
-	.cart_rd     ( cart_rd    ),
-	.cart_wr     ( cart_wr    ),
-	.cart_do     ( cart_do    ),
-	.cart_di     ( cart_di    ),
+	.cart_addr   ( cart1_addr  ),
+	.cart_rd     ( cart1_rd    ),
+	.cart_wr     ( cart1_wr    ),
+	.cart_do     ( cart1_do    ),
+	.cart_di     ( cart1_di    ),
 	
 	//gbc bios interface
-	.gbc_bios_addr   ( bios_addr  ),
-	.gbc_bios_do     ( bios_do    ),
+	.gbc_bios_addr   ( bios1_addr  ),
+	.gbc_bios_do     ( bios1_do    ),
 
 	// audio
-	.audio_l 	 ( GB_AUDIO_L ),
-	.audio_r 	 ( GB_AUDIO_R ),
+	.audio_l 	 ( AUDIO_L1 ),
+	.audio_r 	 ( AUDIO_R1 ),
 	
 	// interface to the lcd
-	.lcd_clkena  ( lcd_clkena ),
-	.lcd_data    ( lcd_data   ),
-	.lcd_data_gb ( lcd_data_gb ),
-	.lcd_mode    ( lcd_mode   ),
-	.lcd_on      ( lcd_on     ),
-	.lcd_vsync   ( lcd_vsync  ),
+	.lcd_clkena  ( lcd1_clkena ),
+	.lcd_data    ( lcd1_data   ),
+	.lcd_data_gb (            ),
+	.lcd_mode    ( lcd1_mode   ),
+	.lcd_on      ( lcd1_on     ),
+	.lcd_vsync   ( lcd1_vsync  ),
 	
-	.speed       ( speed      ),
-	.DMA_on      ( DMA_on    ),
+	.speed       ( speed1    ),
+	.DMA_on      (     ),
 	
 	// serial port
-	.sc_int_clock2(sc_int_clock_out),
-	.serial_clk_in(ser_clk_in),
-	.serial_data_in(ser_data_in),
-	.serial_clk_out(ser_clk_out),
-	.serial_data_out(ser_data_out),
+	.sc_int_clock2  (sc1_int_clock_out),
+	.serial_clk_in  (ser1_clk_in),
+	.serial_data_in (ser1_data_in),
+	.serial_clk_out (ser1_clk_out),
+	.serial_data_out(ser1_data_out),
 	
 	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
 	// so clear the cheats and disable second option (chheats enable/disable)
-	.gg_reset((code_download && ioctl_wr && !ioctl_addr) | cart_download | palette_download),
-	.gg_en(~status[17]),
-	.gg_code(gg_code),
-	.gg_available(gg_available),
+	.gg_reset(1'b0),
+	.gg_en(1'b0),
+	.gg_code(0),
+	.gg_available(),
 	
 	// savestates
-	.increaseSSHeaderCount (!status[31]),
+	.increaseSSHeaderCount (1'b0),
 	.cart_ram_size   (cart_ram_size),
-	.save_state      (ss_save),
-	.load_state      (ss_load),
-	.savestate_number(ss_slot),
-	.sleep_savestate (sleep_savestate),
+	.save_state      (1'b0),
+	.load_state      (1'b0),
+	.savestate_number(2'b00),
+	.sleep_savestate (),
 	
-	.SaveStateExt_Din (SaveStateBus_Din),
-	.SaveStateExt_Adr (SaveStateBus_Adr),
-	.SaveStateExt_wren(SaveStateBus_wren),
-	.SaveStateExt_rst (SaveStateBus_rst),
-	.SaveStateExt_Dout(SaveStateBus_Dout),
-	.SaveStateExt_load(savestate_load),
+	.SaveStateExt_Din (),
+	.SaveStateExt_Adr (),
+	.SaveStateExt_wren(),
+	.SaveStateExt_rst (SaveStateBus_rst1),
+	.SaveStateExt_Dout(0),
+	.SaveStateExt_load(),
 	
-	.Savestate_CRAMAddr     (Savestate_CRAMAddr),
-	.Savestate_CRAMRWrEn    (Savestate_CRAMRWrEn),
-	.Savestate_CRAMWriteData(Savestate_CRAMWriteData),
-	.Savestate_CRAMReadData (Savestate_CRAMReadData),
+	.Savestate_CRAMAddr     (),
+	.Savestate_CRAMRWrEn    (),
+	.Savestate_CRAMWriteData(),
+	.Savestate_CRAMReadData (0),
 	
-	.SAVE_out_Din(ss_din),            // data read from savestate
-	.SAVE_out_Dout(ss_dout),          // data written to savestate
-	.SAVE_out_Adr(ss_addr),           // all addresses are DWORD addresses!
-	.SAVE_out_rnw(ss_rnw),            // read = 1, write = 0
-	.SAVE_out_ena(ss_req),            // one cycle high for each action
-	.SAVE_out_be(ss_be),            
-	.SAVE_out_done(ss_ack),            // should be one cycle high when write is done or read value is valid
+	.SAVE_out_Din(),            // data read from savestate
+	.SAVE_out_Dout(0),          // data written to savestate
+	.SAVE_out_Adr(),           // all addresses are DWORD addresses!
+	.SAVE_out_rnw(),            // read = 1, write = 0
+	.SAVE_out_ena(),            // one cycle high for each action
+	.SAVE_out_be(),            
+	.SAVE_out_done(1'b1),            // should be one cycle high when write is done or read value is valid
 	
-	.rewind_on(status[27]),
-	.rewind_active(status[27] & joystick_0[10])
+	.rewind_on(1'b0),
+	.rewind_active(1'b0)
 );
 
-assign AUDIO_L = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_L;
-assign AUDIO_R = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_R;
+wire [1:0] joy1_p54;
+wire [3:0] joy1_dir     = ~{ joystick_0[2], joystick_0[3], joystick_0[1], joystick_0[0] } | {4{joy1_p54[0]}};
+wire [3:0] joy1_buttons = ~{ joystick_0[7], joystick_0[6], joystick_0[5], joystick_0[4] } | {4{joy1_p54[1]}};
+wire [3:0] joy1_do      = joy1_dir & joy1_buttons;
+
+wire [7:0] bios1_do;
+wire [11:0] bios1_addr;
+
+dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc1 (
+	.clock (clk_sys),
+	
+	.address_a (bios1_addr),
+	.q_a (bios1_do),
+	
+	.address_b (ioctl_addr[11:1]),
+	.wren_b (ioctl_wr && bios_download),
+	.data_b (ioctl_dout)
+);
+
+// core 2
+wire speed2;
+wire SaveStateBus_rst2;
+
+cart_top cart2 (
+	.reset	     ( reset      ),
+
+	.clk_sys     ( clk_sys    ),
+	.ce_cpu      ( ce2_cpu    ),
+	.ce_cpu2x    ( ce2_cpu2x  ),
+	.speed       ( speed2     ),
+
+	.cart_addr   ( cart2_addr  ),
+	.cart_rd     ( cart2_rd    ),
+	.cart_wr     ( cart2_wr    ),
+	.cart_do     ( cart2_do    ),
+	.cart_di     ( cart2_di    ),
+
+	.mbc_bank    ( mbc2_bank   ),
+
+	.dn_write    (      ),
+	.cart_ready  ( cart2_ready  ),
+
+	.cram_rd     ( cram2_rd     ),
+	.cram_wr     ( cram2_wr     ),
+
+	.cart_download ( cart_download ),
+
+	.ram_mask_file (  ),
+	.ram_size      (  ),
+	.has_save      (  ),
+
+	.isGBC_game    (     ),
+	.isSGB_game    (     ),
+
+	.ioctl_download ( ioctl_download ),
+	.ioctl_wr       ( ioctl_wr       ),
+	.ioctl_addr     ( ioctl_addr     ),
+	.ioctl_dout     ( ioctl_dout     ),
+	.ioctl_wait     (      ),
+
+	.bk_wr          ( bk_wr2         ),
+	.bk_rtc_wr      ( 1'b0           ),
+	.bk_addr        ( bk_addr        ),
+	.bk_data        ( bk_data        ),
+	.bk_q           ( bk_q2          ),
+	.img_size       ( img_size       ),
+
+	.sdram_di       ( sdram_do2      ),
+
+	.joystick_analog_0 ( joystick_analog_0 ),
+
+	.RTC_time         ( RTC_time         ),
+	.RTC_timestampOut (  ),
+	.RTC_savedtimeOut (  ),
+	.RTC_inuse        (  ),
+
+	.SaveStateExt_Din ( 0  ),
+	.SaveStateExt_Adr ( 0  ),
+	.SaveStateExt_wren( 0 ),
+	.SaveStateExt_rst ( SaveStateBus_rst2  ),
+	.SaveStateExt_Dout(  ),
+	.savestate_load   ( 0   ),
+	.sleep_savestate  ( 0   ),
+
+	.Savestate_CRAMAddr     ( 0  ),
+	.Savestate_CRAMRWrEn    ( 0  ),
+	.Savestate_CRAMWriteData( 0  ),
+	.Savestate_CRAMReadData (    )
+);
+
+wire [15:0] AUDIO_L2;
+wire [15:0] AUDIO_R2;
+
+// the gameboy itself
+gb gb2 (
+	.reset	    ( reset      ),
+	
+	.clk_sys     ( clk_sys    ),
+	.ce          ( ce2_cpu    ),   // the whole gameboy runs on 4mhnz
+	.ce_2x       ( ce2_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
+	
+	.fast_boot   ( status[11]  ),
+
+	.isGBC       ( isGBC      ),
+	.isGBC_game  ( isGBC_game ),
+	.isSGB       ( 1'b0 ),
+
+	.joy_p54     ( joy2_p54     ),
+	.joy_din     ( joy2_do      ),
+
+	// interface to the "external" game cartridge
+	.cart_addr   ( cart2_addr  ),
+	.cart_rd     ( cart2_rd    ),
+	.cart_wr     ( cart2_wr    ),
+	.cart_do     ( cart2_do    ),
+	.cart_di     ( cart2_di    ),
+	
+	//gbc bios interface
+	.gbc_bios_addr   ( bios2_addr  ),
+	.gbc_bios_do     ( bios2_do    ),
+
+	// audio
+	.audio_l 	 ( AUDIO_L2 ),
+	.audio_r 	 ( AUDIO_R2 ),
+	
+	// interface to the lcd
+	.lcd_clkena  ( lcd2_clkena ),
+	.lcd_data    ( lcd2_data   ),
+	.lcd_data_gb (            ),
+	.lcd_mode    ( lcd2_mode   ),
+	.lcd_on      ( lcd2_on     ),
+	.lcd_vsync   ( lcd2_vsync  ),
+	
+	.speed       ( speed2     ),
+	.DMA_on      (      ),
+	
+	// serial port
+	.sc_int_clock2  (sc2_int_clock_out),
+	.serial_clk_in  (ser2_clk_in),
+	.serial_data_in (ser2_data_in),
+	.serial_clk_out (ser2_clk_out),
+	.serial_data_out(ser2_data_out),
+	
+	// Palette download will disable cheats option (HPS doesn't distinguish downloads),
+	// so clear the cheats and disable second option (chheats enable/disable)
+	.gg_reset(1'b0),
+	.gg_en(1'b0),
+	.gg_code(0),
+	.gg_available(),
+	
+	// savestates
+	.increaseSSHeaderCount (1'b0),
+	.cart_ram_size   (cart_ram_size),
+	.save_state      (1'b0),
+	.load_state      (1'b0),
+	.savestate_number(2'b00),
+	.sleep_savestate (),
+	
+	.SaveStateExt_Din (),
+	.SaveStateExt_Adr (),
+	.SaveStateExt_wren(),
+	.SaveStateExt_rst (SaveStateBus_rst2),
+	.SaveStateExt_Dout(0),
+	.SaveStateExt_load(),
+	
+	.Savestate_CRAMAddr     (),
+	.Savestate_CRAMRWrEn    (),
+	.Savestate_CRAMWriteData(),
+	.Savestate_CRAMReadData (0),
+	
+	.SAVE_out_Din(),            // data read from savestate
+	.SAVE_out_Dout(0),          // data written to savestate
+	.SAVE_out_Adr(),           // all addresses are DWORD addresses!
+	.SAVE_out_rnw(),            // read = 1, write = 0
+	.SAVE_out_ena(),            // one cycle high for each action
+	.SAVE_out_be(),            
+	.SAVE_out_done(1'b1),            // should be one cycle high when write is done or read value is valid
+	
+	.rewind_on(1'b0),
+	.rewind_active(1'b0)
+);
+
+wire [1:0] joy2_p54;
+wire [3:0] joy2_dir     = ~{ joystick_1[2], joystick_1[3], joystick_1[1], joystick_1[0] } | {4{joy2_p54[0]}};
+wire [3:0] joy2_buttons = ~{ joystick_1[7], joystick_1[6], joystick_1[5], joystick_1[4] } | {4{joy2_p54[1]}};
+wire [3:0] joy2_do      = joy2_dir & joy2_buttons;
+
+wire [7:0] bios2_do;
+wire [11:0] bios2_addr;
+
+dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc2 (
+	.clock (clk_sys),
+	
+	.address_a (bios2_addr),
+	.q_a (bios2_do),
+	
+	.address_b (ioctl_addr[11:1]),
+	.wren_b (ioctl_wr && bios_download),
+	.data_b (ioctl_dout)
+);
+
+assign AUDIO_L = (status[17:16] == 3'd0) ? AUDIO_L1 : 
+                 (status[17:16] == 3'd1) ? AUDIO_L2 : 
+                 (status[17:16] == 3'd2) ? ({1'b0, AUDIO_L1[15:1]} + {1'b0, AUDIO_L2[15:1]}) : 
+                                           ({1'b0, AUDIO_L1[15:1]} + {1'b0, AUDIO_R1[15:1]});
+
+assign AUDIO_R = (status[17:16] == 3'd0) ? AUDIO_R1 : 
+                 (status[17:16] == 3'd1) ? AUDIO_R2 : 
+                 (status[17:16] == 3'd2) ? ({1'b0, AUDIO_R1[15:1]} + {1'b0, AUDIO_R2[15:1]}) : 
+                                           ({1'b0, AUDIO_L2[15:1]} + {1'b0, AUDIO_R2[15:1]});
+
 
 // the lcd to vga converter
 wire [7:0] R,G,B;
@@ -628,36 +822,55 @@ wire [8:0] h_cnt, v_cnt;
 wire [1:0] tint = status[2:1];
 wire h_end;
 
+wire        lcd1_clkena;
+wire [14:0] lcd1_data;
+wire  [1:0] lcd1_mode;
+wire        lcd1_on;
+wire        lcd1_vsync;
+
+wire        lcd2_clkena;
+wire [14:0] lcd2_data;
+wire  [1:0] lcd2_mode;
+wire        lcd2_on;
+wire        lcd2_vsync;
+
+wire pauseVideoCore1;
+wire pauseVideoCore2;
+
 lcd lcd
 (
 	// serial interface
 	.clk_sys( clk_sys    ),
-	.ce     ( ce_cpu         ),
+	.ce     ( ce1_cpu    ),
+	.ce2    ( ce2_cpu    ),
 
-	.lcd_clkena ( sgb_lcd_clkena ),
-	.data   ( sgb_lcd_data   ),
-	.mode   ( sgb_lcd_mode   ),  // used to detect begin of new lines and frames
-	.on     ( sgb_lcd_on     ),
-	.lcd_vs ( sgb_lcd_vsync  ),
+	.core1_lcd_clkena ( lcd1_clkena ),
+	.core1_data       ( lcd1_data   ),
+	.core1_mode       ( lcd1_mode   ),  // used to detect begin of new lines and frames
+	.core1_on         ( lcd1_on     ),
+	.core1_lcd_vs     ( lcd1_vsync  ),
+   
+   .core2_lcd_clkena ( lcd2_clkena ),
+	.core2_data       ( lcd2_data   ),
+	.core2_mode       ( lcd2_mode   ),  // used to detect begin of new lines and frames
+	.core2_on         ( lcd2_on     ),
+	.core2_lcd_vs     ( lcd2_vsync  ),
 
 	.isGBC  ( isGBC      ),
 
 	.tint   ( |tint       ),
 	.inv    ( status[12]  ),
-	.double_buffer( status[5]),
-	.frame_blend( status[16] ),
+	.double_buffer( 1'b1),
 	.originalcolors( status[30] ),
-	.analog_wide ( status[34] ),
-
+   
+   .pauseVideoCore1 (pauseVideoCore1),
+   .pauseVideoCore2 (pauseVideoCore2),
+   
 	// Palettes
 	.pal1   (palette[127:104]),
 	.pal2   (palette[103:80]),
 	.pal3   (palette[79:56]),
 	.pal4   (palette[55:32]),
-
-	.sgb_border_pix ( sgb_border_pix),
-	.sgb_pal_en     ( sgb_pal_en ),
-	.sgb_en         ( sgb_border_en ),
 
 	.clk_vid( CLK_VIDEO  ),
 	.hs     ( video_hs   ),
@@ -671,60 +884,6 @@ lcd lcd
 	.h_cnt  ( h_cnt      ),
 	.v_cnt  ( v_cnt      ),
 	.h_end  ( h_end      )
-);
-
-wire [1:0] joy_p54;
-wire [3:0] joy_do_sgb;
-wire [14:0] sgb_lcd_data;
-wire [15:0] sgb_border_pix;
-wire sgb_lcd_clkena, sgb_lcd_on, sgb_lcd_vsync;
-wire [1:0] sgb_lcd_mode;
-wire sgb_pal_en;
-wire [1:0] sgb_en = status[24:23];
-wire sgb_border_en = sgb_en[1];
-
-sgb sgb (
-	.reset       ( reset       ),
-	.clk_sys     ( clk_sys     ),
-	.ce          ( ce_cpu      ),
-
-	.clk_vid     ( CLK_VIDEO   ),
-	.ce_pix      ( ce_pix      ),
-
-	.joystick_0  ( joystick_0  ),
-	.joystick_1  ( joystick_1  ),
-	.joystick_2  ( joystick_2  ),
-	.joystick_3  ( joystick_3  ),
-	.joy_p54     ( joy_p54     ),
-	.joy_do      ( joy_do_sgb  ),
-
-	.sgb_en      ( |sgb_en & isSGB_game & (~isGBC | status[35]) ),
-	.tint        ( tint[1]     ),
-	.isGBC_game  ( isGBC & isGBC_game ),
-
-	.lcd_on      ( lcd_on      ),
-	.lcd_clkena  ( lcd_clkena  ),
-	.lcd_data    ( lcd_data    ),
-	.lcd_data_gb ( lcd_data_gb ),
-	.lcd_mode    ( lcd_mode    ),
-	.lcd_vsync   ( lcd_vsync   ),
-
-	.h_cnt       ( h_cnt      ),
-	.v_cnt       ( v_cnt      ),
-	.h_end       ( h_end      ),
-
-	.border_download (sgb_border_download),
-	.ioctl_wr        (ioctl_wr),
-	.ioctl_addr      (ioctl_addr),
-	.ioctl_dout      (ioctl_dout),
-
-	.sgb_border_pix  ( sgb_border_pix  ),
-	.sgb_pal_en      ( sgb_pal_en      ),
-	.sgb_lcd_data    ( sgb_lcd_data    ),
-	.sgb_lcd_on      ( sgb_lcd_on      ),
-	.sgb_lcd_clkena  ( sgb_lcd_clkena  ),
-	.sgb_lcd_mode    ( sgb_lcd_mode    ),
-	.sgb_lcd_vsync   ( sgb_lcd_vsync   )
 );
 
 reg HSync, VSync;
@@ -756,8 +915,8 @@ video_freak video_freak
 	.VGA_DE_IN(VGA_DE),
 	.VGA_DE(),
 
-	.ARX((!ar) ? (sgb_border_en ? 12'd16 : 12'd10) : (ar - 1'd1)),
-	.ARY((!ar) ? (sgb_border_en ? 12'd14 : 12'd9 ) : 12'd0),
+	.ARX((!ar) ? (12'd20) : (ar - 1'd1)),
+	.ARY((!ar) ? (12'd9 ) : 12'd0),
 	.CROP_SIZE(0),
 	.CROP_OFF(0),
 	.SCALE(status[22:21])
@@ -766,212 +925,80 @@ video_freak video_freak
 //////////////////////////////// CE ////////////////////////////////////
 
 
-wire ce_cpu, ce_cpu2x;
-wire cart_act = cart_wr | cart_rd;
+wire ce1_cpu, ce1_cpu2x;
+wire ce2_cpu, ce2_cpu2x;
+wire ce_ram2x;
 
-wire fastforward = joystick_0[8] && !ioctl_download && !OSD_STATUS;
-wire ff_on;
-
-wire sleep_savestate;
-
-reg paused;
-always_ff @(posedge clk_sys) begin
-   paused <= sleep_savestate | (status[26] && OSD_STATUS && !ioctl_download && !reset && ~status[27]); // no pause when downloading rom, resetting or rewind capture is on
-end
-
-speedcontrol speedcontrol
+speedcontrol speedcontrol1
 (
 	.clk_sys     (clk_sys),
-	.pause       (paused),
-	.speedup     (fast_forward),
-	.cart_act    (cart_act),
-	.DMA_on      (DMA_on),
-	.ce          (ce_cpu),
-	.ce_2x       (ce_cpu2x),
-	.refresh     (sdram_refresh_force),
-	.ff_on       (ff_on)
+	.reset       (reset),
+	.romread     (sdram_oe),
+	.romack      (sdram_ack),
+	.pausevideo  (pauseVideoCore1 & status[5]),
+	.ce          (ce1_cpu),
+	.ce_2x       (ce1_cpu2x)
 );
 
-///////////////////////////// Fast Forward Latch /////////////////////////////////
-
-reg fast_forward;
-reg ff_latch;
-
-always @(posedge clk_sys) begin : ffwd
-	reg last_ffw;
-	reg ff_was_held;
-	longint ff_count;
-
-	last_ffw <= fastforward;
-
-	if (fastforward)
-		ff_count <= ff_count + 1;
-
-	if (~last_ffw & fastforward) begin
-		ff_latch <= 0;
-		ff_count <= 0;
-	end
-
-	if ((last_ffw & ~fastforward)) begin // 32mhz clock, 0.2 seconds
-		ff_was_held <= 0;
-
-		if (ff_count < 3200000 && ~ff_was_held) begin
-			ff_was_held <= 1;
-			ff_latch <= 1;
-		end
-	end
-
-	fast_forward <= (fastforward | ff_latch);
-end
-
-///////////////////////////// savestates /////////////////////////////////
-
-wire [63:0] SaveStateBus_Din; 
-wire [9:0]  SaveStateBus_Adr; 
-wire        SaveStateBus_wren;
-wire        SaveStateBus_rst; 
-wire [63:0] SaveStateBus_Dout;
-wire        savestate_load;
-
-wire [19:0] Savestate_CRAMAddr;     
-wire        Savestate_CRAMRWrEn;    
-wire [7:0]  Savestate_CRAMWriteData;
-wire [7:0]  Savestate_CRAMReadData;
-	
-wire [63:0] ss_dout, ss_din;
-wire [27:2] ss_addr;
-wire  [7:0] ss_be;
-wire        ss_rnw, ss_req, ss_ack;
-
-assign DDRAM_CLK = clk_sys;
-ddram ddram
+speedcontrol speedcontrol2
 (
-	.*,
-
-	.ch1_addr({ss_addr, 1'b0}),
-	.ch1_din(ss_din),
-	.ch1_dout(ss_dout),
-	.ch1_req(ss_req),
-	.ch1_rnw(ss_rnw),
-	.ch1_be(ss_be),
-	.ch1_ready(ss_ack)
+	.clk_sys     (clk_sys),
+	.reset       (reset),
+	.romread     (sdram_oe2),
+	.romack      (sdram_ack2),
+	.pausevideo  (pauseVideoCore2 & status[5]),
+	.ce          (ce2_cpu),
+	.ce_2x       (ce2_cpu2x)
 );
 
-// saving with keyboard/OSD/gamepad
-wire [1:0] ss_slot;
-wire [7:0] ss_info;
-wire ss_save, ss_load, ss_info_req;
-wire statusUpdate;
-
-savestate_ui savestate_ui
+speedcontrol speedcontrolSDRAM
 (
-	.clk            (clk_sys       ),
-	.ps2_key        (ps2_key[10:0] ),
-	.allow_ss       (cart_ready    ),
-	.joySS          (joy0_unmod[9] ),
-	.joyRight       (joy0_unmod[0] ),
-	.joyLeft        (joy0_unmod[1] ),
-	.joyDown        (joy0_unmod[2] ),
-	.joyUp          (joy0_unmod[3] ),
-	.joyStart       (joy0_unmod[7] ),
-	.joyRewind      (joy0_unmod[10]),
-	.rewindEnable   (status[27]    ), 
-	.status_slot    (status[33:32] ),
-	.OSD_saveload   (status[29:28] ),
-	.ss_save        (ss_save       ),
-	.ss_load        (ss_load       ),
-	.ss_info_req    (ss_info_req   ),
-	.ss_info        (ss_info       ),
-	.statusUpdate   (statusUpdate  ),
-	.selected_slot  (ss_slot       )
+	.clk_sys     (clk_sys),
+	.reset       (reset),
+	.romread     (1'b0),
+	.romack      (1'b1),
+	.pausevideo  (1'b0),
+	.ce          (),
+	.ce_2x       (ce_ram2x)
 );
-defparam savestate_ui.INFO_TIMEOUT_BITS = 27;
-
-///////////////////////////// GBC BIOS /////////////////////////////////
-
-wire [7:0] bios_do;
-wire [11:0] bios_addr;
-
-dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc (
-	.clock (clk_sys),
-	
-	.address_a (bios_addr),
-	.q_a (bios_do),
-	
-	.address_b (ioctl_addr[11:1]),
-	.wren_b (ioctl_wr && bios_download),
-	.data_b (ioctl_dout)
-);
-
-///////////////////////////// CHEATS //////////////////////////////////
-// Code loading for WIDE IO (16 bit)
-reg [128:0] gg_code;
-wire        gg_available;
-wire        code_download = &filetype;
-
-// Code layout:
-// {clock bit, code flags,     32'b address, 32'b compare, 32'b replace}
-//  128        127:96          95:64         63:32         31:0
-// Integer values are in BIG endian byte order, so it up to the loader
-// or generator of the code to re-arrange them correctly.
-
-always_ff @(posedge clk_sys) begin
-	gg_code[128] <= 1'b0;
-
-	if (code_download & ioctl_wr) begin
-		case (ioctl_addr[3:0])
-			0:  gg_code[111:96]  <= ioctl_dout; // Flags Bottom Word
-			2:  gg_code[127:112] <= ioctl_dout; // Flags Top Word
-			4:  gg_code[79:64]   <= ioctl_dout; // Address Bottom Word
-			6:  gg_code[95:80]   <= ioctl_dout; // Address Top Word
-			8:  gg_code[47:32]   <= ioctl_dout; // Compare Bottom Word
-			10: gg_code[63:48]   <= ioctl_dout; // Compare top Word
-			12: gg_code[15:0]    <= ioctl_dout; // Replace Bottom Word
-			14: begin
-				gg_code[31:16]    <= ioctl_dout; // Replace Top Word
-				gg_code[128]      <= 1'b1;       // Clock it in
-			end
-		endcase
-	end
-end
 
 /////////////////////////////  Serial link  ///////////////////////////////
 
+assign USER_OUT[0] = 1'b1;
+assign USER_OUT[1] = 1'b1;
 assign USER_OUT[2] = 1'b1;
 assign USER_OUT[3] = 1'b1;
 assign USER_OUT[4] = 1'b1;
 assign USER_OUT[5] = 1'b1;
 assign USER_OUT[6] = 1'b1;
 
-wire sc_int_clock_out;
-wire ser_data_in;
-wire ser_data_out;
-wire ser_clk_in;
-wire ser_clk_out;
-wire serial_ena = status[6];
+wire sc1_int_clock_out;
+wire ser1_data_in;
+wire ser1_data_out;
+wire ser1_clk_in;
+wire ser1_clk_out;
 
-assign ser_data_in = serial_ena ? USER_IN[2] : 1'b1;
-assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
+wire sc2_int_clock_out;
+wire ser2_data_in;
+wire ser2_data_out;
+wire ser2_clk_in;
+wire ser2_clk_out;
 
-assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;
-assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
+assign ser1_data_in = ser2_data_out;
+assign ser1_clk_in  = ser2_clk_out;
 
-
+assign ser2_data_in = ser1_data_out;
+assign ser2_clk_in  = ser1_clk_out;
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
 wire [16:0] bk_addr = {sd_lba[7:0],sd_buff_addr};
-wire bk_wr = (sd_lba[7:0] > ram_mask_file) ? 1'b0 : sd_buff_wr & sd_ack; // only restore data amount of saveram, don't save on RTC data
-wire bk_rtc_wr = (sd_lba[7:0] > ram_mask_file) & sd_buff_wr & sd_ack;
+wire bk_wr1 = ( sd_lba[8]) ? 1'b0 : sd_buff_wr & sd_ack; 
+wire bk_wr2 = (~sd_lba[8]) ? 1'b0 : sd_buff_wr & sd_ack; 
 wire [15:0] bk_data = sd_buff_dout;
-wire [15:0] bk_q;
-assign sd_buff_din = (sd_lba[7:0] <= ram_mask_file) ? bk_q :  // normal saveram data or RTC data
-					 (sd_buff_addr == 8'd0) ? RTC_timestampOut[15:0]  :
-					 (sd_buff_addr == 8'd1) ? RTC_timestampOut[31:16] :
-					 (sd_buff_addr == 8'd2) ? RTC_savedtimeOut[15:0]  :
-					 (sd_buff_addr == 8'd3) ? RTC_savedtimeOut[31:16] :
-					 (sd_buff_addr == 8'd4) ? RTC_savedtimeOut[47:32] :
-					 16'hFFFF;
+wire [15:0] bk_q1;
+wire [15:0] bk_q2;
+assign sd_buff_din = (sd_lba[8]) ? bk_q2 : bk_q1;
 
 
 
@@ -995,7 +1022,7 @@ always @(posedge clk_sys) begin
 	else if (bk_state)
 		new_load <= 1'b0;
 
-	if (cram_wr & ~OSD_STATUS & sav_supported)
+	if ((cram1_wr | cram2_wr) & ~OSD_STATUS & sav_supported)
 		sav_pending <= 1'b1;
 	else if (bk_state)
 		sav_pending <= 1'b0;
@@ -1034,10 +1061,7 @@ always @(posedge clk_sys) begin
 	end else begin
 		if(old_ack & ~sd_ack) begin
 			
-			if (RTC_inuse && sd_lba[7:0]>ram_mask_file) begin // save/load one block more when game/savefile uses RTC, only first 8 bytes used
-				bk_loading <= 0;
-				bk_state <= 0;
-			end else if(!RTC_inuse && sd_lba[7:0]>=ram_mask_file) begin
+			if(sd_lba[8:0] == 9'h1FF) begin
 				bk_loading <= 0;
 				bk_state <= 0;
 			end else begin
