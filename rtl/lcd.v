@@ -23,6 +23,7 @@ module lcd
    
 	input        isGBC,
 	input        double_buffer,
+   input        seperatorLine,
    
    output       pauseVideoCore1,
    output       pauseVideoCore2,
@@ -57,6 +58,7 @@ reg [14:0] vbuffer_inptr1;
 reg blank_de1, blank_output1;
 reg [14:0] blank_data1;
 wire pix_wr1 = ce & (core1_lcd_clkena | blank_de1);
+reg [7:0] hpos1;
 always @(posedge clk_sys) begin
 	reg old_lcd_off, old_on, old_lcd_vs;
 	reg [8:0] blank_hcnt,blank_vcnt;
@@ -64,11 +66,19 @@ always @(posedge clk_sys) begin
 	lcd_off1 <= !core1_on || (core1_mode == 2'd01);
 	blank_de1 <= (!core1_on && blank_output1 && blank_hcnt < 160 && blank_vcnt < 144);
 
-	if (pix_wr1) vbuffer_inptr1 <= vbuffer_inptr1 + 1'd1;
+   if (pix_wr1) begin 
+      vbuffer_inptr1 <= vbuffer_inptr1 + 1'd1;
+      if (hpos1 < 159) begin
+         hpos1 <= hpos1 + 1'd1;
+      end else begin
+         hpos1 <= 0;
+      end
+   end
 
 	old_lcd_off <= lcd_off1;
 	if(old_lcd_off ^ lcd_off1) begin
 		vbuffer_inptr1 <= 0;
+      hpos1          <= 0;
 	end
 
 	old_on <= core1_on;
@@ -81,8 +91,10 @@ always @(posedge clk_sys) begin
 	if (ce & ~core1_on & blank_output1) begin
 		blank_data1 <= core1_data;
 		blank_hcnt <= blank_hcnt + 1'b1;
+      hpos1      <= hpos1 + 1'd1;
 		if (blank_hcnt == 9'd455) begin
 			blank_hcnt <= 0;
+         hpos1      <= 0;
 			blank_vcnt <= blank_vcnt + 1'b1;
 			if (blank_vcnt == 9'd153) begin
 				blank_vcnt <= 0;
@@ -97,7 +109,7 @@ always @(posedge clk_sys) begin
 		blank_output1 <= 0;
 end
 reg [14:0] vbuffer1[160*144];
-always @(posedge clk_sys) if(pix_wr1) vbuffer1[vbuffer_inptr1] <= (core1_on & blank_output1) ? blank_data1 : core1_data;
+always @(posedge clk_sys) if(pix_wr1) vbuffer1[vbuffer_inptr1] <= (hpos1 == 8'd159 && seperatorLine) ? 15'd0 : (core1_on & blank_output1) ? blank_data1 : core1_data;
 
 
 
@@ -106,6 +118,7 @@ reg [14:0] vbuffer_inptr2;
 reg blank_de2, blank_output2;
 reg [14:0] blank_data2;
 wire pix_wr2 = ce2 & (core2_lcd_clkena | blank_de2);
+reg [7:0] hpos2;
 always @(posedge clk_sys) begin
 	reg old_lcd_off, old_on, old_lcd_vs;
 	reg [8:0] blank_hcnt,blank_vcnt;
@@ -113,11 +126,19 @@ always @(posedge clk_sys) begin
 	lcd_off2 <= !core2_on || (core2_mode == 2'd01);
 	blank_de2 <= (!core2_on && blank_output2 && blank_hcnt < 160 && blank_vcnt < 144);
 
-	if (pix_wr2) vbuffer_inptr2 <= vbuffer_inptr2 + 1'd1;
+	if (pix_wr2) begin 
+      vbuffer_inptr2 <= vbuffer_inptr2 + 1'd1;
+      if (hpos2 < 159) begin
+         hpos2 <= hpos2 + 1'd1;
+      end else begin
+         hpos2 <= 0;
+      end
+   end
 
 	old_lcd_off <= lcd_off2;
 	if(old_lcd_off ^ lcd_off2) begin
 		vbuffer_inptr2 <= 0;
+      hpos2          <= 0;
 	end
 
 	old_on <= core2_on;
@@ -130,8 +151,10 @@ always @(posedge clk_sys) begin
 	if (ce2 & ~core2_on & blank_output2) begin
 		blank_data2 <= core2_data;
 		blank_hcnt <= blank_hcnt + 1'b1;
+      hpos2      <= hpos2 + 1'd1;
 		if (blank_hcnt == 9'd455) begin
 			blank_hcnt <= 0;
+         hpos2      <= 0;
 			blank_vcnt <= blank_vcnt + 1'b1;
 			if (blank_vcnt == 9'd153) begin
 				blank_vcnt <= 0;
@@ -146,7 +169,7 @@ always @(posedge clk_sys) begin
 		blank_output2 <= 0;
 end
 reg [14:0] vbuffer2[160*144];
-always @(posedge clk_sys) if(pix_wr2) vbuffer2[vbuffer_inptr2] <= (core2_on & blank_output2) ? blank_data2 : core2_data;
+always @(posedge clk_sys) if(pix_wr2) vbuffer2[vbuffer_inptr2] <= (hpos2 == 8'd0 && seperatorLine) ? 15'd0 : (core2_on & blank_output2) ? blank_data2 : core2_data;
 
 
 // Mode 00:  h-blank

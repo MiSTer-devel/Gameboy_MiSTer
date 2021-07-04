@@ -202,7 +202,7 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXXXXXXXXXXXXXX       X      
+// XXXXXX XXXXXXXXXXXXXXXXX      X      
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -217,6 +217,7 @@ localparam CONF_STR = {
 
 	"P1,Audio & Video;",
 	"P1-;",
+   "P1ON,Seperator Line,Off,On;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
@@ -857,6 +858,8 @@ lcd lcd
 	.core2_lcd_vs     ( lcd2_vsync  ),
 
 	.isGBC  ( isGBC      ),
+   
+	.seperatorLine  ( status[23] ),
 
 	.tint   ( |tint       ),
 	.inv    ( status[12]  ),
@@ -901,7 +904,7 @@ wire [2:0] scale = status[20:18];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
 wire       scandoubler = (scale || forced_scandoubler);
 
-video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
+video_mixer #(.LINE_LENGTH(320), .GAMMA(1)) video_mixer
 (
 	.*,
 	.freeze_sync(),
