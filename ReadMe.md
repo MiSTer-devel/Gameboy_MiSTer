@@ -1,46 +1,48 @@
 # [Gameboy](https://en.wikipedia.org/wiki/Game_Boy)  / [Gameboy Color](https://en.wikipedia.org/wiki/Game_Boy_Color) port to [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki)
 
-This is port of [Gameboy for MiST](https://github.com/mist-devel/mist-board/tree/master/cores/gameboy)
+This branch is a special version for splitscreen multiplayer.
+In case you are searching for the normal Gameboy, please go here:
+https://github.com/MiSTer-devel/Gameboy_MiSTer
 
-* Place RBF file into root of SD card.
-* Place *.gb files into Gameboy folder.
+# HW Requirements/Features
+SDRAM addon is required.
 
-## Features
-* Original Gameboy & Gameboy Color Support
-* Super Gameboy Support - Borders, Palettes and Multiplayer
-* Custom Borders
-* SaveStates
-* Fastforward 
-* Rewind - Allows you to rewind up to 40 seconds of gameplay
-* Frameblending - Prevents flicker in some games (e.g. "Chikyuu Kaihou Gun Zas") 
-* Custom Palette Loading
-* Real-Time Clock Support
-* Gameboy Link Port Support - Requires USERIO adapter
-* Cheats
+# Foldername
+All Games and BIOS go to GAMEBOY2P folder. 
 
-## Open Source Bootstrap roms
-This now includes the open source boot ROMs from [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/). For maximum GBC compatibility/authenticity you can still place the Gameboy color bios/bootrom into the Gameboy folder and rename it to boot1.rom
+It is seperated from the normal GAMEBOY folder to ensure safe savegame handling.
 
-## Palettes
-This core supports custom palettes (*.gbp) which should be placed into the Gameboy folder. Some examples are available in the palettes folder.
+You can create a symlink to GAMEBOY folder if you want to use the same games/BIOS.
 
-## Custom Borders
-This core supports custom borders (*.sgb) which should be placed into the Gameboy folder. Some examples are available in the borders folder.
+# Status
+Most multiplayer games should be supported and working
 
-## Autoload
-To autoload your favorite game at startup rename it to `boot2.rom`.
+# Savegames
+Saves created contain savegames for both players. 
 
-## Video output
-The Gameboy can disable video output at any time which causes problems with vsync_adjust=2 or analog video during screen transitions. Enabling the Stabilize video option may fix this at the cost of some increased latency.
+For compatibility, all saves are 256Kbyte in size, 128 KByte for each player.
 
-# Savestates
-This core provides 4 slots to save and restore the memory state which means you can save at any point in the game. These can be saved to your SDCard or they can reside only in memory for temporary use (OSD Option). Save states can be performed with the Keyboard, a mapped button to a gamepad, or through the OSD.
+Saves can be copied from singleplayer, but only player 1 will have a savegame then.
 
-Keyboard Hotkeys for save states:
-- Alt+F1 thru Alt+F4 - save state
-- F1 thru F4 - restore state
+Saves can be copied to singleplayer, but when saved in singleplayer, the second player savegame is lost.
 
-Gamepad:
-- Savestatebutton+Left or Right switches the savestate slot
-- Savestatebutton+Start+Down saves to the selected slot
-- Savestatebutton+Start+Up loads from the selected slot
+# Video Output
+Output resolution is 320x144 pixel, which both screen placed next to each other horizontally.
+
+A seperation line can be enabled in OSD, which will turn the last/first pixel black.
+
+# Audio Output
+Selectable in OSD:
+- Core 1 to both Channels(left/right)
+- Core 2 to both Channels(left/right)
+- Mix both cores
+- Core 1 to left Channel, Core 2 to right Channel
+
+# Not included in this version:
+- Savestates/rewind
+- Fastforward
+- Super Gameboy Support
+- Custom Borders
+- Frameblending
+- Real-Time Clock Support
+- Cheats
