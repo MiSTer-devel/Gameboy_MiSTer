@@ -20,6 +20,9 @@ module mappers(
 	input         gb_camera,
 	input         tama,
 	input         rocket,
+	input         sachen,
+
+	input         isGBC_game,
 
 	input  [15:0] joystick_analog_0,
 
@@ -86,7 +89,7 @@ tri0 RTC_inuse_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket | sachen);
 wire rom_override = (rocket);
 
 mbc1 map_mbc1 (
@@ -496,6 +499,35 @@ rocket map_rocket (
 
 	.rom_di           ( rom_di ),
 	.rom_do_b         ( rom_do_b ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_addr_b       ( mbc_addr_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
+sachen map_sachen (
+	.enable           ( sachen ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.isGBC_game       ( isGBC_game ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data2 ),
+	.savestate_back_b ( savestate_back2_b ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_a15         ( cart_a15 ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.nCS              ( nCS      ),
 
 	.cram_di          ( cram_di ),
 	.cram_do_b        ( cram_do_b ),

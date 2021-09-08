@@ -119,6 +119,9 @@ mappers mappers (
 	.gb_camera ( gb_camera ),
 	.tama ( tama ),
 	.rocket ( rocket ),
+	.sachen ( sachen),
+
+	.isGBC_game ( isGBC_game ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -175,7 +178,7 @@ mappers mappers (
 reg [7:0] cart_mbc_type;
 reg [7:0] cart_rom_size;
 reg [7:0] cart_ram_size;
-reg [7:0] cart_cgb_flag;
+reg       cart_cgb_flag;
 reg [7:0] cart_sgb_flag;
 reg [7:0] cart_old_licensee;
 reg [15:0] cart_logo_data[0:7];
@@ -221,7 +224,7 @@ wire HuC3 = (cart_mbc_type == 254);
 wire HuC1 = (cart_mbc_type == 255);
 
 
-assign isGBC_game = (cart_cgb_flag == 8'h80 || cart_cgb_flag == 8'hC0);
+assign isGBC_game = (cart_cgb_flag);
 assign isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);
 
 
@@ -230,6 +233,8 @@ reg [7:0] cart_logo_check;
 reg [2:0] cart_logo_idx;
 reg mbc1m, mmm01;
 reg mbc1m_check_end, mmm01_check_end;
+
+reg sachen, sachen_t1, sachen_t2;
 
 wire mbc1m_bank = (~|ioctl_addr[24:20] && ioctl_addr[19:12] == 8'h40); // $40000
 wire mmm01_bank = (ioctl_addr[18:12] == 7'h78); // $78000+
@@ -245,12 +250,13 @@ always @(posedge clk_sys) begin
 		cart_mbc_type <= 8'd0;
 		mbc1m <= 0;
 		mmm01 <= 0;
+		{ sachen, sachen_t1, sachen_t2 } <= 0;
 	end
 
 	if(cart_download & ioctl_wr) begin
 		if (~|ioctl_addr[24:12] || (mmm01_bank & mmm01) ) // MMM01 header is at the end of ROM
 			case(ioctl_addr[11:0])
-				12'h142: cart_cgb_flag <= ioctl_dout[15:8];
+				12'h142: cart_cgb_flag <= ioctl_dout[15];
 				12'h146: begin
 					{cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
 					// "Mani 4 in 1" have incorrectly set MBC3 in the header
@@ -259,6 +265,25 @@ always @(posedge clk_sys) begin
 				12'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
 				12'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
 			endcase
+
+		// Sachen
+		if (~|ioctl_addr[24:12]) begin
+			case(ioctl_addr[11:0])
+				12'h100: sachen_t1 <= (ioctl_dout[15:8] != 8'hC3);
+				12'h140: sachen_t2 <= (ioctl_dout[ 7:0] == 8'hC3); // 0xC3 opcode is at $140 instead of $101
+				12'h150: begin /// CGB flag
+					if (sachen_t1 & sachen_t2) begin
+						sachen <= 1'b1;
+						cart_cgb_flag <= ioctl_dout[15];
+						cart_mbc_type <= 0;
+						cart_sgb_flag <= 0;
+						cart_ram_size <= 0;
+						cart_rom_size <= 0;
+						cart_old_licensee <= 0;
+					end
+				end
+			endcase
+		end
 
 		//Store cart logo data
 		if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
