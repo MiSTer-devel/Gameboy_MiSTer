@@ -6,12 +6,16 @@ module cart_top (
 	input         ce_cpu2x,
 	input         speed,
 
-	input  [15:0] cart_addr,
+	input  [14:0] cart_addr,
+	input         cart_a15,
 	input         cart_rd,
 	input         cart_wr,
 	output  [7:0] cart_do,
 	input   [7:0] cart_di, // data from cpu to cart
-	output  [9:0] mbc_bank,
+
+	input         nCS,
+
+	output [22:0] mbc_addr,
 
 	output reg    dn_write,
 	output        cart_ready,
@@ -41,7 +45,7 @@ module cart_top (
 	output [15:0] bk_q,
 	input  [63:0] img_size,
 
-	input  [15:0] sdram_di,
+	input  [7:0]  rom_di,
 
 	input  [15:0] joystick_analog_0,
 
@@ -87,6 +91,7 @@ eReg_SavestateV #(0, 37, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_Ext2 (clk_s
 
 assign SaveStateExt_Dout = SaveStateBus_Dout_or[0] | SaveStateBus_Dout_or[1];
 
+wire [7:0] rom_do;
 wire [7:0] cram_do;
 wire [16:0] mbc_cram_addr;
 wire mbc_ram_enable, mbc_battery;
@@ -113,6 +118,7 @@ mappers mappers (
 	.huc3 ( HuC3 ),
 	.gb_camera ( gb_camera ),
 	.tama ( tama ),
+	.rocket ( rocket ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -138,10 +144,17 @@ mappers mappers (
 	.rom_mask ( rom_mask ),
 
 	.cart_addr ( cart_addr ),
+	.cart_a15  ( cart_a15  ),
+
 	.cart_mbc_type ( cart_mbc_type ),
 
 	.cart_wr   ( cart_wr ),
 	.cart_di   ( cart_di ),
+
+	.rom_di    ( rom_di  ),
+	.rom_do    ( rom_do  ),
+
+	.nCS       ( nCS     ),
 
 	.cram_rd   ( cram_rd  ),
 	.cram_di   ( cram_q  ),
@@ -151,7 +164,7 @@ mappers mappers (
 	.cram_wr_do ( mbc_cram_wr_do ),
 	.cram_wr    ( mbc_cram_wr ),
 
-	.mbc_bank    ( mbc_bank ),
+	.mbc_addr    ( mbc_addr ),
 	.ram_enabled ( mbc_ram_enable ),
 	.has_battery ( mbc_battery )
 
@@ -200,6 +213,7 @@ wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
 wire mbc6 = (cart_mbc_type == 32);
 wire mbc7 = (cart_mbc_type == 34);
+wire rocket = (cart_mbc_type == 151) || (cart_mbc_type == 153);
 wire gb_camera = (cart_mbc_type == 252);
 wire tama = (cart_mbc_type == 253);
 
@@ -276,7 +290,6 @@ always @(posedge clk_sys) begin
 		mmm01 <= cart_logo_match;
 		if (cart_logo_match) mbc1m <= 0;
 	end
-
 end
 
 assign ram_size = cart_ram_size;
@@ -303,7 +316,7 @@ always @* begin
 	else if (cram_rd)
 		cart_do_r = cram_do;
 	else
-		cart_do_r = (cart_addr[0]) ? sdram_di[15:8] : sdram_di[7:0];
+		cart_do_r = rom_do;
 end
 
 assign cart_do = cart_do_r;
@@ -319,7 +332,8 @@ wire [7:0] cram_q = cram_addr[0] ? cram_q_h : cram_q_l;
 wire [7:0] cram_q_h;
 wire [7:0] cram_q_l;
 
-wire is_cram_addr = (cart_addr[15:13] == 3'b101);
+wire is_cram_addr = ~nCS & ~cart_addr[14];
+
 assign cram_rd = cart_rd & is_cram_addr;
 assign cram_wr = sleep_savestate ? Savestate_CRAMRWrEn : mbc_cram_wr || (cart_wr & is_cram_addr & mbc_ram_enable);
 

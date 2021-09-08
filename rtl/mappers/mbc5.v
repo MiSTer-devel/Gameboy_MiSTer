@@ -12,7 +12,9 @@ module mbc5 (
 	input  [3:0] ram_mask,
 	input  [8:0] rom_mask,
 
-	input [15:0] cart_addr,
+	input [14:0] cart_addr,
+	input        cart_a15,
+
 	input  [7:0] cart_mbc_type,
 
 	input        cart_wr,
@@ -22,19 +24,19 @@ module mbc5 (
 	inout  [7:0] cram_do_b,
 	inout [16:0] cram_addr_b,
 
-	inout  [9:0] mbc_bank_b,
+	inout [22:0] mbc_addr_b,
 	inout        ram_enabled_b,
 	inout        has_battery_b
 );
 
-wire [9:0] mbc_bank;
+wire [22:0] mbc_addr;
 wire ram_enabled;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
 wire has_battery;
 wire [15:0] savestate_back;
 
-assign mbc_bank_b       = enable ? mbc_bank       : 10'hZ;
+assign mbc_addr_b       = enable ? mbc_addr       : 23'hZ;
 assign cram_do_b        = enable ? cram_do        :  8'hZ;
 assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
 assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
@@ -44,7 +46,7 @@ assign savestate_back_b = enable ? savestate_back : 16'hZ;
 wire [3:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
 
 // 0x0000-0x3FFF = Bank 0
-wire [8:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 9'd0 : mbc_rom_bank_reg;
+wire [8:0] mbc_rom_bank = (~cart_addr[14]) ? 9'd0 : mbc_rom_bank_reg;
 
 // mask address lines to enable proper mirroring
 wire [8:0] mbc5_rom_bank = mbc_rom_bank & rom_mask;  //480
@@ -71,7 +73,7 @@ always @(posedge clk_sys) begin
 		mbc_ram_bank_reg <= 4'd0;
 		mbc_ram_enable   <= 1'b0;
 	end else if(ce_cpu) begin
-		if (cart_wr & ~cart_addr[15]) begin
+		if (cart_wr & ~cart_a15) begin
 			case(cart_addr[14:13])
 				2'b00: mbc_ram_enable <= (cart_di[3:0] == 4'ha); //RAM enable/disable
 				2'b01: if (cart_addr[12])
@@ -84,7 +86,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-assign mbc_bank = { mbc5_rom_bank, cart_addr[13] };	// 16k ROM Bank 0-480 (0h-1E0h)
+assign mbc_addr = { mbc5_rom_bank, cart_addr[13:0] };	// 16k ROM Bank 0-480 (0h-1E0h)
 assign ram_enabled = mbc_ram_enable & has_ram;
 
 assign cram_do = ram_enabled ? cram_di : 8'hFF;
