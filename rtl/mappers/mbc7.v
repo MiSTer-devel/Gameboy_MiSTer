@@ -19,11 +19,15 @@ module mbc7 (
 	input   [3:0] ram_mask,
 	input   [8:0] rom_mask,
 
-	input  [15:0] cart_addr,
+	input  [14:0] cart_addr,
+	input         cart_a15,
+
 	input   [7:0] cart_mbc_type,
 
 	input         cart_wr,
 	input   [7:0] cart_di,
+
+	input         nCS,
 
 	input   [7:0] cram_di,
 	inout   [7:0] cram_do_b,
@@ -32,12 +36,12 @@ module mbc7 (
 	inout         cram_wr_b,
 	inout   [7:0] cram_wr_do_b,
 
-	inout   [9:0] mbc_bank_b,
+	inout  [22:0] mbc_addr_b,
 	inout         ram_enabled_b,
 	inout         has_battery_b
 );
 
-wire [9:0] mbc_bank;
+wire [22:0] mbc_addr;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
 wire ram_enabled;
@@ -47,7 +51,7 @@ wire [63:0] savestate_back2;
 wire [7:0] cram_wr_do;
 wire cram_wr;
 
-assign mbc_bank_b        = enable ? mbc_bank        : 10'hZ;
+assign mbc_addr_b        = enable ? mbc_addr        : 23'hZ;
 assign cram_do_b         = enable ? cram_do         :  8'hZ;
 assign cram_addr_b       = enable ? cram_addr       : 17'hZ;
 assign ram_enabled_b     = enable ? ram_enabled     :  1'hZ;
@@ -97,14 +101,14 @@ always @(posedge clk_sys) begin
 		eeprom_cs <= 1'b0;
 	end else if(ce_cpu) begin
 		if (cart_wr) begin
-			if (~cart_addr[15]) begin
+			if (~cart_a15) begin
 				case(cart_addr[14:13])
 					2'b00: ram_enable1 <= (cart_di[3:0] == 4'ha); //RAM enable/disable
 					2'b01: rom_bank_reg <= cart_di[6:0]; // ROM bank register
 					2'b10: ram_enable2 <= (cart_di == 8'h40); //RAM enable/disable
 				 endcase
 			end
-			if (ram_reg_en && cart_addr[15:12] == 4'b1010) begin // A000-AFFF
+			if (ram_reg_en & ~nCS & ~cart_addr[14] & ~cart_addr[12]) begin // A000-AFFF
 				case(cart_addr[7:4])
 					0: if (cart_di == 8'h55) begin
 							accel_latched <= 1'b0;
@@ -166,12 +170,12 @@ always @* begin
 end
 
 // 0x0000-0x3FFF = Bank 0
-wire [6:0] rom_bank = (cart_addr[15:14] == 2'b00) ? 7'd0 : rom_bank_reg;
+wire [6:0] rom_bank = (~cart_addr[14]) ? 7'd0 : rom_bank_reg;
 
 // mask address lines to enable proper mirroring
 wire [6:0] rom_bank_m = rom_bank & rom_mask[6:0];  //512
 
-assign mbc_bank = { 2'b00, rom_bank_m, cart_addr[13] };	// 16k ROM Bank 0-511
+assign mbc_addr = { 2'b00, rom_bank_m, cart_addr[13:0] };	// 16k ROM Bank 0-511
 
 assign cram_do = cram_do_r;
 assign cram_addr = { 9'd0, cram_addr_e };

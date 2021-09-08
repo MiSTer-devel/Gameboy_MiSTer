@@ -369,20 +369,23 @@ assign joystick_0 = joy0_unmod[9] ? 16'b0 : joy0_unmod;
 
 ///////////////////////////////////////////////////
 
-wire [15:0] cart_addr;
+wire [14:0] cart_addr;
+wire [22:0] mbc_addr;
+wire cart_a15;
 wire cart_rd;
 wire cart_wr;
 wire [7:0] cart_di, cart_do;
+wire nCS; // WRAM or Cart RAM CS
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
 wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 wire sgb_border_download = ioctl_download && (filetype == 2);
 
-wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart_addr[0], ~cart_addr[0]};
+wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc_addr[0], ~mbc_addr[0]};
 wire [15:0] sdram_do;
 wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
-wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_bank, cart_addr[12:1]};
+wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_addr[22:1]};
 wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
 wire sdram_we = cart_download & dn_write;
 wire sdram_refresh_force;
@@ -421,7 +424,7 @@ sdram sdram (
 wire dn_write;
 wire cart_ready;
 wire cram_rd, cram_wr;
-wire [9:0] mbc_bank;
+wire [7:0] rom_do = (mbc_addr[0]) ? sdram_do[15:8] : sdram_do[7:0];
 wire [7:0] ram_mask_file, cart_ram_size;
 wire isGBC_game, isSGB_game;
 wire cart_has_save;
@@ -438,12 +441,15 @@ cart_top cart (
 	.speed       ( speed      ),
 
 	.cart_addr   ( cart_addr  ),
+	.cart_a15    ( cart_a15   ),
 	.cart_rd     ( cart_rd    ),
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
 
-	.mbc_bank    ( mbc_bank   ),
+	.nCS         ( nCS        ),
+
+	.mbc_addr    ( mbc_addr   ),
 
 	.dn_write    ( dn_write    ),
 	.cart_ready  ( cart_ready  ),
@@ -473,7 +479,7 @@ cart_top cart (
 	.bk_q           ( bk_q           ),
 	.img_size       ( img_size       ),
 
-	.sdram_di       ( sdram_do       ),
+	.rom_di         ( rom_do       ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -546,11 +552,14 @@ gb gb (
 
 	// interface to the "external" game cartridge
 	.cart_addr   ( cart_addr  ),
+	.cart_a15    ( cart_a15   ),
 	.cart_rd     ( cart_rd    ),
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
-	
+
+	.nCS         ( nCS        ),
+
 	//gbc bios interface
 	.gbc_bios_addr   ( bios_addr  ),
 	.gbc_bios_do     ( bios_do    ),
