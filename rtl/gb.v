@@ -860,7 +860,7 @@ assign cart_addr = cart_addr_i[14:0];
 assign cart_rd = (isGBC&&hdma_rd&&is_hdma_cart_addr) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n_edge && !hdma_rd;
 
-assign nCS = ~(sel_cram | sel_iram);
+assign nCS = ~( (sel_cram | sel_iram) | (dma_rd & (dma_sel_cram | dma_sel_iram)) | (isGBC & hdma_rd & (hdma_sel_cram | hdma_sel_iram)) );
 
 assign gbc_bios_addr = boot_rom_addr[11:0];
 
