@@ -34,12 +34,16 @@ module gb (
 
 	// cartridge interface
 	// can adress up to 1MB ROM
-	output [15:0] cart_addr,
+	output [14:0] cart_addr,
+	output cart_a15,
 	output cart_rd,
 	output cart_wr,
 	input [7:0] cart_do,
 	output [7:0] cart_di,
-	
+
+	// WRAM or Cart RAM CS
+	output nCS,
+
 	//gbc bios interface
 	output [11:0] gbc_bios_addr,
 	input [7:0] gbc_bios_do,
@@ -81,7 +85,6 @@ module gb (
 	input        load_state,
 	input  [1:0] savestate_number,
 	output       sleep_savestate,
-	output       state_loaded,
 	
 	output [63:0] SaveStateExt_Din, 
 	output [9:0]  SaveStateExt_Adr, 
@@ -829,23 +832,37 @@ wire [7:0] boot_rom_do;
 wire [7:0] fast_boot_rom_do;
 wire [7:0] boot_rom_sgb_do;
 
-assign rom_do = isGBC? //GameBoy Color?
-                        (((cpu_addr[14:8] == 7'h00) || (hdma_rd&& hdma_source_addr[14:8] == 7'h00))&& boot_rom_enabled)?gbc_bios_do:         //0-FF bootrom 1st part
-                        ((cpu_addr[14:9] == 6'h00) || (hdma_rd&& hdma_source_addr[14:9] == 6'h00))? cart_do:                                 //100-1FF Cart Header
-                        (((cpu_addr[14:12] == 3'h0) || (hdma_rd&& hdma_source_addr[14:12] == 3'h0)) && boot_rom_enabled)?gbc_bios_do:        //200-8FF bootrom 2nd part
-                        cart_do:                                                            //rest of card
-                    ((cpu_addr[14:8] == 7'h00) && boot_rom_enabled)?isSGB?boot_rom_sgb_do:fast_boot?fast_boot_rom_do:boot_rom_do:cart_do;    //GB
+wire [15:0] boot_rom_addr = (isGBC && hdma_rd) ? hdma_source_addr : cpu_addr;
+
+//  0- FF bootrom 1st part
+//100-1FF Cart Header
+//200-8FF bootrom 2nd part
+wire boot_rom_cgb_sel = isGBC && (boot_rom_addr[15:8] >= 8'h02 && boot_rom_addr[15:8] <= 8'h08);
+wire boot_rom_sel = boot_rom_enabled && (!boot_rom_addr[15:8] || boot_rom_cgb_sel);
+
+assign rom_do = ~boot_rom_sel ? cart_do :
+                    isGBC ? gbc_bios_do :
+                        isSGB ? boot_rom_sgb_do :
+                            fast_boot ? fast_boot_rom_do : boot_rom_do;
 
 
 wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
 assign is_hdma_cart_addr = (hdma_sel_rom || hdma_sel_cram); //rom or external ram
 
 assign cart_di = cpu_do;
-assign cart_addr = (isGBC&&hdma_rd&&is_hdma_cart_addr)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
+
+wire [15:0] cart_addr_i = (isGBC&&hdma_rd&&is_hdma_cart_addr)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
+
+// External A15 is not directly connected to internal A15. It does not go low when accessing the boot rom.
+assign cart_a15 = cart_addr_i[15] | boot_rom_sel;
+assign cart_addr = cart_addr_i[14:0];
+
 assign cart_rd = (isGBC&&hdma_rd&&is_hdma_cart_addr) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
 assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n_edge && !hdma_rd;
 
-assign gbc_bios_addr = hdma_rd?hdma_source_addr[11:0]:cpu_addr[11:0];
+assign nCS = ~( (sel_cram | sel_iram) | (dma_rd & (dma_sel_cram | dma_sel_iram)) | (isGBC & hdma_rd & (hdma_sel_cram | hdma_sel_iram)) );
+
+assign gbc_bios_addr = boot_rom_addr[11:0];
 
 assign DMA_on = (hdma_active && is_hdma_cart_addr) || (dma_rd && is_dma_cart_addr);
 
@@ -874,13 +891,14 @@ boot_rom_sgb boot_rom_sgb (
 wire savestate_savestate;
 wire savestate_loadstate;
 wire [31:0] savestate_address;
-wire savestate_busy;  
+wire savestate_busy;
+wire savestate_loaded;
 
 assign SaveStateExt_Din  = SaveStateBus_Din;
 assign SaveStateExt_Adr  = SaveStateBus_Adr;
 assign SaveStateExt_wren = SaveStateBus_wren;
 assign SaveStateExt_rst  = SaveStateBus_rst;
-assign SaveStateExt_load = reset_ss;
+assign SaveStateExt_load = savestate_loaded;
 
 assign Savestate_CRAMAddr      = Savestate_RAMAddr;    
 assign Savestate_CRAMRWrEn     = Savestate_RAMRWrEn[4];
@@ -896,7 +914,7 @@ gb_savestates gb_savestates (
    .reset_in               (reset_r),
    .reset_out              (reset_ss),
    
-   .load_done              (state_loaded),
+   .load_done              (savestate_loaded),
    
    .increaseSSHeaderCount  (increaseSSHeaderCount),
    .save                   (savestate_savestate),

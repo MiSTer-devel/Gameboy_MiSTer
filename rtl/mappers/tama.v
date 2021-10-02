@@ -13,11 +13,15 @@ module tama (
 	input  [3:0]  ram_mask,
 	input  [8:0]  rom_mask,
 
-	input [15:0]  cart_addr,
+	input [14:0]  cart_addr,
+	input         cart_a15,
+
 	input  [7:0]  cart_mbc_type,
 
 	input         cart_wr,
 	input  [7:0]  cart_di,
+
+	input         nCS,
 
 	input         cram_rd,
 	input  [7:0]  cram_di,
@@ -27,12 +31,12 @@ module tama (
 	inout         cram_wr_b,
 	inout   [7:0] cram_wr_do_b,
 
-	inout  [9:0]  mbc_bank_b,
+	inout [22:0]  mbc_addr_b,
 	inout         ram_enabled_b,
 	inout         has_battery_b
 );
 
-wire [9:0] mbc_bank;
+wire [22:0] mbc_addr;
 wire ram_enabled;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
@@ -41,7 +45,7 @@ wire [63:0] savestate_back;
 wire [7:0] cram_wr_do;
 wire cram_wr;
 
-assign mbc_bank_b       = enable ? mbc_bank       : 10'hZ;
+assign mbc_addr_b       = enable ? mbc_addr       : 23'hZ;
 assign cram_do_b        = enable ? cram_do        :  8'hZ;
 assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
 assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
@@ -130,7 +134,7 @@ always @(posedge clk_sys) begin
 		prev_cram_rd <= 1'd0;
 	end else if(ce_cpu) begin
 
-		if (cart_wr & cart_addr[15:13] == 3'b101) begin // $A000-BFFF
+		if (cart_wr & ~nCS & ~cart_addr[14]) begin // $A000-BFFF
 			if (cart_addr[0]) begin
 				reg_index <= cart_di[3:0]; // Register index
 				if (cart_di[3:0] == 4'hA) begin
@@ -270,12 +274,12 @@ always @(posedge clk_sys) begin
 end
 
 // 0x0000-0x3FFF = Bank 0
-wire [4:0] rom_bank = (cart_addr[15:14] == 2'b00) ? 5'd0 : rom_bank_reg;
+wire [4:0] rom_bank = (~cart_addr[14]) ? 5'd0 : rom_bank_reg;
 
 // mask address lines to enable proper mirroring
 wire [4:0] rom_bank_m = rom_bank & rom_mask[4:0];	 //32
 
-assign mbc_bank = { 4'b0000, rom_bank_m, cart_addr[13] };	// 16k ROM Bank 0-31
+assign mbc_addr = { 4'b0000, rom_bank_m, cart_addr[13:0] };	// 16k ROM Bank 0-31
 
 reg [3:0] rtc_do_r;
 always @* begin

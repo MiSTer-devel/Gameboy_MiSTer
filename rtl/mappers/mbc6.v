@@ -12,7 +12,9 @@ module mbc6 (
 	input  [1:0] ram_mask,
 	input  [5:0] rom_mask,
 
-	input [15:0] cart_addr,
+	input [14:0] cart_addr,
+	input        cart_a15,
+
 	input  [7:0] cart_mbc_type,
 
 	input        cart_wr,
@@ -22,19 +24,19 @@ module mbc6 (
 	inout  [7:0] cram_do_b,
 	inout [16:0] cram_addr_b,
 
-	inout  [9:0] mbc_bank_b,
+	inout [22:0] mbc_addr_b,
 	inout        ram_enabled_b,
 	inout        has_battery_b
 );
 
-wire [9:0] mbc_bank;
+wire [22:0] mbc_addr;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
 wire ram_enabled;
 wire has_battery;
 wire [63:0] savestate_back;
 
-assign mbc_bank_b       = enable ? mbc_bank       : 10'hZ;
+assign mbc_addr_b       = enable ? mbc_addr       : 23'hZ;
 assign cram_do_b        = enable ? cram_do        :  8'hZ;
 assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
 assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
@@ -71,7 +73,7 @@ always @(posedge clk_sys) begin
 		ram_enable     <= 1'b0;
 	end else if(ce_cpu) begin
 		if (cart_wr) begin
-			if (!cart_addr[15:13]) begin // $0000-1FFF
+			if (~cart_a15 && !cart_addr[14:13]) begin // $0000-1FFF
 				case(cart_addr[12:10])
 					3'd0: ram_enable <= (cart_di[3:0] == 4'hA); //RAM enable/disable
 					3'd1: ram_bank_reg_a <= cart_di[2:0]; // 4KB RAM bank A ($A000-AFFF)
@@ -81,7 +83,7 @@ always @(posedge clk_sys) begin
 					default: ;
 				endcase
 			end
-			if (cart_addr[15:13] == 3'b001) begin // $2000-3FFF
+			if (~cart_a15 && cart_addr[14:13] == 2'b01) begin // $2000-3FFF
 				case(cart_addr[12:11])
 					2'd0: rom_bank_reg_a  <= cart_di[6:0]; // 8KB ROM bank A ($4000-5FFF)
 					2'd1: ; //rom_flash_sel_a <= (cart_di[3:0] == 4'h8); // ROM/Flash A select
@@ -117,7 +119,7 @@ end
 wire [6:0] rom_bank_m = rom_bank & { rom_mask[5:0], 1'b1 }; // 64x16KB Mask
 wire [2:0] ram_bank_m = ram_bank & { ram_mask[1:0], 1'b1 }; // 4x8KB Mask
 
-assign mbc_bank = { 3'd0, rom_bank_m };	// 8KB ROM Bank 0-127
+assign mbc_addr = { 3'd0, rom_bank_m, cart_addr[12:0] };	// 8KB ROM Bank 0-127
 
 assign cram_do = ram_enabled ? cram_di : 8'hFF;
 assign cram_addr = { 2'd0, ram_bank_m, cart_addr[11:0] }; // 4KB RAM Bank 0-7

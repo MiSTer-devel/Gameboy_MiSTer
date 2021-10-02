@@ -343,35 +343,39 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 ///////////////////////////////////////////////////
 
-wire [15:0] cart1_addr;
+wire [14:0] cart1_addr;
+wire        cart1_a15;
 wire        cart1_rd;
 wire        cart1_wr;
 wire  [7:0] cart1_di;
 wire  [7:0] cart1_do;
-wire  [9:0] mbc1_bank;
+wire [22:0] mbc1_addr;
+wire        gb1_nCS; // WRAM or Cart RAM CS
 
-wire [15:0] cart2_addr;
+wire [14:0] cart2_addr;
+wire        cart2_a15;
 wire        cart2_rd;
 wire        cart2_wr;
 wire  [7:0] cart2_di;
 wire  [7:0] cart2_do;
-wire  [9:0] mbc2_bank;
+wire [22:0] mbc2_addr;
+wire        gb2_nCS;
 
 
 wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
 wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 
-wire  [1:0] sdram_ds = cart_download ? 2'b11 : {cart1_addr[0], ~cart1_addr[0]};
+wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc1_addr[0], ~mbc1_addr[0]};
 wire [15:0] sdram_do;
 wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
-wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc1_bank, cart1_addr[12:1]};
+wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc1_addr[22:1]};
 wire sdram_oe = ~cart_download & cart1_rd & ~cram1_rd;
 wire sdram_ack;
 wire sdram_we = cart_download & dn_write;
 
 wire [15:0] sdram_do2;
-wire [23:0] sdram_addr2 = {2'b00, mbc2_bank, cart2_addr[12:1]};
+wire [23:0] sdram_addr2 = {2'b00, mbc2_addr[22:1]};
 wire        sdram_oe2   = ~cart_download & cart2_rd & ~cram2_rd;
 wire        sdram_ack2;
 
@@ -414,6 +418,8 @@ wire cart1_ready;
 wire cart2_ready;
 wire cram1_rd, cram1_wr;
 wire cram2_rd, cram2_wr;
+wire [7:0] rom1_do = (mbc1_addr[0]) ? sdram_do[15:8]  : sdram_do[7:0];
+wire [7:0] rom2_do = (mbc2_addr[0]) ? sdram_do2[15:8] : sdram_do2[7:0];
 wire [7:0] cart_ram_size;
 wire isGBC_game, isSGB_game;
 wire cart_has_save;
@@ -452,12 +458,15 @@ cart_top cart1 (
 	.speed       ( speed1     ),
 
 	.cart_addr   ( cart1_addr  ),
+	.cart_a15    ( cart1_a15   ),
 	.cart_rd     ( cart1_rd    ),
 	.cart_wr     ( cart1_wr    ),
 	.cart_do     ( cart1_do    ),
 	.cart_di     ( cart1_di    ),
 
-	.mbc_bank    ( mbc1_bank   ),
+	.nCS         ( gb1_nCS        ),
+
+	.mbc_addr    ( mbc1_addr   ),
 
 	.dn_write    ( dn_write    ),
 	.cart_ready  ( cart1_ready  ),
@@ -487,7 +496,7 @@ cart_top cart1 (
 	.bk_q           ( bk_q1          ),
 	.img_size       ( img_size       ),
 
-	.sdram_di       ( sdram_do       ),
+	.rom_di         ( rom1_do       ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -532,11 +541,14 @@ gb gb1 (
 
 	// interface to the "external" game cartridge
 	.cart_addr   ( cart1_addr  ),
+	.cart_a15    ( cart1_a15   ),
 	.cart_rd     ( cart1_rd    ),
 	.cart_wr     ( cart1_wr    ),
 	.cart_do     ( cart1_do    ),
 	.cart_di     ( cart1_di    ),
-	
+
+	.nCS         ( gb1_nCS     ),
+
 	//gbc bios interface
 	.gbc_bios_addr   ( bios1_addr  ),
 	.gbc_bios_do     ( bios1_do    ),
@@ -634,12 +646,15 @@ cart_top cart2 (
 	.speed       ( speed2     ),
 
 	.cart_addr   ( cart2_addr  ),
+	.cart_a15    ( cart2_a15   ),
 	.cart_rd     ( cart2_rd    ),
 	.cart_wr     ( cart2_wr    ),
 	.cart_do     ( cart2_do    ),
 	.cart_di     ( cart2_di    ),
 
-	.mbc_bank    ( mbc2_bank   ),
+	.nCS         ( gb2_nCS        ),
+
+	.mbc_addr    ( mbc2_addr   ),
 
 	.dn_write    (      ),
 	.cart_ready  ( cart2_ready  ),
@@ -669,7 +684,7 @@ cart_top cart2 (
 	.bk_q           ( bk_q2          ),
 	.img_size       ( img_size       ),
 
-	.sdram_di       ( sdram_do2      ),
+	.rom_di         ( rom2_do      ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -714,11 +729,14 @@ gb gb2 (
 
 	// interface to the "external" game cartridge
 	.cart_addr   ( cart2_addr  ),
+	.cart_a15    ( cart2_a15   ),
 	.cart_rd     ( cart2_rd    ),
 	.cart_wr     ( cart2_wr    ),
 	.cart_do     ( cart2_do    ),
 	.cart_di     ( cart2_di    ),
-	
+
+	.nCS         ( gb2_nCS     ),
+
 	//gbc bios interface
 	.gbc_bios_addr   ( bios2_addr  ),
 	.gbc_bios_do     ( bios2_do    ),
