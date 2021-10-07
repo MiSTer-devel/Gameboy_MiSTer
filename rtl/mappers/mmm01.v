@@ -12,7 +12,9 @@ module mmm01 (
 	input  [3:0]  ram_mask,
 	input  [8:0]  rom_mask,
 
-	input [15:0]  cart_addr,
+	input [14:0]  cart_addr,
+	input         cart_a15,
+
 	input  [7:0]  cart_mbc_type,
 
 	input         cart_wr,
@@ -22,19 +24,19 @@ module mmm01 (
 	inout  [7:0]  cram_do_b,
 	inout [16:0]  cram_addr_b,
 
-	inout  [9:0]  mbc_bank_b,
+	inout [22:0]  mbc_addr_b,
 	inout         ram_enabled_b,
 	inout         has_battery_b
 );
 
-wire [9:0] mbc_bank;
+wire [22:0] mbc_addr;
 wire ram_enabled;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
 wire has_battery;
 wire [63:0] savestate_back;
 
-assign mbc_bank_b       = enable ? mbc_bank       : 10'hZ;
+assign mbc_addr_b       = enable ? mbc_addr       : 23'hZ;
 assign cram_do_b        = enable ? cram_do        :  8'hZ;
 assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
 assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
@@ -85,7 +87,7 @@ always @(posedge clk_sys) begin
 		mbc1_mode_we_n      <= 1'd0;
 		rom_mux             <= 1'd0;
 	end else if(ce_cpu) begin
-		if (cart_wr & ~cart_addr[15]) begin
+		if (cart_wr & ~cart_a15) begin
 			case(cart_addr[14:13])
 				2'b00: begin // 0x0000-0x1FFF: RAM Enable register
 					ram_enable <= (cart_di[3:0] == 4'hA); // RAM enable/disable
@@ -155,7 +157,7 @@ end
 wire [8:0] rom_bank_m = rom_bank & rom_mask; // 512
 wire [3:0] ram_bank_m = ram_bank & ram_mask; // 16
 
-assign mbc_bank = { rom_bank_m, cart_addr[13] };	// 16k ROM Bank 0-511
+assign mbc_addr = { rom_bank_m, cart_addr[13:0] };	// 16k ROM Bank 0-511
 assign ram_enabled = ram_enable & has_ram;
 
 assign cram_do = ram_enabled ? cram_di : 8'hFF;

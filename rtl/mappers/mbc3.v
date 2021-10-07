@@ -25,22 +25,26 @@ module mbc3 (
 	input       [2:0] ram_mask,
 	input       [7:0] rom_mask,
 
-	input      [15:0] cart_addr,
+	input      [14:0] cart_addr,
+	input             cart_a15,
+
 	input       [7:0] cart_mbc_type,
 
 	input             cart_wr,
 	input       [7:0] cart_di,
 
+	input             nCS,
+
 	input       [7:0] cram_di,
 	inout       [7:0] cram_do_b,
 	inout      [16:0] cram_addr_b,
 
-	inout       [9:0] mbc_bank_b,
+	inout      [22:0] mbc_addr_b,
 	inout             ram_enabled_b,
 	inout             has_battery_b
 );
 
-wire [9:0] mbc_bank;
+wire [22:0] mbc_addr;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
 wire ram_enabled;
@@ -51,7 +55,7 @@ reg [31:0] RTC_timestampOut;
 reg [47:0] RTC_savedtimeOut;
 reg        RTC_inuse;
 
-assign mbc_bank_b         = enable ? mbc_bank         : 10'hZ;
+assign mbc_addr_b         = enable ? mbc_addr         : 23'hZ;
 assign cram_do_b          = enable ? cram_do          :  8'hZ;
 assign cram_addr_b        = enable ? cram_addr        : 17'hZ;
 assign ram_enabled_b      = enable ? ram_enabled      :  1'hZ;
@@ -87,7 +91,7 @@ always @(posedge clk_sys) begin
 		mbc3_mode        <= 1'b0;
 		mbc_ram_enable   <= 1'b0;
 	end else if(ce_cpu) begin
-		if (cart_wr & ~cart_addr[15]) begin
+		if (cart_wr & ~cart_a15) begin
 			case(cart_addr[14:13])
 				2'b00: mbc_ram_enable <= (cart_di[3:0] == 4'ha); //RAM enable/disable
 				2'b01: mbc_rom_bank_reg <= ({cart_di[7] & mbc30, cart_di[6:0]} == 8'd0) ? 8'd1 : cart_di[7:0]; //write to ROM bank register
@@ -109,12 +113,12 @@ end
 wire [2:0] mbc3_ram_bank = mbc_ram_bank_reg[2:0] & ram_mask[2:0];
 
 // 0x0000-0x3FFF = Bank 0
-wire [7:0] mbc_rom_bank = (cart_addr[15:14] == 2'b00) ? 8'd0 : mbc_rom_bank_reg;
+wire [7:0] mbc_rom_bank = (~cart_addr[14]) ? 8'd0 : mbc_rom_bank_reg;
 
 // mask address lines to enable proper mirroring
 wire [7:0] mbc3_rom_bank = mbc_rom_bank[7:0] & rom_mask[7:0]; // 16k ROM Bank 0-127, MBC30: 0-255
 
-assign mbc_bank = { 1'b0, mbc3_rom_bank, cart_addr[13] };
+assign mbc_addr = { 1'b0, mbc3_rom_bank, cart_addr[13:0] };
 
 reg [7:0] cram_do_r;
 always @* begin
@@ -210,7 +214,7 @@ always @(posedge clk_sys) begin
 
 			RTC_inuse    <= 1'b1;
 
-		end else if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b101) && mbc3_mode == 1'b1) begin // setting RTC registers from game
+		end else if(ce_cpu && cart_wr && ~nCS && ~cart_addr[14] && mbc3_mode == 1'b1) begin // setting RTC registers from game
 
 			case (rtc_index)
 				0: begin
@@ -261,7 +265,7 @@ always @(posedge clk_sys) begin
 
 		end
 
-		if(ce_cpu && cart_wr && (cart_addr[15:13] == 3'b011) && ~|cart_di[7:1]) begin // 6000-7FFF - Latch Clock Data
+		if(ce_cpu && cart_wr && ~cart_a15 && (cart_addr[14:13] == 2'b11) && ~|cart_di[7:1]) begin // 6000-7FFF - Latch Clock Data
 			rtc_latch <= cart_di[0];
 			if (~rtc_latch & cart_di[0]) begin
 				rtc_seconds_latch  <= rtc_seconds;
