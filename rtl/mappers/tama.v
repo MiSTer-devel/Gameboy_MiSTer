@@ -18,8 +18,10 @@ module tama (
 
 	input  [7:0]  cart_mbc_type,
 
+	input         cart_rd,
 	input         cart_wr,
 	input  [7:0]  cart_di,
+	inout         cart_oe_b,
 
 	input         nCS,
 
@@ -44,6 +46,7 @@ wire has_battery;
 wire [63:0] savestate_back;
 wire [7:0] cram_wr_do;
 wire cram_wr;
+wire cart_oe;
 
 assign mbc_addr_b       = enable ? mbc_addr       : 23'hZ;
 assign cram_do_b        = enable ? cram_do        :  8'hZ;
@@ -53,6 +56,7 @@ assign has_battery_b    = enable ? has_battery    :  1'hZ;
 assign savestate_back_b = enable ? savestate_back : 64'hZ;
 assign cram_wr_do_b     = enable ? cram_wr_do     :  8'hZ;
 assign cram_wr_b        = enable ? cram_wr        :  1'hZ;
+assign cart_oe_b        = enable ? cart_oe        :  1'hZ;
 
 // --------------------- CPU register interface ------------------
 // https://gbdev.gg8.se/forums/viewtopic.php?id=469
@@ -320,6 +324,8 @@ assign cram_wr_do = reg_data_in;
 
 assign cram_do = { 4'hF, cram_do_r };
 assign cram_addr = { 12'd0, reg_addr };
+
+assign cart_oe = (cart_rd & ~cart_a15) | (cram_rd & ~cart_addr[0]);
 
 assign has_battery = 1;
 assign ram_enabled = 0;

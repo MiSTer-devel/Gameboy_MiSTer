@@ -52,8 +52,10 @@ module mappers(
 
 	input   [7:0] cart_mbc_type,
 
+	input         cart_rd,
 	input         cart_wr,
 	input   [7:0] cart_di,
+	output        cart_oe,
 
 	input   [7:0] rom_di,
 	output  [7:0] rom_do,
@@ -83,6 +85,7 @@ tri0 [15:0] savestate_back_b;
 tri0 [63:0] savestate_back2_b;
 tri0 [7:0] cram_wr_do_b;
 tri0 cram_wr_b;
+tri0 cart_oe_b;
 tri0 [31:0] RTC_timestampOut_b;
 tri0 [47:0] RTC_savedtimeOut_b;
 tri0 RTC_inuse_b;
@@ -91,6 +94,7 @@ tri0 RTC_inuse_b;
 wire ce = speed ? ce_cpu2x : ce_cpu;
 wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket | sachen);
 wire rom_override = (rocket);
+wire cart_oe_override = (mbc3 | mbc7 | huc1 | huc3 | gb_camera | tama);
 
 mbc1 map_mbc1 (
 	.enable           ( mbc1 ),
@@ -186,8 +190,10 @@ mbc3 map_mbc3 (
 
 	.cart_mbc_type     ( cart_mbc_type ),
 
+	.cart_rd           ( cart_rd ),
 	.cart_wr           ( cart_wr ),
 	.cart_di           ( cart_di ),
+	.cart_oe_b         ( cart_oe_b ),
 
 	.nCS               ( nCS      ),
 
@@ -286,8 +292,10 @@ mbc7 map_mbc7 (
 
 	.cart_mbc_type    ( cart_mbc_type ),
 
+	.cart_rd          ( cart_rd ),
 	.cart_wr          ( cart_wr ),
 	.cart_di          ( cart_di ),
+	.cart_oe_b        ( cart_oe_b ),
 
 	.nCS              ( nCS      ),
 
@@ -353,9 +361,12 @@ huc1 map_huc1 (
 
 	.cart_mbc_type    ( cart_mbc_type ),
 
+	.cart_rd          ( cart_rd ),
 	.cart_wr          ( cart_wr ),
 	.cart_di          ( cart_di ),
+	.cart_oe_b        ( cart_oe_b ),
 
+	.cram_rd          ( cram_rd ),
 	.cram_di          ( cram_di ),
 	.cram_do_b        ( cram_do_b ),
 	.cram_addr_b      ( cram_addr_b ),
@@ -393,8 +404,10 @@ huc3 map_huc3 (
 
 	.cart_mbc_type     ( cart_mbc_type ),
 
+	.cart_rd           ( cart_rd ),
 	.cart_wr           ( cart_wr ),
 	.cart_di           ( cart_di ),
+	.cart_oe_b         ( cart_oe_b ),
 
 	.nCS               ( nCS      ),
 
@@ -426,9 +439,12 @@ gb_camera map_gb_camera (
 
 	.cart_mbc_type    ( cart_mbc_type ),
 
+	.cart_rd          ( cart_rd ),
 	.cart_wr          ( cart_wr ),
 	.cart_di          ( cart_di ),
+	.cart_oe_b        ( cart_oe_b ),
 
+	.cram_rd          ( cram_rd ),
 	.cram_di          ( cram_di ),
 	.cram_do_b        ( cram_do_b ),
 	.cram_addr_b      ( cram_addr_b ),
@@ -459,8 +475,10 @@ tama map_tama (
 
 	.cart_mbc_type    ( cart_mbc_type ),
 
+	.cart_rd          ( cart_rd ),
 	.cart_wr          ( cart_wr ),
 	.cart_di          ( cart_di ),
+	.cart_oe_b        ( cart_oe_b ),
 
 	.cram_rd          ( cram_rd ),
 	.cram_di          ( cram_di ),
@@ -538,7 +556,7 @@ sachen map_sachen (
 	.has_battery_b    ( has_battery_b )
 );
 
-assign { cram_do, ram_enabled } = { cram_do_b, ram_enabled_b };
+assign { cram_do } = { cram_do_b };
 assign { savestate_back, savestate_back2 } = { savestate_back_b, savestate_back2_b };
 assign { RTC_timestampOut, RTC_savedtimeOut, RTC_inuse } = { RTC_timestampOut_b, RTC_savedtimeOut_b, RTC_inuse_b };
 assign { cram_wr_do, cram_wr } = { cram_wr_do_b, cram_wr_b };
@@ -546,6 +564,8 @@ assign { cram_wr_do, cram_wr } = { cram_wr_do_b, cram_wr_b };
 assign mbc_addr = no_mapper ? {8'd0, cart_addr[14:0]} : mbc_addr_b;
 assign cram_addr = no_mapper ? {4'd0, cart_addr[12:0]} : cram_addr_b;
 assign has_battery = no_mapper ? (cart_mbc_type == 8'h09) : has_battery_b;
+assign ram_enabled = no_mapper ? has_ram : ram_enabled_b;
 assign rom_do = rom_override ? rom_do_b : rom_di;
+assign cart_oe = cart_oe_override ? cart_oe_b : ((cart_rd & ~cart_a15) | (cram_rd & ram_enabled));
 
 endmodule
