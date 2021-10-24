@@ -17,9 +17,12 @@ module huc1 (
 
 	input  [7:0]  cart_mbc_type,
 
+	input         cart_rd,
 	input         cart_wr,
 	input  [7:0]  cart_di,
+	inout         cart_oe_b,
 
+	input         cram_rd,
 	input  [7:0]  cram_di,
 	inout  [7:0]  cram_do_b,
 	inout [16:0]  cram_addr_b,
@@ -33,12 +36,14 @@ wire [22:0] mbc_addr;
 wire ram_enabled;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
+wire cart_oe;
 wire has_battery;
 wire [15:0] savestate_back;
 
 assign mbc_addr_b       = enable ? mbc_addr       : 23'hZ;
 assign cram_do_b        = enable ? cram_do        :  8'hZ;
 assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
+assign cart_oe_b        = enable ? cart_oe        :  1'hZ;
 assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
 assign has_battery_b    = enable ? has_battery    :  1'hZ;
 assign savestate_back_b = enable ? savestate_back : 16'hZ;
@@ -86,12 +91,14 @@ wire [5:0] rom_bank = (~cart_addr[14]) ? 6'd0 : rom_bank_reg;
 wire [5:0] rom_bank_m = rom_bank & rom_mask[5:0];	 //64
 
 assign mbc_addr = { 3'b000, rom_bank_m, cart_addr[13:0] };	// 16k ROM Bank 0-63
-assign ram_enabled = ~ir_en & has_ram;
 
 // 0xC0 is no light detected
-assign cram_do = ir_en ? 8'hC0 : ram_enabled ? cram_di : 8'hFF;
+assign cram_do = ir_en ? 8'hC0 : cram_di;
 assign cram_addr = { 2'b00, ram_bank, cart_addr[12:0] };
-assign has_battery = 1;
 
+assign cart_oe = (cart_rd & ~cart_a15) | (cram_rd & (ir_en | ram_enabled));
+
+assign ram_enabled = ~ir_en & has_ram;
+assign has_battery = 1;
 
 endmodule

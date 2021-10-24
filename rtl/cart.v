@@ -12,6 +12,7 @@ module cart_top (
 	input         cart_wr,
 	output  [7:0] cart_do,
 	input   [7:0] cart_di, // data from cpu to cart
+	output        cart_oe,
 
 	input         nCS,
 
@@ -151,8 +152,10 @@ mappers mappers (
 
 	.cart_mbc_type ( cart_mbc_type ),
 
+	.cart_rd   ( cart_rd ),
 	.cart_wr   ( cart_wr ),
 	.cart_di   ( cart_di ),
+	.cart_oe   ( cart_oe ),
 
 	.rom_di    ( rom_di  ),
 	.rom_do    ( rom_do  ),
@@ -377,7 +380,6 @@ assign ram_mask_file =              // 0 - no ram
 assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7 || tama);
 
 // Up to 8kb * 16banks of Cart Ram (128kb)
-
 dpram #(16) cram_l (
 	.clock_a (clk_sys),
 	.address_a (cram_addr[16:1]),

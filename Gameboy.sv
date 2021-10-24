@@ -372,6 +372,7 @@ wire [22:0] mbc_addr;
 wire cart_a15;
 wire cart_rd;
 wire cart_wr;
+wire cart_oe;
 wire [7:0] cart_di, cart_do;
 wire nCS; // WRAM or Cart RAM CS
 
@@ -444,6 +445,7 @@ cart_top cart (
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
+	.cart_oe     ( cart_oe    ),
 
 	.nCS         ( nCS        ),
 
@@ -549,12 +551,13 @@ gb gb (
 	.joy_din     ( joy_do_sgb  ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart_addr  ),
-	.cart_a15    ( cart_a15   ),
+	.ext_bus_addr( cart_addr  ),
+	.ext_bus_a15 ( cart_a15   ),
 	.cart_rd     ( cart_rd    ),
 	.cart_wr     ( cart_wr    ),
 	.cart_do     ( cart_do    ),
 	.cart_di     ( cart_di    ),
+	.cart_oe     ( cart_oe    ),
 
 	.nCS         ( nCS        ),
 
