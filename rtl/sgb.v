@@ -354,7 +354,7 @@ end
   0Dh  Joypad 3
   0Ch  Joypad 4
 
-  Setting P15 & P14 to high will decrement the joypad id if multiplayer
+  Setting P15 from low to high will decrement the joypad id if multiplayer
   is enabled with MLT_REQ.
 
   2 player: 0F,0E. 4 player: 0F,0E,0D,0C
@@ -362,33 +362,18 @@ end
 */
 
 reg [1:0] joypad_id;
-reg joypad_id_out;
-reg joylock;
+
 always @(posedge clk_sys) begin
 	if (reset) begin
-		joylock <= 0;
-		joypad_id_out <= 0;
 		joypad_id <= 0;
 	end else if (ce) begin
-
-		if (sgb_en & ~joylock & (~old_p15 | ~old_p14) & p15 & p14) begin
-			joylock <= 1'b1;
-			joypad_id_out <= 1'b1;
-			joypad_id <= (joypad_id - 1'b1) | ~mlt_ctrl;
-		end
-
-		if (old_p15 & ~p15 & p14) begin
-			joylock <= ~joylock;
-		end
-
-		if (~p15 | ~p14) begin
-			joypad_id_out <= 0;
+		if (sgb_en & ~old_p15 & p15) begin
+			joypad_id <= (joypad_id + 1'b1) & mlt_ctrl;
 		end
 	end
-
 end
 
-assign joy_do = joypad_id_out ? {2'b11,joypad_id} : joy_data;
+assign joy_do = (sgb_en & p15 & p14) ? ~{2'b00,joypad_id} : joy_data;
 
 wire [3:0] joy_dir     = ~{ joystick[2], joystick[3], joystick[1], joystick[0] } | {4{p14}};
 wire [3:0] joy_buttons = ~{ joystick[7], joystick[6], joystick[5], joystick[4] } | {4{p15}};
@@ -396,10 +381,10 @@ wire [3:0] joy_data = joy_dir & joy_buttons;
 
 wire [7:0] joystick =
 				(~sgb_en | ~mlt_ctrl[0]) ? (joystick_0 | joystick_1) :
-				(joypad_id == 2'b11) ? joystick_0 :
-				(joypad_id == 2'b10) ? joystick_1 :
-				(joypad_id == 2'b01) ? joystick_2 :
-				                       joystick_3;
+				(joypad_id == 2'd0) ? joystick_0 :
+				(joypad_id == 2'd1) ? joystick_1 :
+				(joypad_id == 2'd2) ? joystick_2 :
+				                      joystick_3;
 
 wire lcd_off = !lcd_on || (lcd_mode == 2'd01);
 reg old_lcd_off;
