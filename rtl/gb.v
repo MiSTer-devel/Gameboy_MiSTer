@@ -34,12 +34,13 @@ module gb (
 
 	// cartridge interface
 	// can adress up to 1MB ROM
-	output [14:0] cart_addr,
-	output cart_a15,
+	output [14:0] ext_bus_addr,
+	output ext_bus_a15,
 	output cart_rd,
 	output cart_wr,
 	input [7:0] cart_do,
 	output [7:0] cart_di,
+	input  cart_oe,
 
 	// WRAM or Cart RAM CS
 	output nCS,
@@ -120,13 +121,16 @@ wire [7:0] Savestate_RAMReadData_WRAM, Savestate_RAMReadData_VRAM, Savestate_RAM
 wire [19:0] Savestate_RAMAddr;
 wire [4:0] Savestate_RAMRWrEn;
 
-localparam SAVESTATE_MODULES    = 7;
+localparam SAVESTATE_MODULES    = 8;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
 wire [54:0] SS_Top;
 wire [54:0] SS_Top_BACK;
-
 eReg_SavestateV #(0, 31, 54, 0, 64'h0000000000800001) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
+
+wire [10:0] SS_Top2;
+wire [10:0] SS_Top2_BACK;
+eReg_SavestateV #(0, 38, 10, 0, 64'h0000000000000000) iREG_SAVESTATE_Top2 (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[7], SS_Top2_BACK, SS_Top2);
 
 // include cpu
 reg boot_rom_enabled;
@@ -150,19 +154,32 @@ wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram a
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f and ff76/ff77 PCM12/PCM34 (undocumented registers)
 					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001) || (cpu_addr[7:0] == 8'h76) || (cpu_addr[7:0] == 8'h77));
-					
+wire sel_ext_bus = sel_rom | sel_cram | sel_iram;
+
+wire sel_boot_rom, sel_boot_rom_cgb;
+
 // unused cgb registers
 wire sel_FF72  = isGBC && cpu_addr == 16'hff72;            // unused register, all bits read/write
 wire sel_FF73  = isGBC && cpu_addr == 16'hff73;            // unused register, all bits read/write
 wire sel_FF74  = isGBC && isGBC_game && (cpu_addr == 16'hff74); // unused register, all bits read/write, only in CGB mode
 wire sel_FF75  = isGBC && cpu_addr == 16'hff75;            // unused register, bits 4-6 read/write
-               
-//DMA can select from $0000 to $F100	
+
+wire ext_bus_wram_sel, ext_bus_cram_sel, ext_bus_rom_sel;
+wire ext_bus_rd, ext_bus_wr;
+wire [7:0] ext_bus_di;
+wire cart_sel;
+
+
+//  From Game Boy: Complete Technical Reference:
+//  DMA register value, Selected bus, Asserted CS:
+//  0x00-0x7F, external bus,  external ROM (A15)
+//  0x80-0x9F, video RAM bus, video RAM (MCS)
+//  0xA0-0xFF, external bus,  external RAM (CS)
 wire [15:0] dma_addr;				
-wire dma_sel_rom = !dma_addr[15];                       // lower 32k are rom
-wire dma_sel_cram = dma_addr[15:13] == 3'b101;           // 8k cart ram at $a000
-wire dma_sel_vram = dma_addr[15:13] == 3'b100;           // 8k video ram at $8000
-wire dma_sel_iram = (dma_addr[15:8] >= 8'hC0 && dma_addr[15:8] <= 8'hF1); // 8k internal ram at $c000
+wire dma_sel_rom = ~dma_addr[15];                       // lower 32k are rom
+wire dma_sel_vram = dma_addr[15:13] == 3'b100;          // 8k video ram at $8000-$9FFF
+wire dma_sel_ext_bus = ~dma_sel_vram;                   // WRAM or Cart ROM/RAM
+wire dma_sel_ext_ram = ~dma_sel_rom;                    // External RAM CS
 
 //CGB
 wire sel_vram_bank = (cpu_addr==16'hff4f);
@@ -177,6 +194,7 @@ wire [15:0] hdma_source_addr;
 wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
 wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
 wire hdma_sel_iram = hdma_source_addr[15:13] == 3'b110;     // 8k internal ram at $c000-$dff0
+wire hdma_sel_ext_bus = hdma_sel_rom | hdma_sel_cram | hdma_sel_iram;
 
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
@@ -209,7 +227,7 @@ wire [7:0] sb_o;
 wire [7:0] timer_do;
 wire [7:0] video_do;
 wire [7:0] audio_do;
-wire [7:0] rom_do;
+wire [7:0] bios_do;
 wire [7:0] vram_do;
 wire [7:0] vram1_do;
 wire [7:0] zpram_do;
@@ -237,11 +255,10 @@ wire [7:0] cpu_di =
 		sel_video_reg?video_do: // video registers
 		(sel_video_oam&&oam_cpu_allow)?video_do: // video object attribute memory
 		sel_audio?audio_do:                                // audio registers
-		sel_rom?rom_do:                                    // boot rom + cartridge rom
-		sel_cram?rom_do:                                   // cartridge ram
+		sel_boot_rom?bios_do:                             // boot rom
+		sel_ext_bus?ext_bus_di:                           // wram + cartridge rom/ram
 		(sel_vram&&vram_cpu_allow)?(isGBC&&vram_bank)?vram1_do:vram_do:       // vram (GBC bank 0+1)
 		sel_zpram?zpram_do:     // zero page ram
-		sel_iram?iram_do:       // internal ram
 		sel_ie?ie_r:  // interrupt enable register
 		sel_FF72?FF72: // unused register, all bits read/write
 		sel_FF73?FF73: // unused register, all bits read/write
@@ -592,8 +609,9 @@ timer timer (
 // cpu tries to read or write the lcd controller registers
 wire [12:0] video_addr;
 wire video_rd, dma_rd;
-wire [7:0] dma_data = dma_sel_iram?iram_do:dma_sel_vram?(isGBC&&vram_bank)?vram1_do:vram_do:cart_do;
 
+wire [7:0] dma_data = dma_sel_ext_bus ? ext_bus_di :
+                        (isGBC & vram_bank) ? vram1_do : vram_do;
 
 video video (
 	.reset       ( reset_ss         ),
@@ -650,14 +668,9 @@ video video (
 wire cpu_wr_vram = sel_vram && !cpu_wr_n && vram_cpu_allow;
 
 wire hdma_rd;
-wire is_hdma_cart_addr;
-wire [7:0] vram_di = (hdma_rd&&isGBC)?
-								hdma_sel_iram?iram_do:
-								is_hdma_cart_addr?cart_do:
-								8'hFF:
-							cpu_do;
 
- 
+wire [7:0] vram_di = (hdma_rd & isGBC) ? ext_bus_di : cpu_do;
+
 wire vram_wren = video_rd?1'b0:!vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 
@@ -764,22 +777,13 @@ dpram #(7) zpram (
 );
 
 // --------------------------------------------------------------------
-// ------------------------ 8k/32k(GBC) internal ram  -----------------
+// -------------------------- 8k/32k(GBC) work ram  -------------------
 // --------------------------------------------------------------------
 
-wire cpu_wr_iram = sel_iram && !cpu_wr_n;
-wire iram_wren = (dma_rd&&dma_sel_iram)||(isGBC&&hdma_rd&&hdma_sel_iram)?1'b0:cpu_wr_iram;
+wire iram_wren = ext_bus_wram_sel & ext_bus_wr;
+wire [14:0] iram_addr = (ext_bus_addr[12]) ? { iram_bank, ext_bus_addr[11:0] }  // bank 1-7 $D000-DFFF
+                                           : {      3'd0, ext_bus_addr[11:0] }; // bank 0   $C000-CFFF
 
-wire [14:0] iram_addr = (isGBC&&hdma_rd&&hdma_sel_iram)?               //hdma transfer?
-									(hdma_source_addr[12])?{iram_bank,hdma_source_addr[11:0]}:  //bank 1-7 D000-DFFF
-									{3'd0,hdma_source_addr[11:0]}:					               //bank 0									
-								(dma_rd&&dma_sel_iram)?								  //dma transfer?
-									(dma_addr[12])?{iram_bank,dma_addr[11:0]}:  //bank 1-7
-									{3'd0,dma_addr[11:0]}:					        //bank 0
-								//cpu 
-								(cpu_addr[12])?{iram_bank,cpu_addr[11:0]}:	  //bank 1-7
-								{3'd0,cpu_addr[11:0]};						  		  //bank 0				
-								
 dpram #(15) iram (
 	.clock_a   (clk_cpu),
 	.address_a (iram_addr),
@@ -837,34 +841,14 @@ wire [15:0] boot_rom_addr = (isGBC && hdma_rd) ? hdma_source_addr : cpu_addr;
 //  0- FF bootrom 1st part
 //100-1FF Cart Header
 //200-8FF bootrom 2nd part
-wire boot_rom_cgb_sel = isGBC && (boot_rom_addr[15:8] >= 8'h02 && boot_rom_addr[15:8] <= 8'h08);
-wire boot_rom_sel = boot_rom_enabled && (!boot_rom_addr[15:8] || boot_rom_cgb_sel);
+assign sel_boot_rom_cgb = isGBC && (boot_rom_addr[15:8] >= 8'h02 && boot_rom_addr[15:8] <= 8'h08);
+assign sel_boot_rom = boot_rom_enabled && (!boot_rom_addr[15:8] || sel_boot_rom_cgb);
 
-assign rom_do = ~boot_rom_sel ? cart_do :
-                    isGBC ? gbc_bios_do :
-                        isSGB ? boot_rom_sgb_do :
-                            fast_boot ? fast_boot_rom_do : boot_rom_do;
-
-
-wire is_dma_cart_addr = (dma_sel_rom || dma_sel_cram); //rom or external ram
-assign is_hdma_cart_addr = (hdma_sel_rom || hdma_sel_cram); //rom or external ram
-
-assign cart_di = cpu_do;
-
-wire [15:0] cart_addr_i = (isGBC&&hdma_rd&&is_hdma_cart_addr)?hdma_source_addr:(dma_rd&&is_dma_cart_addr)?dma_addr:cpu_addr;
-
-// External A15 is not directly connected to internal A15. It does not go low when accessing the boot rom.
-assign cart_a15 = cart_addr_i[15] | boot_rom_sel;
-assign cart_addr = cart_addr_i[14:0];
-
-assign cart_rd = (isGBC&&hdma_rd&&is_hdma_cart_addr) || (dma_rd&&is_dma_cart_addr) || ((sel_rom || sel_cram) && !cpu_rd_n);
-assign cart_wr = (sel_rom || sel_cram) && !cpu_wr_n_edge && !hdma_rd;
-
-assign nCS = ~( (sel_cram | sel_iram) | (dma_rd & (dma_sel_cram | dma_sel_iram)) | (isGBC & hdma_rd & (hdma_sel_cram | hdma_sel_iram)) );
+assign bios_do = isGBC ? gbc_bios_do :
+                    isSGB ? boot_rom_sgb_do :
+                        fast_boot ? fast_boot_rom_do : boot_rom_do;
 
 assign gbc_bios_addr = boot_rom_addr[11:0];
-
-assign DMA_on = (hdma_active && is_hdma_cart_addr) || (dma_rd && is_dma_cart_addr);
 
 boot_rom boot_rom (
 	.addr    ( cpu_addr[7:0] ),
@@ -883,6 +867,66 @@ boot_rom_sgb boot_rom_sgb (
 	.clk     ( clk_sys       ),
 	.data    ( boot_rom_sgb_do)
 );
+
+// --------------------------------------------------------------------
+// ------------------ External bus (WRAM, Cartridge) ------------------
+// --------------------------------------------------------------------
+
+// Emulate cartridge open bus behavior.
+// Some games read from Cart RAM while it is disabled or not present and
+// expect to read the previous ROM byte instead of $FF otherwise they freeze.
+// Ex. Tokyo Disneyland - Fantasy Tour (in Minnie's house) and
+// Daiku no Gen-san - Kachikachi no Tonkachi ga Kachi (Stage 1-4)
+
+reg [7:0] open_bus_data;
+reg [2:0] open_bus_cnt;
+
+assign SS_Top2_BACK[ 7: 0] = open_bus_data;
+assign SS_Top2_BACK[10: 8] = open_bus_cnt;
+
+always @(posedge clk_sys) begin
+	if(reset_ss) begin
+		open_bus_data <= SS_Top2[ 7: 0]; // 8'd0;
+		open_bus_cnt  <= SS_Top2[10: 8]; // 3'd0;
+	end else if (ce) begin
+		open_bus_data <= ext_bus_di;
+		if (ext_bus_wram_sel | (cart_sel & cart_oe) ) begin
+			open_bus_cnt <= 0;
+		end else if (~&open_bus_cnt) begin
+			open_bus_cnt <= open_bus_cnt + 1'b1;
+			if (open_bus_cnt == 3'd4) open_bus_data <= 8'hFF; // Slow pull-up
+		end
+	end
+end
+
+assign cart_di = cpu_do;
+
+wire hdma_read_ext_bus = (isGBC & hdma_rd & hdma_sel_ext_bus);
+wire dma_read_ext_bus = (dma_rd & dma_sel_ext_bus);
+
+assign nCS = ~( hdma_read_ext_bus ? (hdma_sel_cram | hdma_sel_iram) : dma_read_ext_bus ? dma_sel_ext_ram : (sel_cram | sel_iram) );
+
+wire [15:0] ext_bus_i = hdma_read_ext_bus ? hdma_source_addr : dma_read_ext_bus ? dma_addr : cpu_addr;
+
+// External A15 is not directly connected to internal A15. It does not go low when accessing the boot rom.
+assign ext_bus_a15 = ext_bus_i[15] | sel_boot_rom;
+assign ext_bus_addr = ext_bus_i[14:0];
+
+assign ext_bus_rd = hdma_read_ext_bus | dma_read_ext_bus | (sel_ext_bus & ~cpu_rd_n);
+assign ext_bus_wr = (sel_ext_bus & ~cpu_wr_n_edge) & ~hdma_read_ext_bus & ~dma_read_ext_bus;
+
+assign ext_bus_wram_sel = ~nCS &  ext_bus_addr[14];
+assign ext_bus_cram_sel = ~nCS & ~ext_bus_addr[14];
+assign ext_bus_rom_sel  = ~ext_bus_a15;
+
+assign ext_bus_di = ext_bus_wram_sel ? iram_do :
+                        (cart_sel & cart_oe) ? cart_do : open_bus_data;
+
+assign cart_sel = ext_bus_rom_sel | ext_bus_cram_sel;
+assign cart_rd = cart_sel & ext_bus_rd;
+assign cart_wr = cart_sel & ext_bus_wr;
+
+assign DMA_on = cart_sel & (hdma_active | dma_rd);
 
 // --------------------------------------------------------------------
 // ------------------------ savestates -------------------------
@@ -904,8 +948,9 @@ assign Savestate_CRAMAddr      = Savestate_RAMAddr;
 assign Savestate_CRAMRWrEn     = Savestate_RAMRWrEn[4];
 assign Savestate_CRAMWriteData = Savestate_RAMWriteData;
 
-wire [63:0] SaveStateBus_Dout  = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2] | SaveStateBus_wired_or[3] | 
-							     SaveStateBus_wired_or[4] | SaveStateBus_wired_or[5] | SaveStateBus_wired_or[6] | SaveStateExt_Dout;
+wire [63:0] SaveStateBus_Dout  = SaveStateBus_wired_or[0] | SaveStateBus_wired_or[1] | SaveStateBus_wired_or[2] | SaveStateBus_wired_or[3] |
+                                 SaveStateBus_wired_or[4] | SaveStateBus_wired_or[5] | SaveStateBus_wired_or[6] | SaveStateBus_wired_or[7] |
+                                 SaveStateExt_Dout;
  
 wire sleep_rewind, sleep_savestates;
  

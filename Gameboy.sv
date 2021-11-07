@@ -347,6 +347,7 @@ wire [14:0] cart1_addr;
 wire        cart1_a15;
 wire        cart1_rd;
 wire        cart1_wr;
+wire        cart1_oe;
 wire  [7:0] cart1_di;
 wire  [7:0] cart1_do;
 wire [22:0] mbc1_addr;
@@ -356,6 +357,7 @@ wire [14:0] cart2_addr;
 wire        cart2_a15;
 wire        cart2_rd;
 wire        cart2_wr;
+wire        cart2_oe;
 wire  [7:0] cart2_di;
 wire  [7:0] cart2_do;
 wire [22:0] mbc2_addr;
@@ -463,6 +465,7 @@ cart_top cart1 (
 	.cart_wr     ( cart1_wr    ),
 	.cart_do     ( cart1_do    ),
 	.cart_di     ( cart1_di    ),
+	.cart_oe     ( cart1_oe    ),
 
 	.nCS         ( gb1_nCS        ),
 
@@ -540,12 +543,13 @@ gb gb1 (
 	.joy_din     ( joy1_do      ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart1_addr  ),
-	.cart_a15    ( cart1_a15   ),
+	.ext_bus_addr( cart1_addr  ),
+	.ext_bus_a15 ( cart1_a15   ),
 	.cart_rd     ( cart1_rd    ),
 	.cart_wr     ( cart1_wr    ),
 	.cart_do     ( cart1_do    ),
 	.cart_di     ( cart1_di    ),
+	.cart_oe     ( cart1_oe    ),
 
 	.nCS         ( gb1_nCS     ),
 
@@ -651,6 +655,7 @@ cart_top cart2 (
 	.cart_wr     ( cart2_wr    ),
 	.cart_do     ( cart2_do    ),
 	.cart_di     ( cart2_di    ),
+	.cart_oe     ( cart2_oe    ),
 
 	.nCS         ( gb2_nCS        ),
 
@@ -728,12 +733,13 @@ gb gb2 (
 	.joy_din     ( joy2_do      ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart2_addr  ),
-	.cart_a15    ( cart2_a15   ),
+	.ext_bus_addr( cart2_addr  ),
+	.ext_bus_a15 ( cart2_a15   ),
 	.cart_rd     ( cart2_rd    ),
 	.cart_wr     ( cart2_wr    ),
 	.cart_do     ( cart2_do    ),
 	.cart_di     ( cart2_di    ),
+	.cart_oe     ( cart2_oe    ),
 
 	.nCS         ( gb2_nCS     ),
 

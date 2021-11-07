@@ -30,8 +30,10 @@ module mbc3 (
 
 	input       [7:0] cart_mbc_type,
 
+	input             cart_rd,
 	input             cart_wr,
 	input       [7:0] cart_di,
+	inout             cart_oe_b,
 
 	input             nCS,
 
@@ -47,9 +49,11 @@ module mbc3 (
 wire [22:0] mbc_addr;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
+wire cart_oe;
 wire ram_enabled;
 wire has_battery;
 wire [15:0] savestate_back;
+wire is_cram_addr = ~nCS & ~cart_addr[14];
 
 reg [31:0] RTC_timestampOut;
 reg [47:0] RTC_savedtimeOut;
@@ -58,6 +62,7 @@ reg        RTC_inuse;
 assign mbc_addr_b         = enable ? mbc_addr         : 23'hZ;
 assign cram_do_b          = enable ? cram_do          :  8'hZ;
 assign cram_addr_b        = enable ? cram_addr        : 17'hZ;
+assign cart_oe_b          = enable ? cart_oe          :  1'hZ;
 assign ram_enabled_b      = enable ? ram_enabled      :  1'hZ;
 assign has_battery_b      = enable ? has_battery      :  1'hZ;
 assign savestate_back_b   = enable ? savestate_back   : 16'hZ;
@@ -134,8 +139,10 @@ end
 assign cram_do = cram_do_r;
 assign cram_addr = { 1'b0, mbc3_ram_bank, cart_addr[12:0] };
 
+assign cart_oe = cart_rd & (~cart_a15 | (is_cram_addr & mbc_ram_enable & (mbc3_mode | has_ram)) );
+
 assign has_battery = (cart_mbc_type == 8'h0F || cart_mbc_type == 8'h10 || cart_mbc_type == 8'h13);
-assign ram_enabled = mbc_ram_enable & has_ram;
+assign ram_enabled = mbc_ram_enable & ~mbc3_mode & has_ram;
 
 /////////////////////////////  RTC  ///////////////////////////////
 reg [2:0]  rtc_index;
@@ -214,7 +221,7 @@ always @(posedge clk_sys) begin
 
 			RTC_inuse    <= 1'b1;
 
-		end else if(ce_cpu && cart_wr && ~nCS && ~cart_addr[14] && mbc3_mode == 1'b1) begin // setting RTC registers from game
+		end else if(ce_cpu && cart_wr && is_cram_addr && mbc3_mode == 1'b1) begin // setting RTC registers from game
 
 			case (rtc_index)
 				0: begin

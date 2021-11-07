@@ -26,8 +26,10 @@ module huc3 (
 
 	input  [7:0]  cart_mbc_type,
 
+	input         cart_rd,
 	input         cart_wr,
 	input  [7:0]  cart_di,
+	inout         cart_oe_b,
 
 	input         nCS,
 
@@ -44,6 +46,7 @@ wire [22:0] mbc_addr;
 wire        ram_enabled;
 wire  [7:0] cram_do;
 wire [16:0] cram_addr;
+wire        cart_oe;
 wire        has_battery;
 wire [63:0] savestate_back;
 
@@ -51,9 +54,12 @@ reg  [31:0] RTC_timestampOut;
 reg  [47:0] RTC_savedtimeOut;
 wire        RTC_inuse = 1;
 
+wire        is_cram_addr = ~nCS & ~cart_addr[14];
+
 assign mbc_addr_b         = enable ? mbc_addr         : 23'hZ;
 assign cram_do_b          = enable ? cram_do          :  8'hZ;
 assign cram_addr_b        = enable ? cram_addr        : 17'hZ;
+assign cart_oe_b          = enable ? cart_oe          :  1'hZ;
 assign ram_enabled_b      = enable ? ram_enabled      :  1'hZ;
 assign has_battery_b      = enable ? has_battery      :  1'hZ;
 assign savestate_back_b   = enable ? savestate_back   : 64'hZ;
@@ -163,7 +169,7 @@ always @(posedge clk_sys) begin
 		rtc_index    <= 8'd0;
 		rtc_flags    <= 4'd0;
 		rtc_out      <= 4'd0;
-	end else if(ce_cpu & cart_wr & ~nCS & ~cart_addr[14]) begin // $A000-BFFF
+	end else if(ce_cpu & cart_wr & is_cram_addr) begin // $A000-BFFF
 		if (mode == 4'hB) begin
 			if (cart_di[7:4] == 4'd1) begin
 				case(rtc_index)
@@ -233,10 +239,13 @@ always @* begin
 end
 
 assign mbc_addr = { 2'b00, rom_bank_m, cart_addr[13:0] };	// 16k ROM Bank 0-127
-assign ram_enabled = (mode == 4'hA) & has_ram; // RAM write enable
 
 assign cram_do = cram_do_r;
 assign cram_addr = { 2'b00, ram_bank, cart_addr[12:0] };
+
+assign cart_oe = cart_rd & (~cart_a15 | is_cram_addr);
+
+assign ram_enabled = (mode == 4'hA) & has_ram; // RAM write enable
 assign has_battery = has_ram;
 
 
