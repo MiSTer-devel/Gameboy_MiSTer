@@ -59,11 +59,9 @@ begin
          case (state) is
          
             when NORMAL =>
-               if (pause = '1' and clkdiv = "111") then
-                  if (cart_act = '0') then
-                     state       <= PAUSED;
-                     unpause_cnt <= 0;
-                  end if;
+               if (pause = '1' and clkdiv = "111" and cart_act = '0') then
+                  state       <= PAUSED;
+                  unpause_cnt <= 0;
                elsif (speedup = '1' and pause = '0' and DMA_on = '0' and clkdiv = "000") then
                   state           <= FASTFORWARDSTART;
                   fastforward_cnt <= 0;
