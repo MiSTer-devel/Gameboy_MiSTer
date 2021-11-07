@@ -41,12 +41,19 @@ module hps_io #(parameter CONF_STR, CONF_STR_BRAM=1, PS2DIV=0, WIDE=0, VDNUM=1, 
 	output reg [31:0] joystick_5,
 	
 	// analog -127..+127, Y: [15:8], X: [7:0]
-	output reg [15:0] joystick_analog_0,
-	output reg [15:0] joystick_analog_1,
-	output reg [15:0] joystick_analog_2,
-	output reg [15:0] joystick_analog_3,
-	output reg [15:0] joystick_analog_4,
-	output reg [15:0] joystick_analog_5,
+	output reg [15:0] joystick_l_analog_0,
+	output reg [15:0] joystick_l_analog_1,
+	output reg [15:0] joystick_l_analog_2,
+	output reg [15:0] joystick_l_analog_3,
+	output reg [15:0] joystick_l_analog_4,
+	output reg [15:0] joystick_l_analog_5,
+
+	output reg [15:0] joystick_r_analog_0,
+	output reg [15:0] joystick_r_analog_1,
+	output reg [15:0] joystick_r_analog_2,
+	output reg [15:0] joystick_r_analog_3,
+	output reg [15:0] joystick_r_analog_4,
+	output reg [15:0] joystick_r_analog_5,
 
 	// paddle 0..255
 	output reg  [7:0] paddle_0,
@@ -387,17 +394,17 @@ always@(posedge clk_sys) begin : uio_block
 							io_dout <= sd_buff_din[sdn_ack];
 						end
 
-				// joystick analog
+				// joystick left analog
 				'h1a: if(!byte_cnt[MAX_W:2]) begin
 							case(byte_cnt[1:0])
 								1: {pdsp_idx,stick_idx} <= io_din[7:0]; // first byte is joystick index
 								2: case(stick_idx)
-										 0: joystick_analog_0 <= io_din;
-										 1: joystick_analog_1 <= io_din;
-										 2: joystick_analog_2 <= io_din;
-										 3: joystick_analog_3 <= io_din;
-										 4: joystick_analog_4 <= io_din;
-										 5: joystick_analog_5 <= io_din;
+										 0: joystick_l_analog_0 <= io_din;
+										 1: joystick_l_analog_1 <= io_din;
+										 2: joystick_l_analog_2 <= io_din;
+										 3: joystick_l_analog_3 <= io_din;
+										 4: joystick_l_analog_4 <= io_din;
+										 5: joystick_l_analog_5 <= io_din;
 										15: case(pdsp_idx)
 												 0: paddle_0 <= io_din[7:0];
 												 1: paddle_1 <= io_din[7:0];
@@ -412,6 +419,21 @@ always@(posedge clk_sys) begin : uio_block
 												12: spinner_4 <= {~spinner_4[8],io_din[7:0]};
 												13: spinner_5 <= {~spinner_5[8],io_din[7:0]};
 											endcase
+									endcase
+							endcase
+						end
+
+				// joystick right analog
+				'h3d: if(!byte_cnt[MAX_W:2]) begin
+							case(byte_cnt[1:0])
+								1: stick_idx <= io_din[3:0]; // first byte is joystick index
+								2: case(stick_idx)
+										 0: joystick_r_analog_0 <= io_din;
+										 1: joystick_r_analog_1 <= io_din;
+										 2: joystick_r_analog_2 <= io_din;
+										 3: joystick_r_analog_3 <= io_din;
+										 4: joystick_r_analog_4 <= io_din;
+										 5: joystick_r_analog_5 <= io_din;
 									endcase
 							endcase
 						end
