@@ -272,7 +272,7 @@ wire [15:0] ioctl_dout;
 wire        ioctl_wait;
 
 wire [15:0] joystick_0, joystick_1, joystick_2, joystick_3;
-wire [15:0] joystick_analog_0;
+wire [15:0] joystick_analog_0, joystick_analog_1;
 wire [10:0] ps2_key;
 
 wire [7:0]  filetype;
@@ -291,13 +291,11 @@ wire [63:0] img_size;
 
 wire [32:0] RTC_time;
 
-hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 	.EXT_BUS(),
-
-	.conf_str(CONF_STR),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
@@ -306,13 +304,13 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.ioctl_wait(ioctl_wait),
 	.ioctl_index(filetype),
 	
-	.sd_lba(sd_lba),
+	.sd_lba('{sd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din('{sd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
@@ -331,7 +329,8 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.joystick_1(joystick_1),
 	.joystick_2(joystick_2),
 	.joystick_3(joystick_3),
-	.joystick_analog_0(joystick_analog_0),
+	.joystick_l_analog_0(joystick_analog_0),
+	.joystick_l_analog_1(joystick_analog_1),
 	
 	.ps2_key(ps2_key),
 	
@@ -691,7 +690,7 @@ cart_top cart2 (
 
 	.rom_di         ( rom2_do      ),
 
-	.joystick_analog_0 ( joystick_analog_0 ),
+	.joystick_analog_0 ( joystick_analog_1 ),
 
 	.RTC_time         ( RTC_time         ),
 	.RTC_timestampOut (  ),
