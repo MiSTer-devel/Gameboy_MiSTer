@@ -272,7 +272,7 @@ wire [15:0] ioctl_dout;
 wire        ioctl_wait;
 
 wire [15:0] joystick_0, joystick_1, joystick_2, joystick_3;
-wire [15:0] joystick_analog_0;
+wire [15:0] joystick_analog_0, joystick_analog_1;
 wire [10:0] ps2_key;
 
 wire [7:0]  filetype;
@@ -291,13 +291,11 @@ wire [63:0] img_size;
 
 wire [32:0] RTC_time;
 
-hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 	.EXT_BUS(),
-
-	.conf_str(CONF_STR),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
@@ -306,13 +304,13 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.ioctl_wait(ioctl_wait),
 	.ioctl_index(filetype),
 	
-	.sd_lba(sd_lba),
+	.sd_lba('{sd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din('{sd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
@@ -331,7 +329,8 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.joystick_1(joystick_1),
 	.joystick_2(joystick_2),
 	.joystick_3(joystick_3),
-	.joystick_analog_0(joystick_analog_0),
+	.joystick_l_analog_0(joystick_analog_0),
+	.joystick_l_analog_1(joystick_analog_1),
 	
 	.ps2_key(ps2_key),
 	
@@ -347,6 +346,7 @@ wire [14:0] cart1_addr;
 wire        cart1_a15;
 wire        cart1_rd;
 wire        cart1_wr;
+wire        cart1_oe;
 wire  [7:0] cart1_di;
 wire  [7:0] cart1_do;
 wire [22:0] mbc1_addr;
@@ -356,6 +356,7 @@ wire [14:0] cart2_addr;
 wire        cart2_a15;
 wire        cart2_rd;
 wire        cart2_wr;
+wire        cart2_oe;
 wire  [7:0] cart2_di;
 wire  [7:0] cart2_do;
 wire [22:0] mbc2_addr;
@@ -463,6 +464,7 @@ cart_top cart1 (
 	.cart_wr     ( cart1_wr    ),
 	.cart_do     ( cart1_do    ),
 	.cart_di     ( cart1_di    ),
+	.cart_oe     ( cart1_oe    ),
 
 	.nCS         ( gb1_nCS        ),
 
@@ -540,12 +542,13 @@ gb gb1 (
 	.joy_din     ( joy1_do      ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart1_addr  ),
-	.cart_a15    ( cart1_a15   ),
+	.ext_bus_addr( cart1_addr  ),
+	.ext_bus_a15 ( cart1_a15   ),
 	.cart_rd     ( cart1_rd    ),
 	.cart_wr     ( cart1_wr    ),
 	.cart_do     ( cart1_do    ),
 	.cart_di     ( cart1_di    ),
+	.cart_oe     ( cart1_oe    ),
 
 	.nCS         ( gb1_nCS     ),
 
@@ -651,6 +654,7 @@ cart_top cart2 (
 	.cart_wr     ( cart2_wr    ),
 	.cart_do     ( cart2_do    ),
 	.cart_di     ( cart2_di    ),
+	.cart_oe     ( cart2_oe    ),
 
 	.nCS         ( gb2_nCS        ),
 
@@ -686,7 +690,7 @@ cart_top cart2 (
 
 	.rom_di         ( rom2_do      ),
 
-	.joystick_analog_0 ( joystick_analog_0 ),
+	.joystick_analog_0 ( joystick_analog_1 ),
 
 	.RTC_time         ( RTC_time         ),
 	.RTC_timestampOut (  ),
@@ -728,12 +732,13 @@ gb gb2 (
 	.joy_din     ( joy2_do      ),
 
 	// interface to the "external" game cartridge
-	.cart_addr   ( cart2_addr  ),
-	.cart_a15    ( cart2_a15   ),
+	.ext_bus_addr( cart2_addr  ),
+	.ext_bus_a15 ( cart2_a15   ),
 	.cart_rd     ( cart2_rd    ),
 	.cart_wr     ( cart2_wr    ),
 	.cart_do     ( cart2_do    ),
 	.cart_di     ( cart2_di    ),
+	.cart_oe     ( cart2_oe    ),
 
 	.nCS         ( gb2_nCS     ),
 

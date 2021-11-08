@@ -24,8 +24,10 @@ module mbc7 (
 
 	input   [7:0] cart_mbc_type,
 
+	input         cart_rd,
 	input         cart_wr,
 	input   [7:0] cart_di,
+	inout         cart_oe_b,
 
 	input         nCS,
 
@@ -44,16 +46,19 @@ module mbc7 (
 wire [22:0] mbc_addr;
 wire [7:0] cram_do;
 wire [16:0] cram_addr;
+wire cart_oe;
 wire ram_enabled;
 wire has_battery;
 wire [15:0] savestate_back;
 wire [63:0] savestate_back2;
 wire [7:0] cram_wr_do;
 wire cram_wr;
+wire is_cram_addr = ~nCS & ~cart_addr[14];
 
 assign mbc_addr_b        = enable ? mbc_addr        : 23'hZ;
 assign cram_do_b         = enable ? cram_do         :  8'hZ;
 assign cram_addr_b       = enable ? cram_addr       : 17'hZ;
+assign cart_oe_b         = enable ? cart_oe         :  1'hZ;
 assign ram_enabled_b     = enable ? ram_enabled     :  1'hZ;
 assign has_battery_b     = enable ? has_battery     :  1'hZ;
 assign savestate_back_b  = enable ? savestate_back  : 16'hZ;
@@ -71,6 +76,7 @@ reg accel_latched;
 reg eeprom_di, eeprom_clk, eeprom_cs;
 
 wire ram_reg_en = ram_enable1 & ram_enable2;
+wire ram_reg_sel = is_cram_addr & ~cart_addr[12]; // $A000-AFFF
 
 assign savestate_back[ 6: 0] = rom_bank_reg;
 assign savestate_back[    7] = ram_enable1;
@@ -108,7 +114,7 @@ always @(posedge clk_sys) begin
 					2'b10: ram_enable2 <= (cart_di == 8'h40); //RAM enable/disable
 				 endcase
 			end
-			if (ram_reg_en & ~nCS & ~cart_addr[14] & ~cart_addr[12]) begin // A000-AFFF
+			if (ram_reg_en & ram_reg_sel) begin
 				case(cart_addr[7:4])
 					0: if (cart_di == 8'h55) begin
 							accel_latched <= 1'b0;
@@ -155,7 +161,7 @@ eeprom93LC56 eeprom(
 reg [7:0] cram_do_r;
 always @* begin
 	cram_do_r = 8'hFF;
-	if (ram_reg_en & ~cart_addr[12]) begin // cram_rd & A000-AFFF
+	if (ram_reg_en & ram_reg_sel) begin
 		case(cart_addr[7:4])
 			2: cram_do_r = accelerometer_x[ 7:0];
 			3: cram_do_r = accelerometer_x[15:8];
@@ -179,6 +185,8 @@ assign mbc_addr = { 2'b00, rom_bank_m, cart_addr[13:0] };	// 16k ROM Bank 0-511
 
 assign cram_do = cram_do_r;
 assign cram_addr = { 9'd0, cram_addr_e };
+
+assign cart_oe = cart_rd & (~cart_a15 | (ram_reg_en & ram_reg_sel));
 
 assign has_battery = 1;
 assign ram_enabled = 0; // EEPROM

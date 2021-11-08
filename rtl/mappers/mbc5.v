@@ -75,7 +75,7 @@ always @(posedge clk_sys) begin
 	end else if(ce_cpu) begin
 		if (cart_wr & ~cart_a15) begin
 			case(cart_addr[14:13])
-				2'b00: mbc_ram_enable <= (cart_di[3:0] == 4'ha); //RAM enable/disable
+				2'b00: mbc_ram_enable <= (cart_di == 8'h0A); //RAM enable/disable
 				2'b01: if (cart_addr[12])
 							mbc_rom_bank_reg[8] <= cart_di[0]; //ROM bank register 3000-3FFF High bit
 					   else

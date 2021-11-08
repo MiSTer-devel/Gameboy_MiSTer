@@ -38,7 +38,8 @@ package pReg_savestates is
    constant REG_SAVESTATE_Wave1_GBC       : regmap_type := ( 35,   63,      0,        1, x"FF00FF00FF00FF00");
    constant REG_SAVESTATE_Wave2_GBC       : regmap_type := ( 36,   63,      0,        1, x"FF00FF00FF00FF00");
    
-   constant REG_SAVESTATE_Top             : regmap_type := ( 31,   53,      0,        1, x"0000000000800001");
+   constant REG_SAVESTATE_Top             : regmap_type := ( 31,   54,      0,        1, x"0000000000800001");
+   constant REG_SAVESTATE_Top2            : regmap_type := ( 38,   10,      0,        1, x"0000000000000000");
    constant REG_SAVESTATE_Ext             : regmap_type := ( 32,   15,      0,        1, x"0000000000000001");
    constant REG_SAVESTATE_Ext2            : regmap_type := ( 37,   63,      0,        1, x"0000000000000000");
    
