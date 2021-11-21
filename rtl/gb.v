@@ -149,12 +149,12 @@ wire sel_cram = cpu_addr[15:13] == 3'b101;           // 8k cart ram at $a000
 wire sel_vram = cpu_addr[15:13] == 3'b100;           // 8k video ram at $8000
 wire sel_ie   = cpu_addr == 16'hffff;                // interupt enable
 wire sel_if   = cpu_addr == 16'hff0f;                // interupt flag
-wire sel_iram = (cpu_addr[15:14] == 2'b11) && (~&cpu_addr[13:9]); // 8k internal ram at $C000-DFFF. C000-DDFF mirrored to E000-FDFF
+wire sel_wram = (cpu_addr[15:14] == 2'b11) && (~&cpu_addr[13:9]); // 8k internal ram at $C000-DFFF. C000-DDFF mirrored to E000-FDFF
 wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram at $ff80
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f and ff76/ff77 PCM12/PCM34 (undocumented registers)
 					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001) || (cpu_addr[7:0] == 8'h76) || (cpu_addr[7:0] == 8'h77));
-wire sel_ext_bus = sel_rom | sel_cram | sel_iram;
+wire sel_ext_bus = sel_rom | sel_cram | sel_wram;
 
 wire sel_boot_rom, sel_boot_rom_cgb;
 
@@ -178,12 +178,19 @@ wire cart_sel;
 wire [15:0] dma_addr;				
 wire dma_sel_rom = ~dma_addr[15];                       // lower 32k are rom
 wire dma_sel_vram = dma_addr[15:13] == 3'b100;          // 8k video ram at $8000-$9FFF
-wire dma_sel_ext_bus = ~dma_sel_vram;                   // WRAM or Cart ROM/RAM
+wire dma_sel_ext_bus_dmg = ~dma_sel_vram;               // WRAM or Cart ROM/RAM
 wire dma_sel_ext_ram = ~dma_sel_rom;                    // External RAM CS
 
 //CGB
+wire dma_sel_cram = dma_addr[15:13] == 3'b101;          // 8k cart ram at $a000
+wire dma_sel_wram = dma_addr[15:13] == 3'b110;          // 8k WRAM at $c000-$dfff
+wire dma_sel_ext_bus_cgb = dma_sel_rom | dma_sel_cram;  // Cart ROM/RAM
+
+wire dma_sel_ext_bus = isGBC ? dma_sel_ext_bus_cgb : dma_sel_ext_bus_dmg;
+
+//CGB
 wire sel_vram_bank = (cpu_addr==16'hff4f);
-wire sel_iram_bank = isGBC && (isGBC_game || boot_rom_enabled) && (cpu_addr==16'hff70);				
+wire sel_wram_bank = isGBC && (isGBC_game || boot_rom_enabled) && (cpu_addr==16'hff70);
 wire sel_hdma = isGBC && (isGBC_game || boot_rom_enabled) && (cpu_addr[15:4]==12'hff5) && 
 					((cpu_addr[3:0]!=4'd0)&&(cpu_addr[3:0]< 4'd6)); //HDMA FF51-FF55 
 wire sel_key1 = isGBC && isGBC_game && (cpu_addr == 16'hff4d); // KEY1 - CGB Mode Only - Prepare Speed Switch
@@ -193,9 +200,8 @@ wire sel_rp = isGBC && isGBC_game && (cpu_addr == 16'hff56); //FF56 - RP - CGB M
 wire [15:0] hdma_source_addr;
 wire hdma_sel_rom = !hdma_source_addr[15];                  // lower 32k are rom
 wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a000
-wire hdma_sel_iram = hdma_source_addr[15:13] == 3'b110;     // 8k internal ram at $c000-$dff0
-wire hdma_sel_ext_bus = hdma_sel_rom | hdma_sel_cram | hdma_sel_iram;
-
+wire hdma_sel_wram = hdma_source_addr[15:13] == 3'b110;     // 8k WRAM at $c000-$dff0
+wire hdma_sel_ext_bus = hdma_sel_rom | hdma_sel_cram;
 
 // the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
 wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
@@ -210,7 +216,7 @@ reg [4:0] if_r;
 reg [7:0] ie_r; // writing  $ffff sets the irq enable mask
 wire irq_n;
 				
-reg [2:0] iram_bank; //1-7 FF70 - SVBK
+reg [2:0] wram_bank; //1-7 FF70 - SVBK
 reg vram_bank; //0-1 FF4F - VBK
 
 wire [7:0] hdma_do;
@@ -231,7 +237,7 @@ wire [7:0] bios_do;
 wire [7:0] vram_do;
 wire [7:0] vram1_do;
 wire [7:0] zpram_do;
-wire [7:0] iram_do;
+wire [7:0] wram_do;
 
 reg[7:0] FF72;
 reg[7:0] FF73;
@@ -244,7 +250,7 @@ wire [7:0] cpu_di =
 		sel_fast?8'h42:         // fast boot flag
 		sel_if?{3'b111, if_r}:  // interrupt flag register
 		sel_rp?8'h02:
-		sel_iram_bank?{5'h1f,iram_bank}:
+		sel_wram_bank?{5'h1f,wram_bank}:
 		isGBC&&sel_vram_bank?{7'h7f,vram_bank}:
 		sel_hdma?{hdma_do}:  //hdma GBC
 		sel_key1?{cpu_speed,6'h3f,prepare_switch}: //key1 cpu speed register(GBC)
@@ -256,7 +262,8 @@ wire [7:0] cpu_di =
 		(sel_video_oam&&oam_cpu_allow)?video_do: // video object attribute memory
 		sel_audio?audio_do:                                // audio registers
 		sel_boot_rom?bios_do:                             // boot rom
-		sel_ext_bus?ext_bus_di:                           // wram + cartridge rom/ram
+		isGBC&sel_wram ? wram_do:                         // wram on GBC
+		sel_ext_bus?ext_bus_di:                           // wram (DMG) + cartridge rom/ram
 		(sel_vram&&vram_cpu_allow)?(isGBC&&vram_bank)?vram1_do:vram_do:       // vram (GBC bank 0+1)
 		sel_zpram?zpram_do:     // zero page ram
 		sel_ie?ie_r:  // interrupt enable register
@@ -610,8 +617,10 @@ timer timer (
 wire [12:0] video_addr;
 wire video_rd, dma_rd;
 
-wire [7:0] dma_data = dma_sel_ext_bus ? ext_bus_di :
-                        (isGBC & vram_bank) ? vram1_do : vram_do;
+wire [7:0] dma_data = (isGBC & dma_sel_wram) ? wram_do :
+                        dma_sel_ext_bus ? ext_bus_di :
+                            dma_sel_vram ? (isGBC&vram_bank ? vram1_do : vram_do) :
+                                8'hFF;
 
 video video (
 	.reset       ( reset_ss         ),
@@ -669,7 +678,9 @@ wire cpu_wr_vram = sel_vram && !cpu_wr_n && vram_cpu_allow;
 
 wire hdma_rd;
 
-wire [7:0] vram_di = (hdma_rd & isGBC) ? ext_bus_di : cpu_do;
+wire [7:0] vram_di = (hdma_read_wram_bus) ? wram_do :
+                        (hdma_read_ext_bus) ? ext_bus_di :
+                        cpu_do;
 
 wire vram_wren = video_rd?1'b0:!vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
@@ -780,16 +791,27 @@ dpram #(7) zpram (
 // -------------------------- 8k/32k(GBC) work ram  -------------------
 // --------------------------------------------------------------------
 
-wire iram_wren = ext_bus_wram_sel & ext_bus_wr;
-wire [14:0] iram_addr = (ext_bus_addr[12]) ? { iram_bank, ext_bus_addr[11:0] }  // bank 1-7 $D000-DFFF
-                                           : {      3'd0, ext_bus_addr[11:0] }; // bank 0   $C000-CFFF
+// Separate WRAM bus on GBC.
+wire hdma_read_wram_bus = (isGBC & hdma_rd & hdma_sel_wram);
+wire dma_read_wram_bus = (dma_rd & dma_sel_wram);
 
-dpram #(15) iram (
+wire wram_wren = ~isGBC ? (ext_bus_wram_sel & ext_bus_wr) :
+                    (sel_wram & ~cpu_wr_n_edge & ~hdma_read_wram_bus & ~dma_read_wram_bus);
+
+wire [12:0] wram_addr_i = ~isGBC ? ext_bus_addr[12:0] :
+                            hdma_read_wram_bus ? hdma_source_addr[12:0] :
+                                dma_read_wram_bus ? dma_addr[12:0] :
+                                cpu_addr[12:0];
+
+wire [14:0] wram_addr = (wram_addr_i[12]) ? { wram_bank, wram_addr_i[11:0] }  // bank 1-7 $D000-DFFF
+                                          : {      3'd0, wram_addr_i[11:0] }; // bank 0   $C000-CFFF
+
+dpram #(15) wram (
 	.clock_a   (clk_cpu),
-	.address_a (iram_addr),
-	.wren_a    (iram_wren),
+	.address_a (wram_addr),
+	.wren_a    (wram_wren),
 	.data_a    (cpu_do),
-	.q_a       (iram_do),
+	.q_a       (wram_do),
 	
 	.clock_b   (clk_sys),
 	.address_b (Savestate_RAMAddr[14:0]),
@@ -799,16 +821,16 @@ dpram #(15) iram (
 );
 
 //GBC WRAM banking
-assign SS_Top_BACK[2:0] = iram_bank;
+assign SS_Top_BACK[2:0] = wram_bank;
 
 always @(posedge clk_sys) begin
 	if(reset_ss)
-		iram_bank <= SS_Top[2:0]; // 3'd1;
-	else if(ce_cpu && sel_iram_bank && !cpu_wr_n_edge) begin
+		wram_bank <= SS_Top[2:0]; // 3'd1;
+	else if(ce_cpu && sel_wram_bank && !cpu_wr_n_edge) begin
 		if (cpu_do[2:0]==3'd0) // 0 -> 1;
-			iram_bank <= 3'd1;
+			wram_bank <= 3'd1;
 		else
-			iram_bank <= cpu_do[2:0];
+			wram_bank <= cpu_do[2:0];
 	end
 end
 
@@ -890,7 +912,7 @@ always @(posedge clk_sys) begin
 		open_bus_cnt  <= SS_Top2[10: 8]; // 3'd0;
 	end else if (ce) begin
 		open_bus_data <= ext_bus_di;
-		if (ext_bus_wram_sel | (cart_sel & cart_oe) ) begin
+		if ( (~isGBC & ext_bus_wram_sel) | (cart_sel & cart_oe) ) begin
 			open_bus_cnt <= 0;
 		end else if (~&open_bus_cnt) begin
 			open_bus_cnt <= open_bus_cnt + 1'b1;
@@ -904,7 +926,7 @@ assign cart_di = cpu_do;
 wire hdma_read_ext_bus = (isGBC & hdma_rd & hdma_sel_ext_bus);
 wire dma_read_ext_bus = (dma_rd & dma_sel_ext_bus);
 
-assign nCS = ~( hdma_read_ext_bus ? (hdma_sel_cram | hdma_sel_iram) : dma_read_ext_bus ? dma_sel_ext_ram : (sel_cram | sel_iram) );
+assign nCS = ~( hdma_read_ext_bus ? hdma_sel_cram : dma_read_ext_bus ? dma_sel_ext_ram : (sel_cram | sel_wram) );
 
 wire [15:0] ext_bus_i = hdma_read_ext_bus ? hdma_source_addr : dma_read_ext_bus ? dma_addr : cpu_addr;
 
@@ -919,7 +941,7 @@ assign ext_bus_wram_sel = ~nCS &  ext_bus_addr[14];
 assign ext_bus_cram_sel = ~nCS & ~ext_bus_addr[14];
 assign ext_bus_rom_sel  = ~ext_bus_a15;
 
-assign ext_bus_di = ext_bus_wram_sel ? iram_do :
+assign ext_bus_di = (~isGBC & ext_bus_wram_sel) ? wram_do :
                         (cart_sel & cart_oe) ? cart_do : open_bus_data;
 
 assign cart_sel = ext_bus_rom_sel | ext_bus_cram_sel;
