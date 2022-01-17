@@ -9,6 +9,7 @@ module lcd
 	input        ce,
 	input        lcd_clkena,
 	input        lcd_vs,
+	input        shadow,
 
 	input [14:0] data,
 
@@ -43,9 +44,9 @@ module lcd
 	output reg 	     vbl,
 	output reg [8:0] h_cnt,
 	output reg [8:0] v_cnt,
-	output reg [7:0] r,
-	output reg [7:0] g,
-	output reg [7:0] b,
+	output     [7:0] r,
+	output     [7:0] g,
+	output     [7:0] b,
 	output           h_end
 );
 
@@ -154,6 +155,7 @@ end
 
 reg [14:0] vbuffer_outptr;
 reg vbuffer_out_bank;
+reg [1:0] shadow_buf[160];
 
 reg hb, vb, gb_hb, gb_vb, wait_vbl;
 always @(posedge clk_vid) begin
@@ -233,13 +235,21 @@ end
 // ------------------------------- pixel generator -------------------------------
 // -------------------------------------------------------------------------------
 reg [14:0] pixel_reg;
+reg [7:0] shptr = 0;
 always @(posedge clk_vid) pixel_reg <= vbuffer[{vbuffer_out_bank, vbuffer_outptr}];
 
 // Previous frame data for frame blend
 reg [14:0] prev_vbuffer[160*144];
 reg [14:0] prev_pixel_reg;
 always @(posedge clk_vid) begin
-	if(ce_pix & ~gb_hb & ~gb_vb) prev_vbuffer[vbuffer_outptr] <= pixel_reg;
+	if(ce_pix & ~gb_hb & ~gb_vb) begin
+		prev_vbuffer[vbuffer_outptr] <= pixel_reg;
+		shadow_buf[shptr] <= pixel;
+
+		shptr <= (shptr == 159) ? 8'd0 : shptr + 1'd1;
+	end 
+	if (gb_hb || gb_vb)
+		shptr <= 0;
 	prev_pixel_reg <= prev_vbuffer[vbuffer_outptr];
 end
 
@@ -297,10 +307,22 @@ reg [7:0] r_cur, g_cur, b_cur;
 reg [14:0] sgb_border_d;
 reg hbl_l, vbl_l;
 reg border_en;
+reg [1:0] sc1, sc;
+reg [7:0] rt, gt, bt;
+reg shadow_end1, shadow_end2;
+wire shadow_en = shadow && ~isGBC ;
+assign r = shadow_end2 ? ((rt >> 1) + (rt >> 2) + (~sc[1] ? (rt >> 3) : 1'd0) + (~sc[0] ? (rt >> 4) : 1'd0)) : rt;
+assign g = shadow_end2 ? ((gt >> 1) + (gt >> 2) + (~sc[1] ? (gt >> 3) : 1'd0) + (~sc[0] ? (gt >> 4) : 1'd0)) : gt;
+assign b = shadow_end2 ? ((bt >> 1) + (bt >> 2) + (~sc[1] ? (bt >> 3) : 1'd0) + (~sc[0] ? (bt >> 4) : 1'd0)) : bt;
 always@(posedge clk_vid) begin
 
-	if (ce_pix)
+	if (ce_pix) begin
 		{r_cur, g_cur, b_cur} <= {r_tmp, g_tmp, b_tmp};
+		shadow_end1 <= shadow_en && (|shadow_buf[shptr]) && (pixel == 0);
+		sc1 <= shadow_buf[shptr];
+		sc <= sc1;
+		shadow_end2 <= (shadow_end1 && ~border_en);
+	end
 
 	if (ce_pix_n)
 		{r_prev, g_prev, b_prev} <= {r_tmp, g_tmp, b_tmp};
@@ -317,15 +339,15 @@ always@(posedge clk_vid) begin
 		sgb_border_d <= sgb_border_pix[14:0];
 
 		if (border_en) begin
-			r <= {sgb_border_d[4:0],sgb_border_d[4:2]};
-			g <= {sgb_border_d[9:5],sgb_border_d[9:7]};
-			b <= {sgb_border_d[14:10],sgb_border_d[14:12]};
+			rt <= {sgb_border_d[4:0],sgb_border_d[4:2]};
+			gt <= {sgb_border_d[9:5],sgb_border_d[9:7]};
+			bt <= {sgb_border_d[14:10],sgb_border_d[14:12]};
 		end else if (frame_blend) begin
-			r <= blend(r_cur, r_prev);
-			g <= blend(g_cur, g_prev);
-			b <= blend(b_cur, b_prev);
+			rt <= blend(r_cur, r_prev);
+			gt <= blend(g_cur, g_prev);
+			bt <= blend(b_cur, b_prev);
 		end else begin
-			{r,g,b} <= {r_cur, g_cur, b_cur};
+			{rt,gt,bt} <= {r_cur, g_cur, b_cur};
 		end
 	end
 

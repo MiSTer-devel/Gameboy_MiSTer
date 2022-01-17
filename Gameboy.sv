@@ -194,7 +194,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -220,6 +220,7 @@ localparam CONF_STR = {
 	"P1,Audio & Video;",
 	"P1-;",
 	"P1OC,Inverted color,No,Yes;",
+	"P1o4,Screen Shadow,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -649,6 +650,7 @@ lcd lcd
 	.mode   ( sgb_lcd_mode   ),  // used to detect begin of new lines and frames
 	.on     ( sgb_lcd_on     ),
 	.lcd_vs ( sgb_lcd_vsync  ),
+	.shadow ( status[36]     ),
 
 	.isGBC  ( isGBC      ),
 
