@@ -194,7 +194,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -221,6 +221,7 @@ localparam CONF_STR = {
 	"P1-;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1o4,Screen Shadow,No,Yes;",
+	"h6P1o5,Use GBA Mode,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -343,7 +344,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({using_real_bios,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
 	.status_in({status[63:34],ss_slot,status[31:0]}),
 	.status_set(statusUpdate),
 	.direct_video(direct_video),
@@ -504,8 +505,11 @@ cart_top cart (
 );
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
+reg using_real_bios = 0;
 
 always @(posedge clk_sys) begin
+	if (bios_download)
+		using_real_bios <= 1;
 	if (palette_download & ioctl_wr) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
@@ -564,7 +568,7 @@ gb gb (
 
 	//gbc bios interface
 	.gbc_bios_addr   ( bios_addr  ),
-	.gbc_bios_do     ( bios_do    ),
+	.gbc_bios_do     ( bios_do_mod  ),
 
 	// audio
 	.audio_l 	 ( GB_AUDIO_L ),
@@ -903,6 +907,26 @@ defparam savestate_ui.INFO_TIMEOUT_BITS = 27;
 
 wire [7:0] bios_do;
 wire [11:0] bios_addr;
+wire [7:0] bios_do_gba;
+wire [7:0] bios_do_mod;
+
+always_comb begin
+	case (bios_addr)
+		12'h0F2: bios_do_gba = 8'h00;
+		12'h0F3: bios_do_gba = 8'h00;
+		12'h0F5: bios_do_gba = 8'hCD;
+		12'h0F6: bios_do_gba = 8'hD0;
+		12'h0F7: bios_do_gba = 8'h05;
+		12'h0F8: bios_do_gba = 8'hAF;
+		12'h0F9: bios_do_gba = 8'hE0;
+		12'h0FA: bios_do_gba = 8'h70;
+		12'h0FB: bios_do_gba = 8'h04;
+		12'h409: bios_do_gba = 8'h80;
+		12'h40A: bios_do_gba = 8'hFF;
+		default: bios_do_gba = bios_do;
+	endcase
+	bios_do_mod = (status[37] && using_real_bios) ? bios_do_gba : bios_do;
+end
 
 dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc (
 	.clock (clk_sys),
