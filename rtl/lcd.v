@@ -242,14 +242,18 @@ always @(posedge clk_vid) pixel_reg <= vbuffer[{vbuffer_out_bank, vbuffer_outptr
 reg [14:0] prev_vbuffer[160*144];
 reg [14:0] prev_pixel_reg;
 always @(posedge clk_vid) begin
-	if(ce_pix & ~gb_hb & ~gb_vb) begin
-		prev_vbuffer[vbuffer_outptr] <= pixel_reg;
-		shadow_buf[shptr] <= pixel;
-
+	if(ce_pix) begin
+		if (~gb_hb & ~gb_vb) begin
+			prev_vbuffer[vbuffer_outptr] <= pixel_reg;
+			shadow_buf[shptr] <= pixel;
+		end
 		shptr <= (shptr == 159) ? 8'd0 : shptr + 1'd1;
-	end 
-	if (gb_hb || gb_vb)
+	end
+	if (gb_hb)
 		shptr <= 0;
+	if (gb_vb)
+		shadow_buf[shptr] <= 2'd0;
+		
 	prev_pixel_reg <= prev_vbuffer[vbuffer_outptr];
 end
 
