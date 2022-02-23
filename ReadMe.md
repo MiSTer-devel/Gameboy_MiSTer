@@ -3,7 +3,7 @@
 This is port of [Gameboy for MiST](https://github.com/mist-devel/gameboy)
 
 * Place RBF file into root of SD card.
-* Place *.gb files into Gameboy folder.
+* Place *.gb|*.gbc files into Gameboy folder.
 
 ## Features
 * Original Gameboy & Gameboy Color Support
