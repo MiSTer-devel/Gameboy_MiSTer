@@ -15,6 +15,7 @@ set_global_assignment -name VHDL_FILE rtl/bus_savestates.vhd
 set_global_assignment -name VHDL_FILE rtl/reg_savestates.vhd
 set_global_assignment -name VHDL_FILE rtl/gb_statemanager.vhd
 set_global_assignment -name VHDL_FILE rtl/gb_savestates.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/savestate_ui.sv
 set_global_assignment -name VERILOG_FILE rtl/gb.v
 set_global_assignment -name VERILOG_FILE rtl/hdma.v
 set_global_assignment -name VERILOG_FILE rtl/link.v
@@ -35,5 +36,4 @@ set_global_assignment -name VERILOG_FILE rtl/mappers/tama.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mappers/rocket.sv
 set_global_assignment -name VERILOG_FILE rtl/mappers/sachen.v
 set_global_assignment -name SDC_FILE Gameboy.sdc
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/savestate_ui.sv
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv
