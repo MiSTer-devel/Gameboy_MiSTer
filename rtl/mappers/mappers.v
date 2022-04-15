@@ -21,6 +21,7 @@ module mappers(
 	input         tama,
 	input         rocket,
 	input         sachen,
+	input         megaduck,
 
 	input         isGBC_game,
 
@@ -92,7 +93,7 @@ tri0 RTC_inuse_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket | sachen);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket | sachen | megaduck);
 wire rom_override = (rocket);
 wire cart_oe_override = (mbc3 | mbc7 | huc1 | huc3 | gb_camera | tama);
 
@@ -546,6 +547,37 @@ sachen map_sachen (
 	.cart_di          ( cart_di ),
 
 	.nCS              ( nCS      ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_addr_b       ( mbc_addr_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
+megaduck map_megaduck (
+	.enable           ( megaduck ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data ),
+	.savestate_back_b ( savestate_back_b ),
+
+	.has_ram          ( has_ram  ),
+	.ram_mask         ( ram_mask ),
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_a15         ( cart_a15 ),
+
+	.cart_mbc_type    ( cart_mbc_type ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
 
 	.cram_di          ( cram_di ),
 	.cram_do_b        ( cram_do_b ),

@@ -52,7 +52,10 @@ module gb (
 	// audio
 	output [15:0] audio_l,
 	output [15:0] audio_r,
-	
+
+	// Megaduck?
+	input megaduck,
+
 	// lcd interface
 	output lcd_clkena,
 	output [14:0] lcd_data,
@@ -154,6 +157,7 @@ wire sel_zpram = (cpu_addr[15:7] == 9'b111111111) && // 127 bytes zero pageram a
 					 (cpu_addr != 16'hffff);
 wire sel_audio = (cpu_addr[15:8] == 8'hff) &&        // audio reg ff10 - ff3f and ff76/ff77 PCM12/PCM34 (undocumented registers)
 					((cpu_addr[7:5] == 3'b001) || (cpu_addr[7:4] == 4'b0001) || (cpu_addr[7:0] == 8'h76) || (cpu_addr[7:0] == 8'h77));
+
 wire sel_ext_bus = sel_rom | sel_cram | sel_wram;
 
 wire sel_boot_rom, sel_boot_rom_cgb;
@@ -232,7 +236,7 @@ wire [7:0] joy_do;
 wire [7:0] sb_o;
 wire [7:0] timer_do;
 wire [7:0] video_do;
-wire [7:0] audio_do;
+reg [7:0] audio_do;
 wire [7:0] bios_do;
 wire [7:0] vram_do;
 wire [7:0] vram1_do;
@@ -243,7 +247,7 @@ reg[7:0] FF72;
 reg[7:0] FF73;
 reg[7:0] FF74;
 reg[2:0] FF75;
-            
+
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 wire [7:0] cpu_di = 
 		irq_ack?irq_vec:
@@ -307,7 +311,15 @@ wire cpu_stop;
 
 wire genie_ovr;
 wire [7:0] genie_data;
-	
+wire [15:0] cpu_addr_raw;
+
+megaduck_swizzle md_swizz
+(
+	.megaduck   (megaduck),
+	.a_in       (cpu_addr_raw),
+	.a_out      (cpu_addr)
+);
+
 GBse cpu (
 	.RESET_n           ( !reset_ss        ),
 	.CLK_n             ( clk_sys         ),
@@ -324,7 +336,7 @@ GBse cpu (
    .RFSH_n            (                 ),
    .HALT_n            (                 ),
    .BUSAK_n           (                 ),
-   .A                 ( cpu_addr        ),
+   .A                 ( cpu_addr_raw        ),
    .DI                ( genie_ovr ? genie_data : cpu_di),
    .DO                ( cpu_do          ),
 	.STOP              ( cpu_stop        ),
@@ -383,6 +395,25 @@ end
 
 wire audio_rd = !cpu_rd_n && sel_audio;
 wire audio_wr = !cpu_wr_n_edge && sel_audio;
+reg [7:0] snd_d_in;
+wire [7:0] snd_d_out;
+
+// Megaduck has reversed nybbles for some registers
+always @(*) begin
+	snd_d_in = cpu_do;
+	audio_do = snd_d_out;
+	if (megaduck) begin
+		if (cpu_addr[7:4] == 1 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 7))
+			snd_d_in = {cpu_do[3:0], cpu_do[7:4]};
+		if (cpu_addr[7:4] == 2 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 2))
+			snd_d_in = {cpu_do[3:0], cpu_do[7:4]};
+
+		if (cpu_addr[7:4] == 1 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 7))
+			audio_do = {snd_d_out[3:0], snd_d_out[7:4]};
+		if (cpu_addr[7:4] == 2 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 2))
+			audio_do = {snd_d_out[3:0], snd_d_out[7:4]};
+	end
+end
 
 gbc_snd audio (
 	.clk				( clk_sys			),
@@ -394,8 +425,8 @@ gbc_snd audio (
 	.s1_read  		( audio_rd  		),
 	.s1_write 		( audio_wr  		),
 	.s1_addr    	( cpu_addr[6:0]	),
-   .s1_readdata 	( audio_do        ),
-	.s1_writedata  ( cpu_do       	),
+   .s1_readdata 	( snd_d_out       ),
+	.s1_writedata  ( snd_d_in       	),
 
    .snd_left 		( audio_l  			),
 	.snd_right  	( audio_r  			),
@@ -629,6 +660,7 @@ video video (
 	.ce_cpu      ( ce_cpu        ),   //can be 2x in cgb double speed mode
 	.isGBC       ( isGBC         ),
 	.isGBC_game  ( isGBC_game|boot_rom_enabled ),  //enable GBC mode during bootstrap rom
+	.megaduck    ( megaduck      ),
 
 	.irq         ( video_irq     ),
 	.vblank_irq  ( vblank_irq    ),
@@ -864,7 +896,7 @@ wire [15:0] boot_rom_addr = (isGBC && hdma_rd) ? hdma_source_addr : cpu_addr;
 //100-1FF Cart Header
 //200-8FF bootrom 2nd part
 assign sel_boot_rom_cgb = isGBC && (boot_rom_addr[15:8] >= 8'h02 && boot_rom_addr[15:8] <= 8'h08);
-assign sel_boot_rom = boot_rom_enabled && (!boot_rom_addr[15:8] || sel_boot_rom_cgb);
+assign sel_boot_rom = boot_rom_enabled && (!boot_rom_addr[15:8] || sel_boot_rom_cgb) && ~megaduck;
 
 assign bios_do = isGBC ? gbc_bios_do :
                     isSGB ? boot_rom_sgb_do :
