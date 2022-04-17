@@ -199,8 +199,8 @@ assign AUDIO_MIX = status[8:7];
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY;SS3E000000:40000;",
-	"FS1,GBCGB ,Load ROM;",
-	"OEF,System,Auto,Gameboy,Gameboy Color;",
+	"FS1,GBCGB BIN,Load ROM;",
+	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
 	"ONO,Super Game Boy,Off,Palette,On;",
 	"d5FC2,SGB,Load SGB border;",
 	"-;",
@@ -378,7 +378,8 @@ wire cart_oe;
 wire [7:0] cart_di, cart_do;
 wire nCS; // WRAM or Cart RAM CS
 
-wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
+wire cart_download = ioctl_download && (filetype[5:0] == 6'h01 || filetype == 8'h80);
+wire md_download = cart_download && filetype[7:6] == 2'd2;
 wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
 wire bios_download = ioctl_download && (filetype == 8'h40);
 wire sgb_border_download = ioctl_download && (filetype == 2);
@@ -440,6 +441,7 @@ cart_top cart (
 	.ce_cpu      ( ce_cpu     ),
 	.ce_cpu2x    ( ce_cpu2x   ),
 	.speed       ( speed      ),
+	.megaduck    ( megaduck   ),
 
 	.cart_addr   ( cart_addr  ),
 	.cart_a15    ( cart_a15   ),
@@ -528,11 +530,17 @@ assign AUDIO_S = 0;
 
 wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
 wire speed;
+reg megaduck = 0;
 
 reg isGBC = 0;
 always @(posedge clk_sys) if(reset) begin
-	if(status[15:14]) isGBC <= status[15];
-	else if(cart_download) isGBC <= !filetype[7:4];
+	if (cart_download)
+		megaduck <= (status[15:14] == 3);
+	if (md_download)
+		megaduck <= (status[15:14] == 0) || (status[15:14] == 3);
+
+	if(status[15:14]) isGBC <= (status[15:14] == 2);
+	else if(cart_download) isGBC <= (status[15:14] == 0) && !filetype[7:6];
 end
 
 wire [15:0] GB_AUDIO_L;
@@ -551,6 +559,7 @@ gb gb (
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
 	.isSGB       ( |sgb_en & ~isGBC ),
+	.megaduck    ( megaduck   ),
 
 	.joy_p54     ( joy_p54     ),
 	.joy_din     ( joy_do_sgb  ),

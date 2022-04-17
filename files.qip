@@ -5,6 +5,7 @@ set_global_assignment -name VHDL_FILE rtl/spram.vhd
 set_global_assignment -name VHDL_FILE rtl/dpram.vhd
 set_global_assignment -name VHDL_FILE rtl/boot_rom.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/megaswizzle.sv
 set_global_assignment -name VERILOG_FILE rtl/video.v
 set_global_assignment -name VERILOG_FILE rtl/timer.v
 set_global_assignment -name VERILOG_FILE rtl/sprites.v
@@ -35,5 +36,6 @@ set_global_assignment -name VERILOG_FILE rtl/mappers/gb_camera.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/tama.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mappers/rocket.sv
 set_global_assignment -name VERILOG_FILE rtl/mappers/sachen.v
+set_global_assignment -name VERILOG_FILE rtl/mappers/megaduck.v
 set_global_assignment -name SDC_FILE Gameboy.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv

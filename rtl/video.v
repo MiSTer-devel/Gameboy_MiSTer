@@ -26,6 +26,7 @@ module video (
 	input  ce_cpu, // 4 or 8Mhz
 	input  isGBC,
 	input  isGBC_game,
+	input  megaduck,
 
 	// cpu register adn oam interface
 	input  cpu_sel_oam,
@@ -138,19 +139,19 @@ wire [7:0] oam_di = dma_active?dma_data:cpu_di;
 
 // $ff40 LCDC
 reg [7:0] lcdc;
-wire lcdc_on = lcdc[7];
-wire lcdc_win_tile_map_sel = lcdc[6];
-wire lcdc_win_ena = lcdc[5];
-wire lcdc_tile_data_sel = lcdc[4];
-wire lcdc_bg_tile_map_sel = lcdc[3];
-wire lcdc_spr_siz = lcdc[2];
-wire lcdc_spr_ena = lcdc[1];
+wire lcdc_on               = megaduck ? lcdc[7] : lcdc[7];
+wire lcdc_win_tile_map_sel = megaduck ? lcdc[3] : lcdc[6];
+wire lcdc_win_ena          = megaduck ? lcdc[5] : lcdc[5];
+wire lcdc_tile_data_sel    = megaduck ? lcdc[4] : lcdc[4];
+wire lcdc_bg_tile_map_sel  = megaduck ? lcdc[2] : lcdc[3];
+wire lcdc_spr_siz          = megaduck ? lcdc[1] : lcdc[2];
+wire lcdc_spr_ena          = megaduck ? lcdc[0] : lcdc[1];
 // "CGB in CGB Mode: BG and Window Master Priority
 //  When Bit 0 is cleared, the background and window lose their priority
 //  - the sprites will be always displayed on top of background and window,
 //  independently of the priority flags in OAM and BG Map attributes."
-wire lcdc_bg_ena = lcdc[0] | (isGBC&&isGBC_game);
-wire lcdc_bg_prio = lcdc[0];
+wire lcdc_bg_ena           =  (megaduck ? lcdc[6] : lcdc[0]) | (isGBC&&isGBC_game);
+wire lcdc_bg_prio          =  megaduck ? lcdc[6] : lcdc[0];
 
 assign lcd_on = lcdc_on;
 
