@@ -194,7 +194,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -239,6 +239,7 @@ localparam CONF_STR = {
 	"P2-;",
 	"P2OB,Boot,Normal,Fast;",
 	"P2O6,Link Port,Disabled,Enabled;",
+	"P2o6,Rumble,On,Off;",
 	"P2-;",
 	"P2OP,FastForward Sound,On,Off;",
 	"P2OQ,Pause when OSD is open,Off,On;",
@@ -314,6 +315,7 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
+wire [15:0] joy0_rumble;
 
 wire [32:0] RTC_time;
 
@@ -356,6 +358,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_2(joystick_2),
 	.joystick_3(joystick_3),
 	.joystick_l_analog_0(joystick_analog_0),
+
+	.joystick_0_rumble(joy0_rumble),
 	
 	.ps2_key(ps2_key),
 	
@@ -433,6 +437,9 @@ wire cart_has_save;
 wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
+wire rumbling;
+
+assign joy0_rumble = {8'd0, ((rumbling & ~status[38]) ? 8'd128 : 8'd0)};
 
 cart_top cart (
 	.reset	     ( reset      ),
@@ -503,7 +510,9 @@ cart_top cart (
 	.Savestate_CRAMAddr     ( Savestate_CRAMAddr      ),
 	.Savestate_CRAMRWrEn    ( Savestate_CRAMRWrEn     ),
 	.Savestate_CRAMWriteData( Savestate_CRAMWriteData ),
-	.Savestate_CRAMReadData ( Savestate_CRAMReadData  )
+	.Savestate_CRAMReadData ( Savestate_CRAMReadData  ),
+	
+	.rumbling (rumbling)
 );
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;

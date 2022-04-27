@@ -67,7 +67,8 @@ module cart_top (
 	input  [19:0] Savestate_CRAMAddr,
 	input         Savestate_CRAMRWrEn,
 	input   [7:0] Savestate_CRAMWriteData,
-	output  [7:0] Savestate_CRAMReadData
+	output  [7:0] Savestate_CRAMReadData,
+	output        rumbling
 );
 ///////////////////////////////////////////////////
 
@@ -174,7 +175,8 @@ mappers mappers (
 
 	.mbc_addr    ( mbc_addr ),
 	.ram_enabled ( mbc_ram_enable ),
-	.has_battery ( mbc_battery )
+	.has_battery ( mbc_battery ),
+	.rumbling    ( cart_rumbling )
 
 );
 
@@ -229,6 +231,9 @@ wire tama = (cart_mbc_type == 253);
 wire HuC3 = (cart_mbc_type == 254);
 wire HuC1 = (cart_mbc_type == 255);
 
+wire has_rumble = (cart_mbc_type[7:2] == 6'b0001_11);
+wire cart_rumbling;
+assign rumbling = has_rumble & cart_rumbling;
 
 assign isGBC_game = (cart_cgb_flag);
 assign isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);

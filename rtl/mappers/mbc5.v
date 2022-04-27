@@ -26,7 +26,8 @@ module mbc5 (
 
 	inout [22:0] mbc_addr_b,
 	inout        ram_enabled_b,
-	inout        has_battery_b
+	inout        has_battery_b,
+	output       rumbling
 );
 
 wire [22:0] mbc_addr;
@@ -42,6 +43,7 @@ assign cram_addr_b      = enable ? cram_addr      : 17'hZ;
 assign ram_enabled_b    = enable ? ram_enabled    :  1'hZ;
 assign has_battery_b    = enable ? has_battery    :  1'hZ;
 assign savestate_back_b = enable ? savestate_back : 16'hZ;
+assign rumbling         = mbc_ram_bank_reg[3];
 
 wire [3:0] mbc5_ram_bank = mbc_ram_bank_reg & ram_mask;
 
