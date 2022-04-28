@@ -73,7 +73,8 @@ module mappers(
 
 	output [22:0] mbc_addr,
 	output        ram_enabled,
-	output        has_battery
+	output        has_battery,
+	output        rumbling
 
 );
 
@@ -234,7 +235,8 @@ mbc5 map_mbc5 (
 
 	.mbc_addr_b       ( mbc_addr_b ),
 	.ram_enabled_b    ( ram_enabled_b ),
-	.has_battery_b    ( has_battery_b )
+	.has_battery_b    ( has_battery_b ),
+	.rumbling         ( rumbling )
 );
 
 mbc6 map_mbc6 (
