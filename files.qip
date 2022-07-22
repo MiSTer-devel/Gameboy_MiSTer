@@ -3,7 +3,6 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram.sv
 set_global_assignment -name VHDL_FILE rtl/spram.vhd
 set_global_assignment -name VHDL_FILE rtl/dpram.vhd
-set_global_assignment -name VHDL_FILE rtl/boot_rom.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/megaswizzle.sv
 set_global_assignment -name VERILOG_FILE rtl/video.v
