@@ -83,12 +83,12 @@ wire [60:0] SS_Video1;
 wire [60:0] SS_Video1_BACK;
 wire [61:0] SS_Video2;
 wire [61:0] SS_Video2_BACK;
-wire [62:0] SS_Video3;
-wire [62:0] SS_Video3_BACK;
+wire [63:0] SS_Video3;
+wire [63:0] SS_Video3_BACK;
 
 eReg_SavestateV #(0,  9, 60, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
 eReg_SavestateV #(0, 10, 61, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
-eReg_SavestateV #(0, 27, 62, 0, 64'h0000000000000000) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
+eReg_SavestateV #(0, 27, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
 
 wire [63:0] SS_BPAL [7:0];
 wire [63:0] SS_BPAL_BACK [7:0];
@@ -666,9 +666,9 @@ wire [9:0] bg_tile_map_addr = window_ena ? win_map_addr : bg_map_addr;
 
 wire [2:0] tile_line = window_ena ? win_line[2:0] : bg_line[2:0];
 
-reg window_match, window_ena_d;
+reg wy_match, window_match, window_ena_d;
 
-wire win_start = mode3 && lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && (v_cnt >= wy) && (pcnt == wx) && (wx < 8'hA7);
+wire win_start = ~window_match & mode3 && lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && wy_match && (pcnt == wx) && (wx < 8'hA7);
 assign window_ena = window_match & ~pcnt_reset & lcdc_win_ena;
 
 assign SS_Video3_BACK[39:33] = h_cnt       ;
@@ -677,6 +677,7 @@ assign SS_Video3_BACK[   42] = window_match;
 assign SS_Video3_BACK[   43] = window_ena_d;
 assign SS_Video3_BACK[48:44] = win_col     ;
 assign SS_Video3_BACK[56:49] = win_line    ;
+assign SS_Video3_BACK[   63] = wy_match    ;
 
 always @(posedge clk) begin
 
@@ -687,6 +688,7 @@ always @(posedge clk) begin
 		window_ena_d <= SS_Video3[   43]; // 1'b0;
 		win_col      <= SS_Video3[48:44]; // 5'd0;
 		win_line     <= SS_Video3[56:49]; // 8'd0;
+		wy_match     <= SS_Video3[   63]; // 1'b0;
 	end else if (!lcdc_on) begin
 		//reset counters
 		h_cnt        <= 7'd0;
@@ -695,11 +697,18 @@ always @(posedge clk) begin
 		window_ena_d <= 1'b0;
 		win_col      <= 5'd0;
 		win_line     <= 8'd0;
+		wy_match     <= 1'b0;
 	end else if (ce) begin
 
 		h_div_cnt <= h_div_cnt + 1'b1;
 		if (h_clk_en) begin
 			h_cnt <= hcnt_end ? 7'd0 : h_cnt + 1'b1;
+		end
+
+		if (vblank_l) begin
+			wy_match <= 1'b0;
+		end else if (h_clk_en & lcdc_win_ena & v_cnt == wy) begin
+			wy_match <= 1'b1;
 		end
 
 		if(win_start) begin
@@ -712,12 +721,16 @@ always @(posedge clk) begin
 		else if (window_ena_d & ~window_ena)
 			win_line <= win_line + 1'b1;
 
-		if (window_match & ~mode3_end_l & mode3_end) begin
-			// DMG glitch: If WX = A6 then window_match stays high through VBlank
-			// until WY > v_cnt which means the window always appears on line 0.
-			if (isGBC || wx != 8'hA6 || wy > v_cnt) begin
-				window_match <= 1'b0;   // next line starts with background
+		if (window_match) begin
+			if (~mode3_end_l & mode3_end) begin
+				// DMG glitch: If WX = A6 then window_match stays high through VBlank
+				// until WY > v_cnt which means the window always appears on line 0.
+				if (isGBC || wx != 8'hA6 || wy > v_cnt) begin
+					window_match <= 1'b0;   // next line starts with background
+				end
 			end
+
+			if (~lcdc_win_ena) window_match <= 1'b0;
 		end
 
 		// Increment when fetching is done and not waiting for sprites.
