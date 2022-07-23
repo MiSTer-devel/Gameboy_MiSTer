@@ -26,7 +26,6 @@ module gb (
 	input ce,
 	input ce_2x,
 
-	input fast_boot,
 	input [7:0] joystick,
 	input isGBC,
 	input isGBC_game,
@@ -45,10 +44,15 @@ module gb (
 	// WRAM or Cart RAM CS
 	output nCS,
 
-	//gbc bios interface
-	output [11:0] gbc_bios_addr,
-	input [7:0] gbc_bios_do,
-	
+	input cgb_boot_download,
+	input dmg_boot_download,
+	input sgb_boot_download,
+	input         ioctl_wr,
+	input  [24:0] ioctl_addr,
+	input  [15:0] ioctl_dout,
+
+	input boot_gba_en,
+
 	// audio
 	output [15:0] audio_l,
 	output [15:0] audio_r,
@@ -207,9 +211,6 @@ wire hdma_sel_cram = hdma_source_addr[15:13] == 3'b101;     // 8k cart ram at $a
 wire hdma_sel_wram = hdma_source_addr[15:13] == 3'b110;     // 8k WRAM at $c000-$dff0
 wire hdma_sel_ext_bus = hdma_sel_rom | hdma_sel_cram;
 
-// the boot roms sees a special $42 flag in $ff50 if it's supposed to to a fast boot
-wire sel_fast = fast_boot && cpu_addr == 16'hff50 && boot_rom_enabled;
-
 wire sc_start;
 wire sc_shiftclock;
 wire [7:0] sc_r = {sc_start,6'h3F,sc_shiftclock};
@@ -237,7 +238,7 @@ wire [7:0] sb_o;
 wire [7:0] timer_do;
 wire [7:0] video_do;
 reg [7:0] audio_do;
-wire [7:0] bios_do;
+wire [7:0] boot_do;
 wire [7:0] vram_do;
 wire [7:0] vram1_do;
 wire [7:0] zpram_do;
@@ -251,7 +252,6 @@ reg[2:0] FF75;
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 wire [7:0] cpu_di = 
 		irq_ack?irq_vec:
-		sel_fast?8'h42:         // fast boot flag
 		sel_if?{3'b111, if_r}:  // interrupt flag register
 		sel_rp?8'h02:
 		sel_wram_bank?{5'h1f,wram_bank}:
@@ -265,7 +265,7 @@ wire [7:0] cpu_di =
 		sel_video_reg?video_do: // video registers
 		(sel_video_oam&&oam_cpu_allow)?video_do: // video object attribute memory
 		sel_audio?audio_do:                                // audio registers
-		sel_boot_rom?bios_do:                             // boot rom
+		sel_boot_rom?boot_do:                             // boot rom
 		isGBC&sel_wram ? wram_do:                         // wram on GBC
 		sel_ext_bus?ext_bus_di:                           // wram (DMG) + cartridge rom/ram
 		(sel_vram&&vram_cpu_allow)?(isGBC&&vram_bank)?vram1_do:vram_do:       // vram (GBC bank 0+1)
@@ -886,10 +886,6 @@ end
 			
 // combine boot rom data with cartridge data
 
-wire [7:0] boot_rom_do;
-wire [7:0] fast_boot_rom_do;
-wire [7:0] boot_rom_sgb_do;
-
 wire [15:0] boot_rom_addr = (isGBC && hdma_rd) ? hdma_source_addr : cpu_addr;
 
 //  0- FF bootrom 1st part
@@ -898,29 +894,53 @@ wire [15:0] boot_rom_addr = (isGBC && hdma_rd) ? hdma_source_addr : cpu_addr;
 assign sel_boot_rom_cgb = isGBC && (boot_rom_addr[15:8] >= 8'h02 && boot_rom_addr[15:8] <= 8'h08);
 assign sel_boot_rom = boot_rom_enabled && (!boot_rom_addr[15:8] || sel_boot_rom_cgb) && ~megaduck;
 
-assign bios_do = isGBC ? gbc_bios_do :
-                    isSGB ? boot_rom_sgb_do :
-                        fast_boot ? fast_boot_rom_do : boot_rom_do;
 
-assign gbc_bios_addr = boot_rom_addr[11:0];
+// $000-8FF: GBC
+// $900-9FF: DMG
+// $A00-AFF: SGB
+wire [11:0] boot_addr =
+        isGBC ? boot_rom_addr[11:0] :
+        isSGB ? { 4'hA, boot_rom_addr[7:0] } :
+        { 4'h9, boot_rom_addr[7:0] };
 
-boot_rom boot_rom (
-	.addr    ( cpu_addr[7:0] ),
-	.clk     ( clk_sys       ),
-	.data    ( boot_rom_do   )
+wire boot_download = cgb_boot_download | dmg_boot_download | sgb_boot_download;
+wire [10:0] boot_wr_addr =
+        dmg_boot_download ? {4'h9, ioctl_addr[7:1] } :
+        sgb_boot_download ? {4'hA, ioctl_addr[7:1] } :
+        ioctl_addr[11:1];
+
+wire [7:0] boot_q;
+dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom (
+	.clock (clk_sys),
+
+	.address_a (boot_addr),
+	.q_a (boot_q),
+
+	.address_b (boot_wr_addr),
+	.wren_b (ioctl_wr && boot_download),
+	.data_b (ioctl_dout)
 );
 
-fast_boot_rom fast_boot_rom (
-	.addr    ( cpu_addr[7:0] ),
-	.clk     ( clk_sys       ),
-	.data    ( fast_boot_rom_do )
-);
+reg [7:0] boot_do_gba;
 
-boot_rom_sgb boot_rom_sgb (
-	.addr    ( cpu_addr[7:0] ),
-	.clk     ( clk_sys       ),
-	.data    ( boot_rom_sgb_do)
-);
+always begin
+	case (boot_addr)
+		12'h0F2: boot_do_gba = 8'h00;
+		12'h0F3: boot_do_gba = 8'h00;
+		12'h0F5: boot_do_gba = 8'hCD;
+		12'h0F6: boot_do_gba = 8'hD0;
+		12'h0F7: boot_do_gba = 8'h05;
+		12'h0F8: boot_do_gba = 8'hAF;
+		12'h0F9: boot_do_gba = 8'hE0;
+		12'h0FA: boot_do_gba = 8'h70;
+		12'h0FB: boot_do_gba = 8'h04;
+		12'h409: boot_do_gba = 8'h80;
+		12'h40A: boot_do_gba = 8'hFF;
+		default: boot_do_gba = boot_q;
+	endcase
+end
+
+assign boot_do = (isGBC & boot_gba_en) ? boot_do_gba : boot_q;
 
 // --------------------------------------------------------------------
 // ------------------ External bus (WRAM, Cartridge) ------------------

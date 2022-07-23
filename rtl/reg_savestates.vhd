@@ -27,7 +27,7 @@ package pReg_savestates is
    constant REG_SAVESTATE_Video2          : regmap_type := ( 10,   61,      0,        1, x"00000000FFFFFC00");
    constant REG_SAVESTATE_BPalette        : regmap_type := ( 11,   63,      0,        8, x"0000000000000000");
    constant REG_SAVESTATE_OPalette        : regmap_type := ( 19,   63,      0,        8, x"0000000000000000");
-   constant REG_SAVESTATE_Video3          : regmap_type := ( 27,   62,      0,        1, x"0000000000000000");
+   constant REG_SAVESTATE_Video3          : regmap_type := ( 27,   63,      0,        1, x"0000000000000000");
 
    constant REG_SAVESTATE_Sound1          : regmap_type := ( 28,   63,      0,        1, x"0000000000000000");
    constant REG_SAVESTATE_Sound2          : regmap_type := ( 29,   54,      0,        1, x"0000000000000000");
