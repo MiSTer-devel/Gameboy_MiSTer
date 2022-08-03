@@ -204,13 +204,13 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXXXXXXXXXXXXXXX      X      
+// XXXXXX XXXX XXXXXXXXXXXX      X       XX
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY2P;SS3E000000:40000;",
-	"FS1,GBCGB ,Load ROM;",
-	"OEF,System,Auto,Gameboy,Gameboy Color;",
+	"FS1,GBCGB BIN,Load ROM;",
+	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
 	"-;",
 	"h2R9,Load Backup RAM;",
 	"h2RA,Save Backup RAM;",
@@ -221,6 +221,7 @@ localparam CONF_STR = {
 	"P1-;",
    "P1ON,Seperator Line,Off,On;",
 	"P1OC,Inverted color,No,Yes;",
+	"h6P1o5,Use GBA Mode,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -235,7 +236,11 @@ localparam CONF_STR = {
 
 	"P2,Misc.;",
 	"P2-;",
-	"P2OB,Boot,Normal,Fast;",
+	"P2FC4,BIN,Load GBC Boot;",
+	"P2FC5,BIN,Load DMG Boot;",
+	"P2FC6,BIN,Load SGB Boot;",
+	"P2-;",
+	"P2o6,Rumble,On,Off;",
 
 	"-;",
 	"R0,Reset;",
@@ -290,6 +295,7 @@ wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
+wire [15:0] joy0_rumble, joy1_rumble;
 
 wire [32:0] RTC_time;
 
@@ -320,7 +326,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({1'b0,isGBC,(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
+	.status_menumask({using_real_cgb_bios,1'b0,isGBC,(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
 	.status_in(status),
 	.status_set(1'b0),
 	.direct_video(direct_video),
@@ -333,6 +339,9 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_3(joystick_3),
 	.joystick_l_analog_0(joystick_analog_0),
 	.joystick_l_analog_1(joystick_analog_1),
+
+	.joystick_0_rumble(joy0_rumble),
+	.joystick_1_rumble(joy1_rumble),
 	
 	.ps2_key(ps2_key),
 	
@@ -365,9 +374,13 @@ wire [22:0] mbc2_addr;
 wire        gb2_nCS;
 
 
-wire cart_download = ioctl_download && (filetype == 8'h01 || filetype == 8'h41 || filetype == 8'h80);
+wire cart_download = ioctl_download && (filetype[5:0] == 6'h01 || filetype == 8'h80);
+wire md_download = ioctl_download && (filetype == 8'h81);
 wire palette_download = ioctl_download && (filetype == 3 /*|| !filetype*/);
-wire bios_download = ioctl_download && (filetype == 8'h40);
+wire cgb_boot_download = ioctl_download && (filetype == 4);
+wire dmg_boot_download = ioctl_download && (filetype == 5);
+wire sgb_boot_download = ioctl_download && (filetype == 6);
+wire boot_download = cgb_boot_download | dmg_boot_download | sgb_boot_download;
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc1_addr[0], ~mbc1_addr[0]};
 wire [15:0] sdram_do;
@@ -429,10 +442,14 @@ wire cart_has_save;
 wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
+wire rumbling1, rumbling2;
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
+reg using_real_cgb_bios = 0;
 
 always @(posedge clk_sys) begin
+	if (cgb_boot_download)
+		using_real_cgb_bios <= 1;
 	if (palette_download & ioctl_wr) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
@@ -440,17 +457,25 @@ end
 
 assign AUDIO_S = 0;
 
-wire reset = (RESET | status[0] | buttons[1] | cart_download | bk_loading);
+wire reset = (RESET | status[0] | buttons[1] | cart_download | boot_download | bk_loading);
 
+reg megaduck = 0;
 reg isGBC = 0;
 always @(posedge clk_sys) if(reset) begin
-	if(status[15:14]) isGBC <= status[15];
-	else if(cart_download) isGBC <= !filetype[7:4];
+	if (cart_download)
+		megaduck <= (status[15:14] == 3);
+	if (md_download)
+		megaduck <= (status[15:14] == 0) || (status[15:14] == 3);
+
+	if(status[15:14]) isGBC <= (status[15:14] == 2);
+	else if(cart_download) isGBC <= (status[15:14] == 0) && !filetype[7:6];
 end
 
 // core 1
 wire speed1;
 wire SaveStateBus_rst1;
+
+assign joy0_rumble = {8'd0, ((rumbling1 & ~status[38]) ? 8'd128 : 8'd0)};
 
 cart_top cart1 (
 	.reset	     ( reset      ),
@@ -459,6 +484,7 @@ cart_top cart1 (
 	.ce_cpu      ( ce1_cpu    ),
 	.ce_cpu2x    ( ce1_cpu2x  ),
 	.speed       ( speed1     ),
+	.megaduck    ( megaduck   ),
 
 	.cart_addr   ( cart1_addr  ),
 	.cart_a15    ( cart1_a15   ),
@@ -520,7 +546,9 @@ cart_top cart1 (
 	.Savestate_CRAMAddr     ( 0  ),
 	.Savestate_CRAMRWrEn    ( 0  ),
 	.Savestate_CRAMWriteData( 0  ),
-	.Savestate_CRAMReadData (    )
+	.Savestate_CRAMReadData (    ),
+
+	.rumbling (rumbling1)
 );
 
 wire [15:0] AUDIO_L1;
@@ -534,11 +562,10 @@ gb gb1 (
 	.ce          ( ce1_cpu    ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce1_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 	
-	.fast_boot   ( status[11]  ),
-
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
 	.isSGB       ( 1'b0 ),
+	.megaduck    ( megaduck   ),
 
 	.joy_p54     ( joy1_p54     ),
 	.joy_din     ( joy1_do      ),
@@ -554,9 +581,14 @@ gb gb1 (
 
 	.nCS         ( gb1_nCS     ),
 
-	//gbc bios interface
-	.gbc_bios_addr   ( bios1_addr  ),
-	.gbc_bios_do     ( bios1_do    ),
+	.boot_gba_en    ( status[37] && using_real_cgb_bios ),
+
+	.cgb_boot_download ( cgb_boot_download ),
+	.dmg_boot_download ( dmg_boot_download ),
+	.sgb_boot_download ( sgb_boot_download ),
+	.ioctl_wr       ( ioctl_wr       ),
+	.ioctl_addr     ( ioctl_addr     ),
+	.ioctl_dout     ( ioctl_dout     ),
 
 	// audio
 	.audio_l 	 ( AUDIO_L1 ),
@@ -624,23 +656,11 @@ wire [3:0] joy1_dir     = ~{ joystick_0[2], joystick_0[3], joystick_0[1], joysti
 wire [3:0] joy1_buttons = ~{ joystick_0[7], joystick_0[6], joystick_0[5], joystick_0[4] } | {4{joy1_p54[1]}};
 wire [3:0] joy1_do      = joy1_dir & joy1_buttons;
 
-wire [7:0] bios1_do;
-wire [11:0] bios1_addr;
-
-dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc1 (
-	.clock (clk_sys),
-	
-	.address_a (bios1_addr),
-	.q_a (bios1_do),
-	
-	.address_b (ioctl_addr[11:1]),
-	.wren_b (ioctl_wr && bios_download),
-	.data_b (ioctl_dout)
-);
-
 // core 2
 wire speed2;
 wire SaveStateBus_rst2;
+
+assign joy1_rumble = {8'd0, ((rumbling2 & ~status[38]) ? 8'd128 : 8'd0)};
 
 cart_top cart2 (
 	.reset	     ( reset      ),
@@ -649,6 +669,7 @@ cart_top cart2 (
 	.ce_cpu      ( ce2_cpu    ),
 	.ce_cpu2x    ( ce2_cpu2x  ),
 	.speed       ( speed2     ),
+	.megaduck    ( megaduck   ),
 
 	.cart_addr   ( cart2_addr  ),
 	.cart_a15    ( cart2_a15   ),
@@ -710,7 +731,9 @@ cart_top cart2 (
 	.Savestate_CRAMAddr     ( 0  ),
 	.Savestate_CRAMRWrEn    ( 0  ),
 	.Savestate_CRAMWriteData( 0  ),
-	.Savestate_CRAMReadData (    )
+	.Savestate_CRAMReadData (    ),
+
+	.rumbling (rumbling2)
 );
 
 wire [15:0] AUDIO_L2;
@@ -724,11 +747,11 @@ gb gb2 (
 	.ce          ( ce2_cpu    ),   // the whole gameboy runs on 4mhnz
 	.ce_2x       ( ce2_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 	
-	.fast_boot   ( status[11]  ),
 
 	.isGBC       ( isGBC      ),
 	.isGBC_game  ( isGBC_game ),
 	.isSGB       ( 1'b0 ),
+	.megaduck    ( megaduck   ),
 
 	.joy_p54     ( joy2_p54     ),
 	.joy_din     ( joy2_do      ),
@@ -744,9 +767,14 @@ gb gb2 (
 
 	.nCS         ( gb2_nCS     ),
 
-	//gbc bios interface
-	.gbc_bios_addr   ( bios2_addr  ),
-	.gbc_bios_do     ( bios2_do    ),
+	.boot_gba_en    ( status[37] && using_real_cgb_bios ),
+
+	.cgb_boot_download ( cgb_boot_download ),
+	.dmg_boot_download ( dmg_boot_download ),
+	.sgb_boot_download ( sgb_boot_download ),
+	.ioctl_wr       ( ioctl_wr       ),
+	.ioctl_addr     ( ioctl_addr     ),
+	.ioctl_dout     ( ioctl_dout     ),
 
 	// audio
 	.audio_l 	 ( AUDIO_L2 ),
@@ -813,20 +841,6 @@ wire [1:0] joy2_p54;
 wire [3:0] joy2_dir     = ~{ joystick_1[2], joystick_1[3], joystick_1[1], joystick_1[0] } | {4{joy2_p54[0]}};
 wire [3:0] joy2_buttons = ~{ joystick_1[7], joystick_1[6], joystick_1[5], joystick_1[4] } | {4{joy2_p54[1]}};
 wire [3:0] joy2_do      = joy2_dir & joy2_buttons;
-
-wire [7:0] bios2_do;
-wire [11:0] bios2_addr;
-
-dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom_gbc2 (
-	.clock (clk_sys),
-	
-	.address_a (bios2_addr),
-	.q_a (bios2_do),
-	
-	.address_b (ioctl_addr[11:1]),
-	.wren_b (ioctl_wr && bios_download),
-	.data_b (ioctl_dout)
-);
 
 assign AUDIO_L = (status[17:16] == 3'd0) ? AUDIO_L1 : 
                  (status[17:16] == 3'd1) ? AUDIO_L2 : 

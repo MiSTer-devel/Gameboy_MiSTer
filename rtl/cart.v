@@ -5,6 +5,7 @@ module cart_top (
 	input         ce_cpu,
 	input         ce_cpu2x,
 	input         speed,
+	input         megaduck,
 
 	input  [14:0] cart_addr,
 	input         cart_a15,
@@ -66,7 +67,8 @@ module cart_top (
 	input  [19:0] Savestate_CRAMAddr,
 	input         Savestate_CRAMRWrEn,
 	input   [7:0] Savestate_CRAMWriteData,
-	output  [7:0] Savestate_CRAMReadData
+	output  [7:0] Savestate_CRAMReadData,
+	output        rumbling
 );
 ///////////////////////////////////////////////////
 
@@ -121,6 +123,7 @@ mappers mappers (
 	.tama ( tama ),
 	.rocket ( rocket ),
 	.sachen ( sachen),
+	.megaduck ( megaduck_en ),
 
 	.isGBC_game ( isGBC_game ),
 
@@ -172,7 +175,8 @@ mappers mappers (
 
 	.mbc_addr    ( mbc_addr ),
 	.ram_enabled ( mbc_ram_enable ),
-	.has_battery ( mbc_battery )
+	.has_battery ( mbc_battery ),
+	.rumbling    ( cart_rumbling )
 
 );
 
@@ -220,12 +224,16 @@ wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 
 wire mbc6 = (cart_mbc_type == 32);
 wire mbc7 = (cart_mbc_type == 34);
 wire rocket = (cart_mbc_type == 151) || (cart_mbc_type == 153);
+wire megaduck_en = (cart_mbc_type == 250); // Use a wire to ensure enable is load while loading
 wire gb_camera = (cart_mbc_type == 252);
 wire tama = (cart_mbc_type == 253);
 
 wire HuC3 = (cart_mbc_type == 254);
 wire HuC1 = (cart_mbc_type == 255);
 
+wire has_rumble = (cart_mbc_type[7:2] == 6'b0001_11);
+wire cart_rumbling;
+assign rumbling = has_rumble & cart_rumbling;
 
 assign isGBC_game = (cart_cgb_flag);
 assign isSGB_game = (cart_sgb_flag == 8'h03 && cart_old_licensee == 8'h33);
@@ -257,35 +265,43 @@ always @(posedge clk_sys) begin
 	end
 
 	if(cart_download & ioctl_wr) begin
-		if (~|ioctl_addr[24:12] || (mmm01_bank & mmm01) ) // MMM01 header is at the end of ROM
-			case(ioctl_addr[11:0])
-				12'h142: cart_cgb_flag <= ioctl_dout[15];
-				12'h146: begin
-					{cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
-					// "Mani 4 in 1" have incorrectly set MBC3 in the header
-					if ( mmm01 && ioctl_dout[15:8] == 8'h11) cart_mbc_type <= 8'h0B;
-				end
-				12'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
-				12'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
-			endcase
-
-		// Sachen
-		if (~|ioctl_addr[24:12]) begin
-			case(ioctl_addr[11:0])
-				12'h100: sachen_t1 <= (ioctl_dout[15:8] != 8'hC3);
-				12'h140: sachen_t2 <= (ioctl_dout[ 7:0] == 8'hC3); // 0xC3 opcode is at $140 instead of $101
-				12'h150: begin /// CGB flag
-					if (sachen_t1 & sachen_t2) begin
-						sachen <= 1'b1;
-						cart_cgb_flag <= ioctl_dout[15];
-						cart_mbc_type <= 0;
-						cart_sgb_flag <= 0;
-						cart_ram_size <= 0;
-						cart_rom_size <= 0;
-						cart_old_licensee <= 0;
+		if (!megaduck) begin
+			if (~|ioctl_addr[24:12] || (mmm01_bank & mmm01) ) // MMM01 header is at the end of ROM
+				case(ioctl_addr[11:0])
+					12'h142: cart_cgb_flag <= ioctl_dout[15];
+					12'h146: begin
+						{cart_mbc_type, cart_sgb_flag} <= ioctl_dout;
+						// "Mani 4 in 1" have incorrectly set MBC3 in the header
+						if ( mmm01 && ioctl_dout[15:8] == 8'h11) cart_mbc_type <= 8'h0B;
 					end
-				end
-			endcase
+					12'h148: { cart_ram_size, cart_rom_size } <= ioctl_dout;
+					12'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
+				endcase
+	
+			// Sachen
+			if (~|ioctl_addr[24:12]) begin
+				case(ioctl_addr[11:0])
+					12'h100: sachen_t1 <= (ioctl_dout[15:8] != 8'hC3);
+					12'h140: sachen_t2 <= (ioctl_dout[ 7:0] == 8'hC3); // 0xC3 opcode is at $140 instead of $101
+					12'h150: begin /// CGB flag
+						if (sachen_t1 & sachen_t2) begin
+							sachen <= 1'b1;
+							cart_cgb_flag <= ioctl_dout[15];
+							cart_mbc_type <= 0;
+							cart_sgb_flag <= 0;
+							cart_ram_size <= 0;
+							cart_rom_size <= 0;
+							cart_old_licensee <= 0;
+						end
+					end
+				endcase
+			end
+		end else begin // megaduck
+			cart_cgb_flag <= 0;
+			cart_sgb_flag <= 0;
+			cart_rom_size <= ioctl_addr[17] ? 2'd3 : ioctl_addr[16] ? 2'd2 : ioctl_addr[15] ? 2'd1 : 2'd0;
+			if (ioctl_addr > 'h100) // Make sure there's time to reset the banks in the mapper
+				cart_mbc_type <= 8'd250;
 		end
 
 		//Store cart logo data
