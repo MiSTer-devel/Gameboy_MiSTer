@@ -21,6 +21,9 @@ module mappers(
 	input         tama,
 	input         rocket,
 	input         sachen,
+	input         wisdom_tree,
+	input         mani161,
+
 	input         megaduck,
 
 	input         isGBC_game,
@@ -94,12 +97,14 @@ tri0 RTC_inuse_b;
 
 
 wire ce = speed ? ce_cpu2x : ce_cpu;
-wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket | sachen | megaduck);
+wire no_mapper = ~(mbc1 | mbc2 | mbc3 | mbc5 | mbc6 | mbc7 | mmm01 | huc1 | huc3 | gb_camera | tama | rocket | sachen | wisdom_tree | mani161 | megaduck);
+wire no_mapper_single_bank = no_mapper & ~rom_mask[1];
+wire no_mapper_multi_bank  = no_mapper &  rom_mask[1]; // size > 32KB
 wire rom_override = (rocket);
 wire cart_oe_override = (mbc3 | mbc7 | huc1 | huc3 | gb_camera | tama);
 
 mbc1 map_mbc1 (
-	.enable           ( mbc1 ),
+	.enable           ( mbc1 | no_mapper_multi_bank ),
 	.mbc1m            ( mbc1m ),
 
 	.clk_sys          ( clk_sys ),
@@ -590,15 +595,45 @@ megaduck map_megaduck (
 	.has_battery_b    ( has_battery_b )
 );
 
+// Mani 4-in-1 DMG 601 & Wisdom Tree 32KB bank mappers
+misc_mapper map_misc (
+	.enable           ( ~reset & (wisdom_tree | mani161) ),
+
+	.clk_sys          ( clk_sys ),
+	.ce_cpu           ( ce ),
+
+	.mapper_sel       ( mani161 ),
+
+	.savestate_load   ( savestate_load ),
+	.savestate_data   ( savestate_data ),
+	.savestate_back_b ( savestate_back_b ),
+
+	.rom_mask         ( rom_mask ),
+
+	.cart_addr        ( cart_addr ),
+	.cart_a15         ( cart_a15 ),
+
+	.cart_wr          ( cart_wr ),
+	.cart_di          ( cart_di ),
+
+	.cram_di          ( cram_di ),
+	.cram_do_b        ( cram_do_b ),
+	.cram_addr_b      ( cram_addr_b ),
+
+	.mbc_addr_b       ( mbc_addr_b ),
+	.ram_enabled_b    ( ram_enabled_b ),
+	.has_battery_b    ( has_battery_b )
+);
+
 assign { cram_do } = { cram_do_b };
 assign { savestate_back, savestate_back2 } = { savestate_back_b, savestate_back2_b };
 assign { RTC_timestampOut, RTC_savedtimeOut, RTC_inuse } = { RTC_timestampOut_b, RTC_savedtimeOut_b, RTC_inuse_b };
 assign { cram_wr_do, cram_wr } = { cram_wr_do_b, cram_wr_b };
 
-assign mbc_addr = no_mapper ? {8'd0, cart_addr[14:0]} : mbc_addr_b;
-assign cram_addr = no_mapper ? {4'd0, cart_addr[12:0]} : cram_addr_b;
-assign has_battery = no_mapper ? (cart_mbc_type == 8'h09) : has_battery_b;
-assign ram_enabled = no_mapper ? has_ram : ram_enabled_b;
+assign mbc_addr = no_mapper_single_bank ? {8'd0, cart_addr[14:0]} : mbc_addr_b;
+assign cram_addr = no_mapper_single_bank ? {4'd0, cart_addr[12:0]} : cram_addr_b;
+assign has_battery = no_mapper_single_bank ? (cart_mbc_type == 8'h09) : has_battery_b;
+assign ram_enabled = no_mapper_single_bank ? has_ram : ram_enabled_b;
 assign rom_do = rom_override ? rom_do_b : rom_di;
 assign cart_oe = cart_oe_override ? cart_oe_b : ((cart_rd & ~cart_a15) | (cram_rd & ram_enabled));
 

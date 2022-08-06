@@ -194,13 +194,15 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY;SS3E000000:40000;",
 	"FS1,GBCGB BIN,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
+	"D7o79,Mapper,Auto,WisdomTree,Mani161,MBC1,MBC3;",
+	"-;",
 	"ONO,Super Game Boy,Off,Palette,On;",
 	"d5FC2,SGB,Load SGB border;",
 	"-;",
@@ -322,6 +324,10 @@ wire [15:0] joy0_rumble;
 
 wire [32:0] RTC_time;
 
+wire        sys_auto     = (status[15:14] == 0);
+wire        sys_gbc      = (status[15:14] == 2);
+wire        sys_megaduck = (status[15:14] == 3);
+
 hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -349,7 +355,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({using_real_cgb_bios,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({sys_megaduck,using_real_cgb_bios,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
 	.status_in({status[63:34],ss_slot,status[31:0]}),
 	.status_set(statusUpdate),
 	.direct_video(direct_video),
@@ -445,6 +451,7 @@ wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
 wire rumbling;
+wire [2:0] mapper_sel = status[41:39];
 
 assign joy0_rumble = {8'd0, ((rumbling & ~status[38]) ? 8'd128 : 8'd0)};
 
@@ -456,6 +463,7 @@ cart_top cart (
 	.ce_cpu2x    ( ce_cpu2x   ),
 	.speed       ( speed      ),
 	.megaduck    ( megaduck   ),
+	.mapper_sel  ( mapper_sel ),
 
 	.cart_addr   ( cart_addr  ),
 	.cart_a15    ( cart_a15   ),
@@ -551,12 +559,15 @@ reg megaduck = 0;
 reg isGBC = 0;
 always @(posedge clk_sys) if(reset) begin
 	if (cart_download)
-		megaduck <= (status[15:14] == 3);
+		megaduck <= sys_megaduck;
 	if (md_download)
-		megaduck <= (status[15:14] == 0) || (status[15:14] == 3);
+		megaduck <= sys_auto || sys_megaduck;
 
-	if(status[15:14]) isGBC <= (status[15:14] == 2);
-	else if(cart_download) isGBC <= (status[15:14] == 0) && !filetype[7:6];
+	if(~sys_auto) isGBC <= sys_gbc;
+	else if(cart_download) begin
+		if (!filetype[5:0]) isGBC <= isGBC_game;
+		else isGBC <= !filetype[7:6];
+	end
 end
 
 wire [15:0] GB_AUDIO_L;
