@@ -6,6 +6,7 @@ module cart_top (
 	input         ce_cpu2x,
 	input         speed,
 	input         megaduck,
+	input   [2:0] mapper_sel,
 
 	input  [14:0] cart_addr,
 	input         cart_a15,
@@ -123,6 +124,9 @@ mappers mappers (
 	.tama ( tama ),
 	.rocket ( rocket ),
 	.sachen ( sachen),
+	.wisdom_tree ( wisdom_tree ),
+	.mani161 ( mani161 ),
+
 	.megaduck ( megaduck_en ),
 
 	.isGBC_game ( isGBC_game ),
@@ -199,6 +203,7 @@ wire [3:0] ram_mask =                  // 0 - no ram
 	   4'b1111;                        // 4 - 128k 16 banks
 
 // ROM size
+/*
 wire [8:0] rom_mask =
 	   (cart_rom_size == 0)? 9'b000000001:  // 0 - 2 banks, 32k direct mapped
 	   (cart_rom_size == 1)? 9'b000000011:  // 1 - 4 banks = 64k
@@ -213,11 +218,14 @@ wire [8:0] rom_mask =
 		(cart_rom_size == 83)?9'b001111111:  //$53 - 80 banks = 1.2M
 		(cart_rom_size == 84)?9'b001111111:
                             9'b001111111;  //$54 - 96 banks = 1.5M
+*/
 
-wire mbc1 = (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
+reg [8:0] rom_mask; // get mask from file size
+
+wire mbc1 = (mapper_sel_r == 3'd3) || (cart_mbc_type == 1) || (cart_mbc_type == 2) || (cart_mbc_type == 3);
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 //wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
-wire mbc3 = (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
+wire mbc3 = (mapper_sel_r == 3'd4) || (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
 wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
@@ -230,6 +238,9 @@ wire tama = (cart_mbc_type == 253);
 
 wire HuC3 = (cart_mbc_type == 254);
 wire HuC1 = (cart_mbc_type == 255);
+
+wire wisdom_tree = (mapper_sel_r == 3'd1);
+wire mani161     = (mapper_sel_r == 3'd2);
 
 wire has_rumble = (cart_mbc_type[7:2] == 6'b0001_11);
 wire cart_rumbling;
@@ -252,6 +263,7 @@ wire mmm01_bank = (ioctl_addr[18:12] == 7'h78); // $78000+
 wire cart_logo_match = &cart_logo_check;
 
 reg old_cart_download;
+reg [2:0] mapper_sel_r;
 always @(posedge clk_sys) begin
 
 	old_cart_download <= cart_download;
@@ -262,10 +274,20 @@ always @(posedge clk_sys) begin
 		mbc1m <= 0;
 		mmm01 <= 0;
 		{ sachen, sachen_t1, sachen_t2 } <= 0;
+		mapper_sel_r <= mapper_sel;
 	end
 
 	if(cart_download & ioctl_wr) begin
-		if (!megaduck) begin
+
+		rom_mask <= ioctl_addr[22:14];
+
+		if (megaduck) begin
+			cart_cgb_flag <= 0;
+			cart_sgb_flag <= 0;
+			mapper_sel_r <= 0;
+			if (ioctl_addr > 'h100) // Make sure there's time to reset the banks in the mapper
+				cart_mbc_type <= 8'd250;
+		end else begin
 			if (~|ioctl_addr[24:12] || (mmm01_bank & mmm01) ) // MMM01 header is at the end of ROM
 				case(ioctl_addr[11:0])
 					12'h142: cart_cgb_flag <= ioctl_dout[15];
@@ -278,61 +300,62 @@ always @(posedge clk_sys) begin
 					12'h14a: { cart_old_licensee } <= ioctl_dout[15:8];
 				endcase
 	
-			// Sachen
-			if (~|ioctl_addr[24:12]) begin
-				case(ioctl_addr[11:0])
-					12'h100: sachen_t1 <= (ioctl_dout[15:8] != 8'hC3);
-					12'h140: sachen_t2 <= (ioctl_dout[ 7:0] == 8'hC3); // 0xC3 opcode is at $140 instead of $101
-					12'h150: begin /// CGB flag
-						if (sachen_t1 & sachen_t2) begin
-							sachen <= 1'b1;
-							cart_cgb_flag <= ioctl_dout[15];
-							cart_mbc_type <= 0;
-							cart_sgb_flag <= 0;
-							cart_ram_size <= 0;
-							cart_rom_size <= 0;
-							cart_old_licensee <= 0;
+			// Disable other mappers when a specific mapper has been selected
+			if (|mapper_sel_r) begin
+				cart_mbc_type <= 8'd0;
+				mbc1m <= 0;
+				mmm01 <= 0;
+				sachen <= 0;
+			end else begin
+				// Sachen
+				if (~|ioctl_addr[24:12]) begin
+					case(ioctl_addr[11:0])
+						12'h100: sachen_t1 <= (ioctl_dout[15:8] != 8'hC3);
+						12'h140: sachen_t2 <= (ioctl_dout[ 7:0] == 8'hC3); // 0xC3 opcode is at $140 instead of $101
+						12'h150: begin /// CGB flag
+							if (sachen_t1 & sachen_t2) begin
+								sachen <= 1'b1;
+								cart_cgb_flag <= ioctl_dout[15];
+								cart_mbc_type <= 0;
+								cart_sgb_flag <= 0;
+								cart_ram_size <= 0;
+								cart_old_licensee <= 0;
+							end
+						end
+					endcase
+				end
+
+				//Store cart logo data
+				if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
+					cart_logo_data[cart_logo_idx] <= ioctl_dout;
+					cart_logo_idx <= cart_logo_idx + 1'b1;
+				end
+
+				// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank ($40000)
+				// MMM01 detect: Compare the last bank every 512KByte ($78000+)
+				if ( mbc1m_bank | mmm01_bank ) begin
+					if (ioctl_addr[11:0] >= 12'h104 && ioctl_addr[11:0] <= 12'h112) begin
+						cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
+						cart_logo_idx <= cart_logo_idx + 1'b1;
+						if (&cart_logo_idx) begin
+							if (mbc1m_bank) mbc1m_check_end <= 1;
+							if (mmm01_bank) mmm01_check_end <= 1;
 						end
 					end
-				endcase
-			end
-		end else begin // megaduck
-			cart_cgb_flag <= 0;
-			cart_sgb_flag <= 0;
-			cart_rom_size <= ioctl_addr[17] ? 2'd3 : ioctl_addr[16] ? 2'd2 : ioctl_addr[15] ? 2'd1 : 2'd0;
-			if (ioctl_addr > 'h100) // Make sure there's time to reset the banks in the mapper
-				cart_mbc_type <= 8'd250;
-		end
+				end
 
-		//Store cart logo data
-		if (ioctl_addr >= 'h104 && ioctl_addr <= 'h112) begin
-			cart_logo_data[cart_logo_idx] <= ioctl_dout;
-			cart_logo_idx <= cart_logo_idx + 1'b1;
-		end
+				if (mbc1m_check_end) begin
+					mbc1m_check_end <= 0;
+					mbc1m <= cart_logo_match;
+				end
 
-		// MBC1 Multicart detect: Compare 8 words of logo data at second 256KByte bank ($40000)
-		// MMM01 detect: Compare the last bank every 512KByte ($78000+)
-		if ( mbc1m_bank | mmm01_bank ) begin
-			if (ioctl_addr[11:0] >= 12'h104 && ioctl_addr[11:0] <= 12'h112) begin
-				cart_logo_check[cart_logo_idx] <= (ioctl_dout == cart_logo_data[cart_logo_idx]);
-				cart_logo_idx <= cart_logo_idx + 1'b1;
-				if (&cart_logo_idx) begin
-					if (mbc1m_bank) mbc1m_check_end <= 1;
-					if (mmm01_bank) mmm01_check_end <= 1;
+				if (mmm01_check_end) begin
+					mmm01_check_end <= 0;
+					mmm01 <= cart_logo_match;
+					if (cart_logo_match) mbc1m <= 0;
 				end
 			end
 		end
-	end
-
-	if (mbc1m_check_end) begin
-		mbc1m_check_end <= 0;
-		mbc1m <= cart_logo_match;
-	end
-
-	if (mmm01_check_end) begin
-		mmm01_check_end <= 0;
-		mmm01 <= cart_logo_match;
-		if (cart_logo_match) mbc1m <= 0;
 	end
 end
 

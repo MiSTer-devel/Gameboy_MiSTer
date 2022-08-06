@@ -204,13 +204,14 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXX XXXXXXXXXXXX      X       XX
+// XXXXXX XXXX XXXXXXXXXXXX      X       XXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY2P;SS3E000000:40000;",
 	"FS1,GBCGB BIN,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
+	"D7o79,Mapper,Auto,WisdomTree,Mani161,MBC1,MBC3;",
 	"-;",
 	"h2R9,Load Backup RAM;",
 	"h2RA,Save Backup RAM;",
@@ -299,6 +300,10 @@ wire [15:0] joy0_rumble, joy1_rumble;
 
 wire [32:0] RTC_time;
 
+wire        sys_auto     = (status[15:14] == 0);
+wire        sys_gbc      = (status[15:14] == 2);
+wire        sys_megaduck = (status[15:14] == 3);
+
 hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -326,7 +331,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({using_real_cgb_bios,1'b0,isGBC,(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
+	.status_menumask({sys_megaduck,using_real_cgb_bios,1'b0,isGBC,(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
 	.status_in(status),
 	.status_set(1'b0),
 	.direct_video(direct_video),
@@ -443,6 +448,7 @@ wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
 wire rumbling1, rumbling2;
+wire [2:0] mapper_sel = status[41:39];
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
 reg using_real_cgb_bios = 0;
@@ -463,12 +469,15 @@ reg megaduck = 0;
 reg isGBC = 0;
 always @(posedge clk_sys) if(reset) begin
 	if (cart_download)
-		megaduck <= (status[15:14] == 3);
+		megaduck <= sys_megaduck;
 	if (md_download)
-		megaduck <= (status[15:14] == 0) || (status[15:14] == 3);
+		megaduck <= sys_auto || sys_megaduck;
 
-	if(status[15:14]) isGBC <= (status[15:14] == 2);
-	else if(cart_download) isGBC <= (status[15:14] == 0) && !filetype[7:6];
+	if(~sys_auto) isGBC <= sys_gbc;
+	else if(cart_download) begin
+		if (!filetype[5:0]) isGBC <= isGBC_game;
+		else isGBC <= !filetype[7:6];
+	end
 end
 
 // core 1
@@ -485,6 +494,7 @@ cart_top cart1 (
 	.ce_cpu2x    ( ce1_cpu2x  ),
 	.speed       ( speed1     ),
 	.megaduck    ( megaduck   ),
+	.mapper_sel  ( mapper_sel ),
 
 	.cart_addr   ( cart1_addr  ),
 	.cart_a15    ( cart1_a15   ),
@@ -670,6 +680,7 @@ cart_top cart2 (
 	.ce_cpu2x    ( ce2_cpu2x  ),
 	.speed       ( speed2     ),
 	.megaduck    ( megaduck   ),
+	.mapper_sel  ( mapper_sel ),
 
 	.cart_addr   ( cart2_addr  ),
 	.cart_a15    ( cart2_a15   ),
