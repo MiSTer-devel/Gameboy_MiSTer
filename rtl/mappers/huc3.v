@@ -8,6 +8,7 @@ module huc3 (
 	input [63:0]  savestate_data,
 	inout [63:0]  savestate_back_b,
 
+	input         ce_32k,
 	input [32:0]  RTC_time,
 	inout [31:0]  RTC_timestampOut_b,
 	inout [47:0]  RTC_savedtimeOut_b,
@@ -105,7 +106,7 @@ reg [ 7:0] rtc_index;
 reg [ 3:0] rtc_flags;
 reg [ 3:0] rtc_out;
 reg [ 5:0] rtc_seconds;
-reg [24:0] rtc_subseconds;
+reg [14:0] rtc_subseconds;
 reg [11:0] rtc_minutes; // Minutes of the day 0-1439
 reg [15:0] rtc_days;
 
@@ -119,15 +120,15 @@ reg [31:0] diffSeconds;
 wire       diffSeconds_fast_count = (diffSeconds > 0);
 
 always @(posedge clk_sys) begin
-	rtc_subseconds <= rtc_subseconds + 1'b1;
+	if (ce_32k) rtc_subseconds <= rtc_subseconds + 1'b1;
 
-	if (rtc_subseconds_end) begin
+	if (ce_32k & rtc_subseconds_end) begin
 		RTC_timestampOut <= RTC_timestampOut + 1'd1;
 	end else if (diffSeconds_fast_count) begin // fast counting loaded seconds
 		diffSeconds	<= diffSeconds - 1'd1;
 	end
 
-	if (rtc_subseconds_end | diffSeconds_fast_count) begin
+	if ((ce_32k & rtc_subseconds_end) | diffSeconds_fast_count) begin
 		rtc_seconds <= rtc_seconds + 1'b1;
 		if (rtc_seconds == 59) begin
 			rtc_seconds <= 0;

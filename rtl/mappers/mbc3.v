@@ -10,6 +10,7 @@ module mbc3 (
 	input      [15:0] savestate_data,
 	inout      [15:0] savestate_back_b,
 
+	input             ce_32k,
 	input      [32:0] RTC_time,
 	inout      [31:0] RTC_timestampOut_b,
 	inout      [47:0] RTC_savedtimeOut_b,
@@ -147,7 +148,7 @@ assign ram_enabled = mbc_ram_enable & ~mbc3_mode & has_ram;
 /////////////////////////////  RTC  ///////////////////////////////
 reg [2:0]  rtc_index;
 
-reg [25:0] rtc_subseconds;
+reg [15:0] rtc_subseconds;
 reg [5:0]  rtc_seconds, rtc_seconds_latch;
 reg [5:0]  rtc_minutes, rtc_minutes_latch;
 reg [4:0]  rtc_hours, rtc_hours_latch;
@@ -156,7 +157,7 @@ reg        rtc_overflow, rtc_overflow_latch;
 reg        rtc_halt;
 
 wire [7:0] rtc_return;
-wire       rtc_subseconds_end = (rtc_subseconds >= 33554432);
+wire       rtc_subseconds_end = (rtc_subseconds >= 32768-1);
 
 wire        RTC_timestampNew = RTC_time[32];
 wire [31:0] RTC_timestampIn  = RTC_time[31:0];	
@@ -189,7 +190,7 @@ always @(posedge clk_sys) begin
 		end
 
 		rtc_change	  <= 1'b0;
-		rtc_subseconds <= rtc_subseconds + 1'd1;
+		if (ce_32k & ~rtc_halt) rtc_subseconds <= rtc_subseconds + 1'd1;
 
 		if (mbc3_mode || (bk_wr && enable && img_size[9])) begin  // RTC is either used by game or already used in savegame
 			RTC_inuse <= 1'b1;
@@ -226,7 +227,7 @@ always @(posedge clk_sys) begin
 			case (rtc_index)
 				0: begin
 					rtc_seconds    <= cart_di[5:0];
-					rtc_subseconds <= 26'd0;
+					rtc_subseconds <= 0;
 				end
 				1: rtc_minutes	  <= cart_di[5:0]; 
 				2: rtc_hours	  <= cart_di[4:0]; 
@@ -240,14 +241,14 @@ always @(posedge clk_sys) begin
 
 		end else begin  // normal counting
 
-			if (rtc_subseconds_end) begin
-				rtc_subseconds   <= 26'd0;
+			if (ce_32k & rtc_subseconds_end) begin
+				rtc_subseconds   <= 0;
 				RTC_timestampOut <= RTC_timestampOut + 1'd1;
 			end else if (diffSeconds_fast_count) begin // fast counting loaded seconds
 				diffSeconds	<= diffSeconds - 1'd1;
 			end
 
-			if (rtc_subseconds_end | diffSeconds_fast_count) begin
+			if ((ce_32k & rtc_subseconds_end) | diffSeconds_fast_count) begin
 				if (~rtc_halt) begin
 					rtc_change	<= 1'b1;
 					rtc_seconds	<= rtc_seconds + 1'd1;

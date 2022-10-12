@@ -457,6 +457,13 @@ wire [2:0] mapper_sel = status[41:39];
 
 assign joy0_rumble = {8'd0, ((rumbling & ~status[38]) ? 8'd128 : 8'd0)};
 
+reg ce_32k; // 32768Hz clock for RTC
+reg [9:0] ce_32k_div;
+always @(posedge clk_sys) begin
+	ce_32k_div <= ce_32k_div + 1'b1;
+	ce_32k <= !ce_32k_div;
+end
+
 cart_top cart (
 	.reset	     ( reset      ),
 
@@ -511,6 +518,7 @@ cart_top cart (
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
+	.ce_32k           ( ce_32k           ),
 	.RTC_time         ( RTC_time         ),
 	.RTC_timestampOut ( RTC_timestampOut ),
 	.RTC_savedtimeOut ( RTC_savedtimeOut ),
