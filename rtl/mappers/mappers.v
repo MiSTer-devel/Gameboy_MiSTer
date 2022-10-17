@@ -30,6 +30,7 @@ module mappers(
 
 	input  [15:0] joystick_analog_0,
 
+	input         ce_32k,
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
 	output [47:0] RTC_savedtimeOut,
@@ -177,6 +178,7 @@ mbc3 map_mbc3 (
 	.savestate_data    ( savestate_data ),
 	.savestate_back_b  ( savestate_back_b ),
 
+	.ce_32k            ( ce_32k            ),
 	.RTC_time          ( RTC_time         ),
 	.RTC_timestampOut_b( RTC_timestampOut_b ),
 	.RTC_savedtimeOut_b( RTC_savedtimeOut_b ),
@@ -394,6 +396,7 @@ huc3 map_huc3 (
 	.savestate_data    ( savestate_data2 ),
 	.savestate_back_b  ( savestate_back2_b ),
 
+	.ce_32k            ( ce_32k           ),
 	.RTC_time          ( RTC_time         ),
 	.RTC_timestampOut_b( RTC_timestampOut_b ),
 	.RTC_savedtimeOut_b( RTC_savedtimeOut_b ),
@@ -468,7 +471,7 @@ tama map_tama (
 
 	.clk_sys          ( clk_sys ),
 	.ce_cpu           ( ce ),
-	.ce_1x            ( ce_cpu ),
+	.ce_32k           ( ce_32k   ),
 
 	.savestate_load   ( savestate_load ),
 	.savestate_data   ( savestate_data2 ),
@@ -487,6 +490,8 @@ tama map_tama (
 	.cart_wr          ( cart_wr ),
 	.cart_di          ( cart_di ),
 	.cart_oe_b        ( cart_oe_b ),
+
+	.nCS              ( nCS      ),
 
 	.cram_rd          ( cram_rd ),
 	.cram_di          ( cram_di ),

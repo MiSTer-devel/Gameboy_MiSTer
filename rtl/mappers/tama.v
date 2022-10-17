@@ -3,7 +3,7 @@ module tama (
 
 	input         clk_sys,
 	input         ce_cpu,
-	input         ce_1x,
+	input         ce_32k,
 
 	input         savestate_load,
 	input [63:0]  savestate_data,
@@ -74,7 +74,7 @@ reg ram_io;
 reg prev_cram_rd;
 
 reg [6:0] rtc_seconds;
-reg [21:0] rtc_subseconds;
+reg [14:0] rtc_subseconds;
 reg [6:0] rtc_minutes;
 reg [5:0] rtc_hours;
 reg [5:0] rtc_days;
@@ -84,7 +84,7 @@ reg       rtc_24hours;
 reg [3:0] rtc_index;
 reg [1:0] rtc_leap_year;
 
-wire sec_inc = &rtc_subseconds; // 4Mhz
+wire sec_inc = &rtc_subseconds;
 
 reg [5:0] days_in_month;
 always @* begin
@@ -136,9 +136,9 @@ always @(posedge clk_sys) begin
 		cram_wr_r    <= 1'd0;
 		ram_io       <= 1'd0;
 		prev_cram_rd <= 1'd0;
-	end else if(ce_cpu) begin
+	end else begin
 
-		if (cart_wr & ~nCS & ~cart_addr[14]) begin // $A000-BFFF
+		if (ce_cpu & cart_wr & ~nCS & ~cart_addr[14]) begin // $A000-BFFF
 			if (cart_addr[0]) begin
 				reg_index <= cart_di[3:0]; // Register index
 				if (cart_di[3:0] == 4'hA) begin
@@ -163,7 +163,7 @@ always @(posedge clk_sys) begin
         // TODO: Get RTC working. How does the game use the RTC?
         // The in game timer runs at ~16x speed so 1 minute passes every 3.75 seconds.
         // Does the RTC also run 16x speed or only when the Game Boy is on?
-		if (ce_1x) begin
+		if (ce_32k) begin
 			rtc_subseconds <= rtc_subseconds + 1'b1;
 			if (sec_inc) begin
 				rtc_seconds[3:0] <= rtc_seconds[3:0] + 1'b1;
@@ -226,53 +226,55 @@ always @(posedge clk_sys) begin
 			end
 		end
 
-		cram_wr_r <= 0;
-		ram_io <= 0;
-		if (reg_start) begin
-			reg_start <= 0;
+		if (ce_cpu) begin
+			cram_wr_r <= 0;
+			ram_io <= 0;
+			if (reg_start) begin
+				reg_start <= 0;
 
-			if (|rtc_sel) begin // RTC
-				if (rtc_sel == 2'd1) begin
-					case (reg_addr)
-						5'h04: begin
-								rtc_minutes <= reg_data_in[6:0];
-								rtc_seconds <= 0;
-								rtc_subseconds <= 0;
-							   end
-						5'h05: rtc_hours   <= reg_data_in[5:0];
-						5'h06: rtc_index   <= 0;
-						default: ;
-					endcase
+				if (|rtc_sel) begin // RTC
+					if (rtc_sel == 2'd1) begin
+						case (reg_addr)
+							5'h04: begin
+									rtc_minutes <= reg_data_in[6:0];
+									rtc_seconds <= 0;
+									rtc_subseconds <= 0;
+								   end
+							5'h05: rtc_hours   <= reg_data_in[5:0];
+							5'h06: rtc_index   <= 0;
+							default: ;
+						endcase
+					end
+
+					if (rtc_sel == 2'd2) begin
+						case ({reg_addr,reg_data_in[3:0]})
+							{2'd0, 4'h7}: rtc_days[3:0]  <= reg_data_in[7:4];
+							{2'd0, 4'h8}: rtc_days[5:4]  <= reg_data_in[5:4];
+							{2'd0, 4'h9}: rtc_month[3:0] <= reg_data_in[7:4];
+							{2'd0, 4'hA}: rtc_month[4]   <= reg_data_in[4];
+							{2'd0, 4'hB}: rtc_year[3:0]  <= reg_data_in[7:4];
+							{2'd0, 4'hC}: rtc_year[7:4]  <= reg_data_in[7:4];
+
+							{2'd2, 4'hA}: rtc_24hours    <= reg_data_in[4];
+							{2'd2, 4'hB}: rtc_leap_year  <= reg_data_in[5:4];
+							default: ;
+						endcase
+					end
+
+				end else begin // RAM
+					cram_wr_r <= ~ram_read;
+					ram_io <= 1;
 				end
-
-				if (rtc_sel == 2'd2) begin
-					case ({reg_addr,reg_data_in[3:0]})
-						{2'd0, 4'h7}: rtc_days[3:0]  <= reg_data_in[7:4];
-						{2'd0, 4'h8}: rtc_days[5:4]  <= reg_data_in[5:4];
-						{2'd0, 4'h9}: rtc_month[3:0] <= reg_data_in[7:4];
-						{2'd0, 4'hA}: rtc_month[4]   <= reg_data_in[4];
-						{2'd0, 4'hB}: rtc_year[3:0]  <= reg_data_in[7:4];
-						{2'd0, 4'hC}: rtc_year[7:4]  <= reg_data_in[7:4];
-
-						{2'd2, 4'hA}: rtc_24hours    <= reg_data_in[4];
-						{2'd2, 4'hB}: rtc_leap_year  <= reg_data_in[5:4];
-						default: ;
-					endcase
-				end
-
-			end else begin // RAM
-				cram_wr_r <= ~ram_read;
-				ram_io <= 1;
 			end
-		end
 
-		if (ram_io & ram_read) begin
-			reg_data_out <= cram_di;
-		end
+			if (ram_io & ram_read) begin
+				reg_data_out <= cram_di;
+			end
 
-		prev_cram_rd <= cram_rd;
-		if (prev_cram_rd & ~cram_rd & ~cart_addr[0] & |rtc_sel & reg_index[3:1] == 3'b110) begin
-			rtc_index <= rtc_index + 1'b1;
+			prev_cram_rd <= cram_rd;
+			if (prev_cram_rd & ~cram_rd & ~cart_addr[0] & |rtc_sel & reg_index[3:1] == 3'b110) begin
+				rtc_index <= rtc_index + 1'b1;
+			end
 		end
 	end
 end
