@@ -1832,8 +1832,8 @@ begin
             snd_left_in := snd_left_in + ("00" & unsigned(noi_wav));
         end if;
 
-        snd_right <= (std_logic_vector(snd_right_in) & "00000") * ch_vol(2 downto 0);
-        snd_left  <= (std_logic_vector(snd_left_in) & "00000") * ch_vol(6 downto 4);
+        snd_right <= std_logic_vector(snd_right_in * unsigned(('0' & ch_vol(2 downto 0)) + '1')) & "0000";
+        snd_left  <= std_logic_vector(snd_left_in * unsigned(('0' & ch_vol(6 downto 4)) + '1')) & "0000";
     end process;
 
 end SYN;
