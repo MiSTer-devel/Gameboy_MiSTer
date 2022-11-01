@@ -1076,7 +1076,7 @@ begin
 					sq1_suppressed    <= '1';
 					sq2_suppressed    <= '1';
 					wav_suppressed    <= '1';
-					wav_wav_r         <= SS_Sound3(49 downto 46); -- "010000";
+					wav_wav_r         <= SS_Sound3(49 downto 46); -- "0000";
    
 					sq1_sduty         := (others => '0');
 					sq2_sduty         := (others => '0');
@@ -1798,7 +1798,17 @@ begin
 		  end if;
     end process;
 
-    -- Mixer
+    -- DACs and Mixer
+-- Each of the 4 channels work pretty identically. First, there’s a “generation” circuit, which usually outputs either a 0 or another value 
+--(CH3 differs in that it can output multiple values, but regardless). That value is digital, and can range between 0 and 0xF. 
+-- This is then fed to a DAC, which maps this to an analog value; 7 maps to the lowest (negative) voltage, 0 to the highest (positive) one. 
+-- Linearly varies in between
+-- 0b0111 -> lowest negative voltage
+-- 0b0000 -> highest positive voltage
+-- Finally, all channels are mixed through NR51, scaled through NR50, and sent to the output.
+-- Sameboy logic
+-- Multiplying the wav value by 2 doesn't sound right
+-- output = (0xF - value * 2)
     mixer : process (sq1_wav, sq2_wav, noi_wav, wav_wav, ch_map, ch_vol)
         variable snd_left_in  : unsigned(5 downto 0);
         variable snd_right_in : unsigned(5 downto 0);
@@ -1807,33 +1817,33 @@ begin
         snd_right_in := (others => '0');
 
         if ch_map(0) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(sq1_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(sq1_wav)));
         end if;
         if ch_map(1) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(sq2_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(sq2_wav)));
         end if;
         if ch_map(2) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(wav_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(wav_wav)));
         end if;
         if ch_map(3) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(noi_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(noi_wav)));
         end if;
 
         if ch_map(4) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(sq1_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(sq1_wav)));
         end if;
         if ch_map(5) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(sq2_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(sq2_wav)));
         end if;
         if ch_map(6) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(wav_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(wav_wav)));
         end if;
         if ch_map(7) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(noi_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(noi_wav)));
         end if;
 
-        snd_right <= std_logic_vector(snd_right_in * unsigned(('0' & ch_vol(2 downto 0)) + '1')) & "0000";
-        snd_left  <= std_logic_vector(snd_left_in * unsigned(('0' & ch_vol(6 downto 4)) + '1')) & "0000";
+        snd_right <= std_logic_vector(snd_right_in * unsigned(('0' & ch_vol(2 downto 0)) + '1')) & "000000";
+        snd_left  <= std_logic_vector(snd_left_in * unsigned(('0' & ch_vol(6 downto 4)) + '1')) & "000000";
     end process;
 
 end SYN;
