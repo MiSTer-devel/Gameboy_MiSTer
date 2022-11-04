@@ -560,7 +560,7 @@ wire lcd_vsync;
 
 wire DMA_on;
 
-assign AUDIO_S = 0;
+assign AUDIO_S = 1;
 
 wire reset = (RESET | status[0] | buttons[1] | cart_download | boot_download | bk_loading);
 wire speed;
