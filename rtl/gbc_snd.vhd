@@ -81,7 +81,7 @@ architecture SYN of gbc_snd is
     signal sq1_freqchange    : std_logic;
 
     signal sq1_playing       : std_logic;                    -- Sq1 channel active
-    signal sq1_wav           : std_logic_vector(5 downto 0); -- Sq1 output waveform
+    signal sq1_wav           : std_logic_vector(3 downto 0); -- Sq1 output waveform
     signal sq1_suppressed    : std_logic;                    -- Sq1 channel 1st sample suppressed when triggered after poweron
 
     signal sq2_out           : std_logic;
@@ -102,7 +102,7 @@ architecture SYN of gbc_snd is
 
     signal sq2_vol           : std_logic_vector(3 downto 0);  -- Sq2 initial volume
     signal sq2_playing       : std_logic;                     -- Sq2 channel active
-    signal sq2_wav           : std_logic_vector(5 downto 0);  -- Sq2 output waveform
+    signal sq2_wav           : std_logic_vector(3 downto 0);  -- Sq2 output waveform
     signal sq2_suppressed    : std_logic;                     -- Sq2 channel 1st sample suppressed when triggered after poweron
     
     signal wav_enable        : std_logic;                     -- Wave enable
@@ -116,10 +116,10 @@ architecture SYN of gbc_snd is
     signal wav_index         : unsigned(4 downto 0);          -- Wave current sample index
     signal wav_access        : unsigned(1 downto 0);          -- Wave table access counter used for DMG
     signal wav_playing       : std_logic;
-    signal wav_wav           : std_logic_vector(5 downto 0); -- Wave output waveform
+    signal wav_wav           : std_logic_vector(3 downto 0); -- Wave output waveform
     signal wav_ram           : wav_arr_t;                    -- Wave table
     signal wav_suppressed    : std_logic;                    -- wav channel 1st sample suppressed when triggered after poweron
-    signal wav_wav_r         : std_logic_vector(5 downto 0); -- Wave output waveform when suppressed
+    signal wav_wav_r         : std_logic_vector(3 downto 0); -- Wave output waveform when suppressed
 
     signal noi_slen          : std_logic_vector(6 downto 0);
     signal noi_lenchange     : std_logic;
@@ -139,7 +139,7 @@ architecture SYN of gbc_snd is
 
     signal noi_vol           : std_logic_vector(3 downto 0); -- Noise initial volume
     signal noi_playing       : std_logic;                    -- Noise channel active
-    signal noi_wav           : std_logic_vector(5 downto 0); -- Noise output waveform
+    signal noi_wav           : std_logic_vector(3 downto 0); -- Noise output waveform
 
     signal ch_map            : std_logic_vector(7 downto 0);
     signal ch_vol            : std_logic_vector(7 downto 0);
@@ -935,10 +935,10 @@ begin
                   if is_gbc = '1' then
                     s1_readdata <= (others => '0');
                     if  sq2_playing = '1' then
-                        s1_readdata(7 downto 4) <= sq2_wav(5 downto 2);
+                        s1_readdata(7 downto 4) <= sq2_wav;
                     end if;
                     if  sq1_playing = '1' then
-                        s1_readdata(3 downto 0) <= sq1_wav(5 downto 2);
+                        s1_readdata(3 downto 0) <= sq1_wav;
                     end if;
                   else
                     s1_readdata <= X"FF";
@@ -947,10 +947,10 @@ begin
                   if is_gbc = '1' then
                     s1_readdata <= (others => '0');
                     if  noi_playing = '1' then
-                        s1_readdata(7 downto 4) <= noi_wav(5 downto 2);
+                        s1_readdata(7 downto 4) <= noi_wav;
                     end if;
                     if  wav_playing = '1' then
-                        s1_readdata(3 downto 0) <= wav_wav(5 downto 2);  
+                        s1_readdata(3 downto 0) <= wav_wav;  
                     end if;
                   else
                     s1_readdata <= X"FF";
@@ -968,7 +968,7 @@ begin
     SS_Sound3_BACK(38 downto 35) <= sq1_vol;
     SS_Sound3_BACK(          39) <= sq2_playing;
     SS_Sound3_BACK(43 downto 40) <= sq2_vol;
-    SS_Sound3_BACK(49 downto 44) <= wav_wav_r;
+    SS_Sound3_BACK(49 downto 46) <= wav_wav_r;
     SS_Sound3_BACK(          50) <= wav_playing;
     SS_Sound3_BACK(55 downto 51) <= std_logic_vector(wav_index);
     SS_Sound3_BACK(57 downto 56) <= std_logic_vector(wav_access);
@@ -1025,22 +1025,22 @@ begin
     begin
 
         if sq1_out = '1' and sq1_suppressed = '0' then
-            sq1_wav <= sq1_vol & "00";
+            sq1_wav <= sq1_vol;
         else
-            sq1_wav <= "000000";
+            sq1_wav <= "0000";
         end if;
         
         if sq2_out = '1' and sq2_suppressed = '0' then
-            sq2_wav <= sq2_vol & "00";
+            sq2_wav <= sq2_vol;
         else
-            sq2_wav <= "000000";
+            sq2_wav <= "0000";
         end if;
 
         if wav_enable = '1' and wav_volsh /= "00" and wav_suppressed = '0' then
             case wav_volsh is
-                when "01" => wav_wav   <= wav_ram(to_integer(wav_index)) & "00";
-                when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1)) & "00";
-                when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2)) & "00";
+                when "01" => wav_wav   <= wav_ram(to_integer(wav_index));
+                when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1));
+                when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2));
                 when others => wav_wav <= (others => 'X');
             end case;
         else
@@ -1048,9 +1048,9 @@ begin
         end if;       
 
         if noi_out = '1' then
-            noi_wav <= noi_vol & "00";
+            noi_wav <= noi_vol;
         else
-            noi_wav <= "000000";
+            noi_wav <= "0000";
         end if;
 
         -- Sound processing
@@ -1076,7 +1076,7 @@ begin
 					sq1_suppressed    <= '1';
 					sq2_suppressed    <= '1';
 					wav_suppressed    <= '1';
-					wav_wav_r         <= SS_Sound3(49 downto 44); -- "000000";
+					wav_wav_r         <= SS_Sound3(49 downto 46); -- "0000";
    
 					sq1_sduty         := (others => '0');
 					sq2_sduty         := (others => '0');
@@ -1702,7 +1702,7 @@ begin
 									wav_suppressed <= '1';      -- suppress 1st sample if channel wasn't active or keep playing the current one if enabled
 
 									if wav_playing = '0' then
-										 wav_wav_r <= "000000";  -- suppress 1st sample if channel wasn't active 
+										 wav_wav_r <= "0000";  -- suppress 1st sample if channel wasn't active 
 									else
 										 wav_wav_r <= wav_wav;   -- keep playing the current sample if it was active
 									end if;
@@ -1739,7 +1739,7 @@ begin
 							  sq1_suppressed <= '1';
 							  sq2_suppressed <= '1';
 							  wav_suppressed <= '1';
-							  wav_wav_r <= "000000";
+							  wav_wav_r <= "0000";
 
 							  sq1_sduty    := (others => '0');
 							  sq2_sduty    := (others => '0');
@@ -1798,42 +1798,46 @@ begin
 		  end if;
     end process;
 
-    -- Mixer
+
+    -- DACs and Mixer
+    -- https://gbdev.io/pandocs/Audio_details.html#dacs 
+    -- The DACs linearly map input codes 0x0 to 0xF to analog outputs 1 to -1 (0x0 is the most positive signal, 0xF is the most negative signal) 
+    -- Finally, all channels are mixed through NR51, scaled through NR50, and sent to the output. 
     mixer : process (sq1_wav, sq2_wav, noi_wav, wav_wav, ch_map, ch_vol)
-        variable snd_left_in  : unsigned(7 downto 0);
-        variable snd_right_in : unsigned(7 downto 0);
+        variable snd_left_in  : unsigned(5 downto 0);
+        variable snd_right_in : unsigned(5 downto 0);
     begin
         snd_left_in  := (others => '0');
         snd_right_in := (others => '0');
 
         if ch_map(0) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(sq1_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(sq1_wav)));
         end if;
         if ch_map(1) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(sq2_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(sq2_wav)));
         end if;
         if ch_map(2) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(wav_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(wav_wav)));
         end if;
         if ch_map(3) = '1' then
-            snd_right_in := snd_right_in + ("00" & unsigned(noi_wav));
+            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(noi_wav)));
         end if;
 
         if ch_map(4) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(sq1_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(sq1_wav)));
         end if;
         if ch_map(5) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(sq2_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(sq2_wav)));
         end if;
         if ch_map(6) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(wav_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(wav_wav)));
         end if;
         if ch_map(7) = '1' then
-            snd_left_in := snd_left_in + ("00" & unsigned(noi_wav));
+            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(noi_wav)));
         end if;
 
-        snd_right <= (std_logic_vector(snd_right_in) & "00000") * ch_vol(2 downto 0);
-        snd_left  <= (std_logic_vector(snd_left_in) & "00000") * ch_vol(6 downto 4);
+        snd_right <= std_logic_vector(snd_right_in * unsigned(('0' & ch_vol(2 downto 0)) + '1')) & "000000";
+        snd_left  <= std_logic_vector(snd_left_in * unsigned(('0' & ch_vol(6 downto 4)) + '1')) & "000000";
     end process;
 
 end SYN;
