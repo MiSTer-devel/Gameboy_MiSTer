@@ -1798,17 +1798,11 @@ begin
 		  end if;
     end process;
 
+
     -- DACs and Mixer
--- Each of the 4 channels work pretty identically. First, there’s a “generation” circuit, which usually outputs either a 0 or another value 
---(CH3 differs in that it can output multiple values, but regardless). That value is digital, and can range between 0 and 0xF. 
--- This is then fed to a DAC, which maps this to an analog value; 7 maps to the lowest (negative) voltage, 0 to the highest (positive) one. 
--- Linearly varies in between
--- 0b0111 -> lowest negative voltage
--- 0b0000 -> highest positive voltage
--- Finally, all channels are mixed through NR51, scaled through NR50, and sent to the output.
--- Sameboy logic
--- Multiplying the wav value by 2 doesn't sound right
--- output = (0xF - value * 2)
+    -- https://gbdev.io/pandocs/Audio_details.html#dacs 
+    -- The DACs linearly map input codes 0x0 to 0xF to analog outputs 1 to -1 (0x0 is the most positive signal, 0xF is the most negative signal) 
+    -- Finally, all channels are mixed through NR51, scaled through NR50, and sent to the output. 
     mixer : process (sq1_wav, sq2_wav, noi_wav, wav_wav, ch_map, ch_vol)
         variable snd_left_in  : unsigned(5 downto 0);
         variable snd_right_in : unsigned(5 downto 0);
