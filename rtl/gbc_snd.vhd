@@ -1804,40 +1804,45 @@ begin
     -- The DACs linearly map input codes 0x0 to 0xF to analog outputs 1 to -1 (0x0 is the most positive signal, 0xF is the most negative signal) 
     -- Finally, all channels are mixed through NR51, scaled through NR50, and sent to the output. 
     mixer : process (sq1_wav, sq2_wav, noi_wav, wav_wav, ch_map, ch_vol)
-        variable snd_left_in  : unsigned(5 downto 0);
-        variable snd_right_in : unsigned(5 downto 0);
+        variable snd_left_in  : signed(5 downto 0);
+        variable snd_right_in : signed(5 downto 0);   
+        variable snd_tmp      : signed(10 downto 0);
+        constant DC_OFFSET    : std_logic_vector(3 downto 0) := "1000";
     begin
         snd_left_in  := (others => '0');
         snd_right_in := (others => '0');
 
         if ch_map(0) = '1' then
-            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(sq1_wav)));
-        end if;
-        if ch_map(1) = '1' then
-            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(sq2_wav)));
-        end if;
-        if ch_map(2) = '1' then
-            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(wav_wav)));
-        end if;
-        if ch_map(3) = '1' then
-            snd_right_in := snd_right_in + (X"F" - ("00" & unsigned(noi_wav)));
+            snd_right_in := snd_right_in + resize(signed(sq1_wav - DC_OFFSET), snd_right_in'length);
+        end if;                                                  
+        if ch_map(1) = '1' then                                  
+            snd_right_in := snd_right_in + resize(signed(sq2_wav - DC_OFFSET), snd_right_in'length);
+        end if;                                                  
+        if ch_map(2) = '1' then                                  
+            snd_right_in := snd_right_in + resize(signed(wav_wav - DC_OFFSET), snd_right_in'length);
+        end if;                                                  
+        if ch_map(3) = '1' then                                  
+            snd_right_in := snd_right_in + resize(signed(noi_wav - DC_OFFSET), snd_right_in'length);
         end if;
 
         if ch_map(4) = '1' then
-            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(sq1_wav)));
-        end if;
-        if ch_map(5) = '1' then
-            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(sq2_wav)));
-        end if;
-        if ch_map(6) = '1' then
-            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(wav_wav)));
-        end if;
-        if ch_map(7) = '1' then
-            snd_left_in := snd_left_in + (X"F" - ("00" & unsigned(noi_wav)));
+            snd_left_in := snd_left_in + resize(signed(sq1_wav - DC_OFFSET), snd_left_in'length);
+        end if;                          
+        if ch_map(5) = '1' then          
+            snd_left_in := snd_left_in + resize(signed(sq2_wav - DC_OFFSET), snd_left_in'length);
+        end if;                          
+        if ch_map(6) = '1' then          
+            snd_left_in := snd_left_in + resize(signed(wav_wav - DC_OFFSET), snd_left_in'length);
+        end if;                          
+        if ch_map(7) = '1' then          
+            snd_left_in := snd_left_in + resize(signed(noi_wav - DC_OFFSET), snd_left_in'length);
         end if;
 
-        snd_right <= std_logic_vector(snd_right_in * unsigned(('0' & ch_vol(2 downto 0)) + '1')) & "000000";
-        snd_left  <= std_logic_vector(snd_left_in * unsigned(('0' & ch_vol(6 downto 4)) + '1')) & "000000";
+        snd_tmp := snd_right_in * signed(("00" & ch_vol(2 downto 0)) + '1');
+        snd_right <= std_logic_vector(snd_tmp) & "00000";
+
+        snd_tmp := snd_left_in * signed(("00" & ch_vol(6 downto 4)) + '1');
+        snd_left <= std_logic_vector(snd_tmp) & "00000";
     end process;
 
 end SYN;
