@@ -25,8 +25,10 @@ module video (
 	input  ce, // 4 Mhz cpu clock
 	input  ce_cpu, // 4 or 8Mhz
 	input  isGBC,
-	input  isGBC_game,
+	input  isGBC_mode,
 	input  megaduck,
+
+	input  boot_rom_en,
 
 	// cpu register adn oam interface
 	input  cpu_sel_oam,
@@ -81,13 +83,13 @@ wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
 wire [60:0] SS_Video1;
 wire [60:0] SS_Video1_BACK;
-wire [61:0] SS_Video2;
-wire [61:0] SS_Video2_BACK;
+wire [63:0] SS_Video2;
+wire [63:0] SS_Video2_BACK;
 wire [63:0] SS_Video3;
 wire [63:0] SS_Video3_BACK;
 
 eReg_SavestateV #(0,  9, 60, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
-eReg_SavestateV #(0, 10, 61, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
+eReg_SavestateV #(0, 10, 63, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
 eReg_SavestateV #(0, 27, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
 
 wire [63:0] SS_BPAL [7:0];
@@ -150,7 +152,7 @@ wire lcdc_spr_ena          = megaduck ? lcdc[0] : lcdc[1];
 //  When Bit 0 is cleared, the background and window lose their priority
 //  - the sprites will be always displayed on top of background and window,
 //  independently of the priority flags in OAM and BG Map attributes."
-wire lcdc_bg_ena           =  (megaduck ? lcdc[6] : lcdc[0]) | (isGBC&&isGBC_game);
+wire lcdc_bg_ena           =  (megaduck ? lcdc[6] : lcdc[0]) | (isGBC&&isGBC_mode);
 wire lcdc_bg_prio          =  megaduck ? lcdc[6] : lcdc[0];
 
 assign lcd_on = lcdc_on;
@@ -196,6 +198,13 @@ reg obpi_ai;    //Bit 7     Auto Increment  (0=Disabled, 1=Increment after Writi
 
 //FF6B - OCPD/OBPD - Sprite Palette Data
 reg[7:0] obpd [63:0]; //64 bytes
+
+//FF6C Bit 0 OBJ priority mode select
+// 0: smaller OBJ-NO has higher priority (GBC)
+// 1: smaller X coordinate has higher priority (DMG)
+// https://forums.nesdev.org/viewtopic.php?t=19888
+reg ff6c_opri;
+reg obj_prio_dmg_mode;
 
 // --------------------------------------------------------------------
 // ----------------------------- DMA engine ---------------------------
@@ -385,6 +394,8 @@ assign SS_Video2_BACK[   44] = bgpi_ai;
 assign SS_Video2_BACK[   45] = obpi_ai;
 assign SS_Video2_BACK[53:46] = lyc_r_gbc;
 assign SS_Video2_BACK[61:54] = lyc_r_dmg;
+assign SS_Video2_BACK[   62] = ff6c_opri;
+assign SS_Video2_BACK[   63] = obj_prio_dmg_mode;
 
 genvar palI;
 generate
@@ -443,6 +454,8 @@ always @(posedge clk) begin
 		bgpi_ai <= SS_Video2[   44]; // 1'b0;
 		obpi_ai <= SS_Video2[   45]; // 1'b0;
 		lyc_r_gbc <= SS_Video2[53:46]; // 8'h00;
+		ff6c_opri <= SS_Video2[   62]; // 1'b0;
+		obj_prio_dmg_mode <= SS_Video2[   63]; // 1'b0;
 
 		bgpd[ 0] <= SS_BPAL[0][ 7: 0]; bgpd[16] <= SS_BPAL[2][ 7: 0]; bgpd[32] <= SS_BPAL[4][ 7: 0]; bgpd[48] <= SS_BPAL[6][ 7: 0]; //8'h00;
 		bgpd[ 1] <= SS_BPAL[0][15: 8]; bgpd[17] <= SS_BPAL[2][15: 8]; bgpd[33] <= SS_BPAL[4][15: 8]; bgpd[49] <= SS_BPAL[6][15: 8]; //8'h00;
@@ -491,13 +504,15 @@ always @(posedge clk) begin
 				8'h49:	obp1 <= cpu_di;
 				8'h4a:	wy <= cpu_di;
 				8'h4b:	wx <= cpu_di;
+			endcase
 
-				//gbc
+			//gbc
+			if (isGBC) case(cpu_addr)
 				8'h68: begin
 							bgpi <= cpu_di[5:0];
 							bgpi_ai <= cpu_di[7];
 						 end
-				8'h69: begin
+				8'h69: if (isGBC_mode) begin
 							if (vram_cpu_allow) begin
 								bgpd[bgpi] <= cpu_di;
 							end
@@ -508,12 +523,20 @@ always @(posedge clk) begin
 							obpi <= cpu_di[5:0];
 							obpi_ai <= cpu_di[7];
 						 end
-				8'h6B: begin
+				8'h6B: if (isGBC_mode) begin
 							if (vram_cpu_allow) begin
 								obpd[obpi] <= cpu_di;
 							end
 							if (obpi_ai) obpi <= obpi + 6'h1;
 						 end
+				8'h6C: begin
+							// Reportedly can be written to when boot rom is enabled or FF4C Bit2=0 (GBC mode)
+							// but only affects OBJ prio if written when boot rom is enabled.
+							if (boot_rom_en | isGBC_mode) begin
+								ff6c_opri <= cpu_di[0];
+							end
+							if (boot_rom_en) obj_prio_dmg_mode <= cpu_di[0];
+						end
 			endcase
 		end
 	end
@@ -536,9 +559,10 @@ assign cpu_do =
 	(cpu_addr == 8'h4b)?wx:
 	isGBC?
 		(cpu_addr == 8'h68)?{bgpi_ai,1'd1,bgpi}:
-		(cpu_addr == 8'h69 && isGBC_game && vram_cpu_allow)?bgpd[bgpi]:
+		(cpu_addr == 8'h69 && isGBC_mode && vram_cpu_allow)?bgpd[bgpi]:
 		(cpu_addr == 8'h6a)?{obpi_ai,1'd1,obpi}:
-		(cpu_addr == 8'h6b && isGBC_game && vram_cpu_allow)?obpd[obpi]:
+		(cpu_addr == 8'h6b && isGBC_mode && vram_cpu_allow)?obpd[obpi]:
+		(cpu_addr == 8'h6c) ? { 7'h7f, ff6c_opri } :
 		8'hff:
 	8'hff;
 
@@ -773,9 +797,9 @@ reg [7:0] spr_tile_data0;
 
 reg [7:0] bg_tile_attr,bg_tile_attr_new; //GBC
 //gbc check tile bank
-wire [7:0] bg_vram_data_a = (isGBC & isGBC_game & bg_tile_attr_new[3]) ? vram1_data : vram_data;
+wire [7:0] bg_vram_data_a = (isGBC & isGBC_mode & bg_tile_attr_new[3]) ? vram1_data : vram_data;
 //gbc x-flip
-wire [7:0] bg_vram_data_in = (isGBC & isGBC_game & bg_tile_attr_new[5]) ? bit_reverse(bg_vram_data_a) : bg_vram_data_a;
+wire [7:0] bg_vram_data_in = (isGBC & isGBC_mode & bg_tile_attr_new[5]) ? bit_reverse(bg_vram_data_a) : bg_vram_data_a;
 
 // A bg or sprite fetch takes 6 cycles
 reg [2:0] bg_fetch_cycle;
@@ -797,7 +821,7 @@ wire spr_pal           = sprite_attr[4];
 wire spr_attr_cgb_bank = sprite_attr[3];
 wire [2:0] spr_cgb_pal = sprite_attr[2:0];
 
-wire [7:0] spr_vram_data = (isGBC & isGBC_game & spr_attr_cgb_bank) ? vram1_data : vram_data;
+wire [7:0] spr_vram_data = (isGBC & isGBC_mode & spr_attr_cgb_bank) ? vram1_data : vram_data;
 wire [7:0] spr_tile_data_in = spr_attr_h_flip ? bit_reverse(spr_vram_data) : spr_vram_data;
 
 // CGB sprite priority. Non-transparent pixels with lower sprite_index have priority.
@@ -814,7 +838,7 @@ wire [7:0] spr_cgb_index_prio = spr_cgb_prio(spr_cgb_index_shift[3], spr_cgb_ind
 
 // DMG sprite pixels are only loaded into the shift register if the old pixel is transparent.
 // CGB will mask the old pixel to 0 if the new pixel has higher priority.
-wire [7:0] spr_tile_mask = (spr_tile_shift_0 | spr_tile_shift_1) & ((isGBC & isGBC_game) ? ~spr_cgb_index_prio : 8'hFF);
+wire [7:0] spr_tile_mask = (spr_tile_shift_0 | spr_tile_shift_1) & ((isGBC & ~obj_prio_dmg_mode) ? ~spr_cgb_index_prio : 8'hFF);
 
 // cycle through the B01s states
 wire bg_tile_map_rd = (mode3 && bg_fetch_cycle[2:1] == 2'b00);
@@ -839,7 +863,7 @@ always @(posedge clk) begin
 		if (bg_fetch_cycle[0]) begin
 			if(bg_tile_map_rd) begin
 				bg_tile <= vram_data;
-				if (isGBC & isGBC_game) bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
+				if (isGBC & isGBC_mode) bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
 			end
 
 			if(bg_tile_data0_rd) bg_tile_data0 <= bg_vram_data_in;
@@ -929,7 +953,7 @@ wire bg_tile_a12 = !lcdc_tile_data_sel?(~bg_tile[7]):1'b0;
 wire tile_map_sel = window_ena?lcdc_win_tile_map_sel:lcdc_bg_tile_map_sel;
 
 //GBC: check if flipped y
-wire [2:0] tile_line_flip = (isGBC && isGBC_game && bg_tile_attr_new[6]) ? ~tile_line : tile_line;
+wire [2:0] tile_line_flip = (isGBC && isGBC_mode && bg_tile_attr_new[6]) ? ~tile_line : tile_line;
 
 assign vram_addr =
 	bg_tile_map_rd?{2'b11, tile_map_sel, bg_tile_map_addr}:
@@ -979,7 +1003,7 @@ sprites sprites (
 
 // https://forums.nesdev.com/viewtopic.php?f=20&t=10771&sid=8fdb6e110fd9b5434d4a567b1199585e#p122222
 // priority list: BG0 < OBJL < BGL < OBJH < BGH
-wire bg_piority = isGBC && isGBC_game && bg_tile_attr[7];
+wire bg_piority = isGBC && isGBC_mode && bg_tile_attr[7];
 
 reg sprite_pixel_visible;
 
@@ -992,7 +1016,7 @@ always @(*) begin
 	sprite_pixel_visible = 1'b0;
 	if (|sprite_pixel_data && lcdc_spr_ena) begin		// pixel active and sprites enabled
 
-		if (isGBC&&isGBC_game) begin
+		if (isGBC&&isGBC_mode) begin
 			if (sprite_pixel_data == 2'b00)
 				sprite_pixel_visible = 1'b0;
 			else if (bg_pix_data == 2'b00)
@@ -1030,7 +1054,7 @@ wire [1:0] obp_data =   (sprite_pixel_data == 2'b00) ? obp[1:0] :
 						(sprite_pixel_data == 2'b10) ? obp[5:4] :
 													obp[7:6];
 
-wire [5:0] palette_index = isGBC_game ? {bg_tile_attr[2:0], bg_pix_data, 1'b0} :  //GBC game
+wire [5:0] palette_index = isGBC_mode ? {bg_tile_attr[2:0], bg_pix_data, 1'b0} :  //GBC game
 									{3'd0, bgp_data , 1'b0}; //GB game in GBC mode
 
 // apply bg palette
@@ -1039,7 +1063,7 @@ wire [14:0] pix_rgb_data = isGBC ? {bgpd[palette_index+1][6:0],bgpd[palette_inde
 
 // apply sprite palette
 wire [2:0] spr_cgb_pal_out = {spr_cgb_pal_shift[2][7], spr_cgb_pal_shift[1][7],spr_cgb_pal_shift[0][7]};
-wire [5:0] sprite_palette_index = isGBC_game? {spr_cgb_pal_out, sprite_pixel_data, 1'b0 } : //gbc game
+wire [5:0] sprite_palette_index = isGBC_mode? {spr_cgb_pal_out, sprite_pixel_data, 1'b0 } : //gbc game
 								{sprite_pixel_cmap, obp_data, 1'b0}; //GB game in GBC mode
 
 wire [14:0] sprite_pix = isGBC ? {obpd[sprite_palette_index+1][6:0],obpd[sprite_palette_index]} : //gbc

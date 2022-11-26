@@ -28,7 +28,6 @@ module gb (
 
 	input [7:0] joystick,
 	input isGBC,
-	input isGBC_game,
 	input isSGB,
 
 	// cartridge interface
@@ -131,9 +130,9 @@ wire [4:0] Savestate_RAMRWrEn;
 localparam SAVESTATE_MODULES    = 8;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
-wire [54:0] SS_Top;
-wire [54:0] SS_Top_BACK;
-eReg_SavestateV #(0, 31, 54, 0, 64'h0000000000800001) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
+wire [56:0] SS_Top;
+wire [56:0] SS_Top_BACK;
+eReg_SavestateV #(0, 31, 56, 0, 64'h0000000000800001) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
 
 wire [10:0] SS_Top2;
 wire [10:0] SS_Top2_BACK;
@@ -142,11 +141,14 @@ eReg_SavestateV #(0, 38, 10, 0, 64'h0000000000000000) iREG_SAVESTATE_Top2 (clk_s
 // include cpu
 reg boot_rom_enabled;
 
+reg [1:0] ff4c_key0; // GBC DMG mode register
+wire isGBC_mode = !ff4c_key0 | boot_rom_enabled;
+
 wire [15:0] cpu_addr;
 wire [7:0] cpu_do;
 
 wire sel_timer = (cpu_addr[15:4] == 12'hff0) && (cpu_addr[3:2] == 2'b01);
-wire sel_video_reg = (cpu_addr[15:4] == 12'hff4) || (isGBC && (cpu_addr[15:2] == 14'h3fda));    //video and oam dma (+ ff68-ff6B when gbc)
+wire sel_video_reg = (cpu_addr[15:4] == 12'hff4) || (isGBC && (cpu_addr[15:4] == 12'hff6) && (cpu_addr[3:0] >= 4'h8 && cpu_addr[3:0] <= 4'hC)); //video and oam dma (+ ff68-ff6C when gbc)
 wire sel_video_oam = cpu_addr[15:8] == 8'hfe;
 wire sel_joy  = cpu_addr == 16'hff00;                // joystick controller
 wire sel_sb  = cpu_addr == 16'hff01;  			        // serial SB - Serial transfer data
@@ -169,7 +171,7 @@ wire sel_boot_rom, sel_boot_rom_cgb;
 // unused cgb registers
 wire sel_FF72  = isGBC && cpu_addr == 16'hff72;            // unused register, all bits read/write
 wire sel_FF73  = isGBC && cpu_addr == 16'hff73;            // unused register, all bits read/write
-wire sel_FF74  = isGBC && isGBC_game && (cpu_addr == 16'hff74); // unused register, all bits read/write, only in CGB mode
+wire sel_FF74  = isGBC && isGBC_mode && (cpu_addr == 16'hff74); // unused register, all bits read/write, only in CGB mode
 wire sel_FF75  = isGBC && cpu_addr == 16'hff75;            // unused register, bits 4-6 read/write
 
 wire ext_bus_wram_sel, ext_bus_cram_sel, ext_bus_rom_sel;
@@ -198,11 +200,12 @@ wire dma_sel_ext_bus = isGBC ? dma_sel_ext_bus_cgb : dma_sel_ext_bus_dmg;
 
 //CGB
 wire sel_vram_bank = (cpu_addr==16'hff4f);
-wire sel_wram_bank = isGBC && (isGBC_game || boot_rom_enabled) && (cpu_addr==16'hff70);
-wire sel_hdma = isGBC && (isGBC_game || boot_rom_enabled) && (cpu_addr[15:4]==12'hff5) && 
+wire sel_wram_bank = isGBC && isGBC_mode && (cpu_addr==16'hff70);
+wire sel_hdma = isGBC && isGBC_mode && (cpu_addr[15:4]==12'hff5) && 
 					((cpu_addr[3:0]!=4'd0)&&(cpu_addr[3:0]< 4'd6)); //HDMA FF51-FF55 
-wire sel_key1 = isGBC && isGBC_game && (cpu_addr == 16'hff4d); // KEY1 - CGB Mode Only - Prepare Speed Switch
-wire sel_rp = isGBC && isGBC_game && (cpu_addr == 16'hff56); //FF56 - RP - CGB Mode Only - Infrared Communications Port
+wire sel_key0 = isGBC && boot_rom_enabled && (cpu_addr == 16'hff4c); // KEY0 - CGB / DMG mode register
+wire sel_key1 = isGBC && isGBC_mode && (cpu_addr == 16'hff4d); // KEY1 - CGB Mode Only - Prepare Speed Switch
+wire sel_rp = isGBC && isGBC_mode && (cpu_addr == 16'hff56); //FF56 - RP - CGB Mode Only - Infrared Communications Port
 
 //HDMA can select from $0000 to $7ff0 or A000-DFF0
 wire [15:0] hdma_source_addr;
@@ -257,6 +260,7 @@ wire [7:0] cpu_di =
 		sel_wram_bank?{5'h1f,wram_bank}:
 		isGBC&&sel_vram_bank?{7'h7f,vram_bank}:
 		sel_hdma?{hdma_do}:  //hdma GBC
+		sel_key0 ? { 4'hF, ff4c_key0, 2'b10 } :
 		sel_key1?{cpu_speed,6'h3f,prepare_switch}: //key1 cpu speed register(GBC)
 		sel_joy?joy_do:         // joystick register
 		sel_sb?sb_o:				// serial transfer data register
@@ -365,6 +369,27 @@ CODES codes (
 	.genie_data (genie_data)
 );
 
+// --------------------------------------------------------------------
+// --------------------- GBC/DMG mode KEY0 (GBC) ----------------------
+// --------------------------------------------------------------------
+
+assign SS_Top_BACK[56:55] = ff4c_key0;
+
+// KEY0 FF4C CPU mode register
+// Bits 2 and 3 CPU mode select
+// 00: CGB mode (Mode used by carts supporting CGB)
+// 01: DMG/MGB mode (Mode used by DMG/MGB-only carts)
+ //10: PGB1 mode (STOP the CPU, with the LCD operated by an external signal)
+// 11: PGB2 mode (CPU still running, with the LCD operated by an external signal)
+// R/W only when boot rom is enabled
+// https://forums.nesdev.org/viewtopic.php?t=19888
+always @(posedge clk_sys) begin
+	if(reset_ss) begin
+		ff4c_key0 <= SS_Top[56:55]; // 2'd0;
+	end else if(sel_key0 & ce_cpu & ~cpu_wr_n_edge) begin
+		ff4c_key0 <= cpu_do[3:2];
+	end
+end
 
 // --------------------------------------------------------------------
 // --------------------- Speed Toggle KEY1 (GBC)-----------------------
@@ -659,8 +684,10 @@ video video (
 	.ce          ( ce            ),   // 4Mhz
 	.ce_cpu      ( ce_cpu        ),   //can be 2x in cgb double speed mode
 	.isGBC       ( isGBC         ),
-	.isGBC_game  ( isGBC_game|boot_rom_enabled ),  //enable GBC mode during bootstrap rom
+	.isGBC_mode  ( isGBC_mode    ),  //enable GBC mode during bootstrap rom
 	.megaduck    ( megaduck      ),
+
+	.boot_rom_en ( boot_rom_enabled ),
 
 	.irq         ( video_irq     ),
 	.vblank_irq  ( vblank_irq    ),
