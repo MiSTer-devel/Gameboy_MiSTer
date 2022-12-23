@@ -292,7 +292,10 @@ wire clk = clk_sys & ce;
 wire ce_cpu = cpu_speed ? ce_2x:ce;
 wire clk_cpu = clk_sys & ce_cpu;
 
-wire cpu_clken = !(isGBC && hdma_active) && ce_cpu;  //when hdma is enabled stop CPU (GBC)
+// when hdma is enabled stop CPU (GBC). Finish read/write before stopping CPU
+wire hdma_cpu_stop = (isGBC & hdma_active & cpu_rd_n & cpu_wr_n);
+wire cpu_clken = ~hdma_cpu_stop & ce_cpu;
+
 reg reset_r  = 1;
 wire reset_ss;
 
@@ -307,7 +310,7 @@ assign SS_Top_BACK[54] = old_cpu_wr_n;
 
 always @(posedge clk_sys) begin
 	if(reset_ss) old_cpu_wr_n <= SS_Top[54]; // 1'b0
-	else if (cpu_clken) old_cpu_wr_n <= cpu_wr_n;
+	else if (ce_cpu) old_cpu_wr_n <= cpu_wr_n;
 end
 wire cpu_wr_n_edge = ~(old_cpu_wr_n & ~cpu_wr_n);
 
