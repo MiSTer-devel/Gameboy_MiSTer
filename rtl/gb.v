@@ -240,7 +240,7 @@ wire [7:0] joy_do;
 wire [7:0] sb_o;
 wire [7:0] timer_do;
 wire [7:0] video_do;
-reg [7:0] audio_do;
+wire [7:0] audio_do;
 wire [7:0] boot_do;
 wire [7:0] vram_do;
 wire [7:0] vram1_do;
@@ -320,11 +320,19 @@ wire genie_ovr;
 wire [7:0] genie_data;
 wire [15:0] cpu_addr_raw;
 
+wire [7:0] snd_d_in;
+wire [7:0] snd_d_out;
 megaduck_swizzle md_swizz
 (
 	.megaduck   (megaduck),
 	.a_in       (cpu_addr_raw),
-	.a_out      (cpu_addr)
+	.a_out      (cpu_addr),
+
+	.snd_in_di  (cpu_do),
+	.snd_in_do  (snd_d_in),
+
+	.snd_out_di (snd_d_out),
+	.snd_out_do (audio_do)
 );
 
 GBse cpu (
@@ -423,25 +431,6 @@ end
 
 wire audio_rd = !cpu_rd_n && sel_audio;
 wire audio_wr = !cpu_wr_n_edge && sel_audio;
-reg [7:0] snd_d_in;
-wire [7:0] snd_d_out;
-
-// Megaduck has reversed nybbles for some registers
-always @(*) begin
-	snd_d_in = cpu_do;
-	audio_do = snd_d_out;
-	if (megaduck) begin
-		if (cpu_addr[7:4] == 1 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 7))
-			snd_d_in = {cpu_do[3:0], cpu_do[7:4]};
-		if (cpu_addr[7:4] == 2 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 2))
-			snd_d_in = {cpu_do[3:0], cpu_do[7:4]};
-
-		if (cpu_addr[7:4] == 1 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 7))
-			audio_do = {snd_d_out[3:0], snd_d_out[7:4]};
-		if (cpu_addr[7:4] == 2 && (cpu_addr_raw[3:0] == 1 || cpu_addr_raw[3:0] == 2))
-			audio_do = {snd_d_out[3:0], snd_d_out[7:4]};
-	end
-end
 
 gbc_snd audio (
 	.clk				( clk_sys			),
