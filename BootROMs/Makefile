@@ -32,7 +32,7 @@ SRC := ./src
 IMG_COMPRESS := $(OBJ)/logo-compress$(EXESUFFIX)
 COMPRESS_DEPS := $(SRC)/logo-compress.c
 LOGO_FILE := CGB_logo
-LOGO_SUFFIX := 
+LOGO_SUFFIX := .rle
 LOGO_INT := $(LOGO_FILE).1bpp
 
 # MiSTer CGB, DMG and SGB bootroms are compiled into a memory initialization file to be stored in the GameBoy core at built time.
@@ -74,7 +74,7 @@ $(OBJ)/$(LOGO_FILE)$(LOGO_SUFFIX): $(OBJ)/$(LOGO_INT) $(IMG_COMPRESS)
 # MiSTer
 $(OBJ)/%.1bpp: %.png
 	-@$(MKDIR) -p $(dir $@)
-	rgbgfx -d 1 -Z -u -o $@ $<
+	rgbgfx -d 1 -L 0,0:16,3 -Z -o $@ $<
 
 $(IMG_COMPRESS): $(COMPRESS_DEPS)
 	-@$(MKDIR) -p $(dir $@)

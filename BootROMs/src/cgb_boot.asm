@@ -542,7 +542,7 @@ TrademarkSymbol:
     db $3c,$42,$b9,$a5,$b9,$a5,$42,$3c
 
 CGBLogo:
-    incbin "CGB_logo"
+    incbin "CGB_logo.rle"
 
 
 AnimationColors:
@@ -835,8 +835,6 @@ ENDC
 
     jr z, .skipDMGForCGBCheck
     ldh a, [InputPalette]
-    and a
-    jr nz, .emulateDMGForCGBGame
 .skipDMGForCGBCheck
 IF DEF(AGB)
     ; Set registers to match the original AGB-CGB boot
@@ -855,12 +853,6 @@ ELSE
     ld h, c
     ; B is set to the title checksum
 ENDC
-    ret
-
-.emulateDMGForCGBGame
-    call EmulateDMG
-    ldh [rKEY0], a ; write $04, DMG emulation mode
-    ld a, $1
     ret
 
 GetKeyComboPalette:
