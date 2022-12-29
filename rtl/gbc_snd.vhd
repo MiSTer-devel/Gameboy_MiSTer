@@ -967,6 +967,7 @@ begin
     SS_Sound3_BACK(38 downto 35) <= sq1_vol;
     SS_Sound3_BACK(          39) <= sq2_playing;
     SS_Sound3_BACK(43 downto 40) <= sq2_vol;
+    SS_Sound3_BACK(45 downto 44) <= "00"; -- unused
     SS_Sound3_BACK(49 downto 46) <= wav_wav_r;
     SS_Sound3_BACK(          50) <= wav_playing;
     SS_Sound3_BACK(55 downto 51) <= std_logic_vector(wav_index);
