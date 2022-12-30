@@ -41,6 +41,7 @@ module sgb (
 	output reg        sgb_lcd_clkena,
 	output reg [1:0]  sgb_lcd_mode,
 	output reg        sgb_lcd_on,
+	output reg        sgb_lcd_freeze,
 	output reg        sgb_lcd_vsync
 );
 
@@ -911,9 +912,10 @@ always @(posedge clk_sys) begin
 			sgb_lcd_data <= palette[pal_no][lcd_data_gb_r*15 +:15];
 		end
 
-		sgb_lcd_clkena <= (~sgb_en || mask_en_r != 2'd1) ? lcd_clkena_r : 1'b0;
+		sgb_lcd_clkena <= lcd_clkena_r;
 		sgb_lcd_mode <= lcd_mode_r;
 		sgb_lcd_on <= lcd_on_r;
+		sgb_lcd_freeze <= sgb_en && mask_en_r == 2'd1;
 		sgb_pal_en <= sgb_en & ( (output_sgb_pal & ~tint & ~isGBC_game) || |mask_en_r);
 		sgb_lcd_vsync <= lcd_vsync_r;
 	end

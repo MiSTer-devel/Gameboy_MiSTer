@@ -592,7 +592,6 @@ gb gb (
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.isGBC       ( isGBC      ),
-	.isGBC_game  ( isGBC_game ),
 	.isSGB       ( |sgb_en & ~isGBC ),
 	.megaduck    ( megaduck   ),
 
@@ -723,6 +722,7 @@ lcd lcd
 	.sgb_border_pix ( sgb_border_pix),
 	.sgb_pal_en     ( sgb_pal_en ),
 	.sgb_en         ( sgb_border_en ),
+	.sgb_freeze     ( sgb_lcd_freeze),
 
 	.clk_vid( CLK_VIDEO  ),
 	.hs     ( video_hs   ),
@@ -742,7 +742,7 @@ wire [1:0] joy_p54;
 wire [3:0] joy_do_sgb;
 wire [14:0] sgb_lcd_data;
 wire [15:0] sgb_border_pix;
-wire sgb_lcd_clkena, sgb_lcd_on, sgb_lcd_vsync;
+wire sgb_lcd_clkena, sgb_lcd_on, sgb_lcd_vsync, sgb_lcd_freeze;
 wire [1:0] sgb_lcd_mode;
 wire sgb_pal_en;
 wire [1:0] sgb_en = status[24:23];
@@ -787,6 +787,7 @@ sgb sgb (
 	.sgb_pal_en      ( sgb_pal_en      ),
 	.sgb_lcd_data    ( sgb_lcd_data    ),
 	.sgb_lcd_on      ( sgb_lcd_on      ),
+	.sgb_lcd_freeze  ( sgb_lcd_freeze  ),
 	.sgb_lcd_clkena  ( sgb_lcd_clkena  ),
 	.sgb_lcd_mode    ( sgb_lcd_mode    ),
 	.sgb_lcd_vsync   ( sgb_lcd_vsync   )

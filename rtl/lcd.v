@@ -26,6 +26,7 @@ module lcd
 	input [15:0] sgb_border_pix,
 	input        sgb_pal_en,
 	input        sgb_en,
+	input        sgb_freeze,
 
 	input        tint,
 	input        inv,
@@ -52,13 +53,16 @@ module lcd
 
 reg [14:0] vbuffer_inptr;
 reg vbuffer_in_bank;
-reg lcd_off;
+reg lcd_off, lcd_freeze;
 reg blank_de, blank_output;
 reg [14:0] blank_data;
+reg [16:0] lcd_off_cnt;
 
-wire pix_wr = ce & (lcd_clkena | blank_de);
+localparam BLANK_DELAY = 456*154;
+
+wire pix_wr = ce & ( (lcd_clkena & ~lcd_freeze & ~sgb_freeze) | blank_de);
 always @(posedge clk_sys) begin
-	reg old_lcd_off, old_on, old_lcd_vs;
+	reg old_lcd_off, old_lcd_vs;
 	reg [8:0] blank_hcnt,blank_vcnt;
 
 	lcd_off <= !on || (mode == 2'd01);
@@ -69,13 +73,21 @@ always @(posedge clk_sys) begin
 	old_lcd_off <= lcd_off;
 	if(old_lcd_off ^ lcd_off) begin
 		vbuffer_inptr <= 0;
-		if (lcd_off) vbuffer_in_bank <= ~vbuffer_in_bank; //LCD disabled or VBlank
+		if (lcd_off) begin //LCD disabled or VBlank
+			if(~lcd_freeze & ~sgb_freeze) vbuffer_in_bank <= ~vbuffer_in_bank;
+		end
 	end
 
-	old_on <= on;
-	if (old_on & ~on & ~blank_output) begin // LCD disabled, start blank output
-		blank_output <= 1'b1;
-		{blank_hcnt,blank_vcnt} <= 0;
+	// Delay blanking the screen for GBC
+	if (on) lcd_off_cnt <= 0;
+	else if (ce & ~&lcd_off_cnt) lcd_off_cnt <= lcd_off_cnt + 1'b1;
+
+	if (~on) begin  // LCD disabled, start blank output
+		lcd_freeze <= 1;
+		if ( (~isGBC | (lcd_off_cnt > BLANK_DELAY) ) & ~blank_output) begin
+			blank_output <= 1'b1;
+			{blank_hcnt,blank_vcnt} <= 0;
+		end
 	end
 
 	// Regenerate LCD timings for filling with blank color when LCD is off
@@ -93,10 +105,14 @@ always @(posedge clk_sys) begin
 		end
 	end
 
-	// Output 1 blank frame until VSync after LCD is enabled
+	// Output 1 blank/repeated frame until VSync after LCD is enabled
 	old_lcd_vs <= lcd_vs;
-	if (~old_lcd_vs & lcd_vs & blank_output)
-		blank_output <= 0;
+	if (~old_lcd_vs & lcd_vs) begin
+		if (lcd_freeze)
+			lcd_freeze <= 0;
+		if (blank_output)
+			blank_output <= 0;
+	end
 end
 
 reg [14:0] vbuffer[65536];

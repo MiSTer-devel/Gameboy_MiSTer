@@ -118,8 +118,7 @@ architecture SYN of gbc_snd is
     signal wav_playing       : std_logic;
     signal wav_wav           : std_logic_vector(3 downto 0); -- Wave output waveform
     signal wav_ram           : wav_arr_t;                    -- Wave table
-    signal wav_suppressed    : std_logic;                    -- wav channel 1st sample suppressed when triggered after poweron
-    signal wav_wav_r         : std_logic_vector(3 downto 0); -- Wave output waveform when suppressed
+    signal wav_wav_r         : std_logic_vector(3 downto 0); -- Wave output waveform sample buffer
 
     signal noi_slen          : std_logic_vector(6 downto 0);
     signal noi_lenchange     : std_logic;
@@ -968,6 +967,7 @@ begin
     SS_Sound3_BACK(38 downto 35) <= sq1_vol;
     SS_Sound3_BACK(          39) <= sq2_playing;
     SS_Sound3_BACK(43 downto 40) <= sq2_vol;
+    SS_Sound3_BACK(45 downto 44) <= "00"; -- unused
     SS_Sound3_BACK(49 downto 46) <= wav_wav_r;
     SS_Sound3_BACK(          50) <= wav_playing;
     SS_Sound3_BACK(55 downto 51) <= std_logic_vector(wav_index);
@@ -975,7 +975,7 @@ begin
     SS_Sound3_BACK(          58) <= noi_playing;
     SS_Sound3_BACK(62 downto 59) <= noi_vol;
 
-    sound : process (clk, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, wav_suppressed, wav_enable, wav_volsh, wav_wav_r, wav_ram, wav_index)
+    sound : process (clk, sq1_out, sq1_vol, sq2_out, sq2_vol, noi_vol, sq1_suppressed, sq2_suppressed, wav_enable, wav_playing, wav_volsh, wav_wav_r)
         constant duty_0          : std_logic_vector(0 to 7) := "00000001";
         constant duty_1          : std_logic_vector(0 to 7) := "10000001";
         constant duty_2          : std_logic_vector(0 to 7) := "10000111";
@@ -1036,16 +1036,18 @@ begin
             sq2_wav <= "0000";
         end if;
 
-        if wav_enable = '1' and wav_volsh /= "00" and wav_suppressed = '0' then
-            case wav_volsh is
-                when "01" => wav_wav   <= wav_ram(to_integer(wav_index));
-                when "10" => wav_wav   <= '0' & (wav_ram(to_integer(wav_index))(3 downto 1));
-                when "11" => wav_wav   <= "00" & (wav_ram(to_integer(wav_index))(3 downto 2));
-                when others => wav_wav <= (others => 'X');
-            end case;
+        if wav_enable = '1' and wav_playing = '0' then
+            -- DAC enabled but not playing
+            wav_wav <= (others => '0');
         else
-            wav_wav <= wav_wav_r;  --when suppressed or triggered while playing
-        end if;       
+            -- DAC disabled or playing. Outputting 0 when the DAC is disabled is not correct because the voltage should transition from the previous value to 0 volt.
+            case wav_volsh is
+                when "01" => wav_wav   <= wav_wav_r;
+                when "10" => wav_wav   <= '0' & wav_wav_r(3 downto 1);
+                when "11" => wav_wav   <= "00" & wav_wav_r(3 downto 2);
+                when others => wav_wav <= (others => '0');
+            end case;
+        end if;
 
         if noi_out = '1' then
             noi_wav <= noi_vol;
@@ -1075,7 +1077,6 @@ begin
                   
 					sq1_suppressed    <= '1';
 					sq2_suppressed    <= '1';
-					wav_suppressed    <= '1';
 					wav_wav_r         <= SS_Sound3(49 downto 46); -- "0000";
    
 					sq1_sduty         := (others => '0');
@@ -1657,7 +1658,6 @@ begin
 									if wav_playing = '1' then
 										 acc_fcnt := ('0' & wav_fcnt) + to_unsigned(1, acc_fcnt'length);
 										 if acc_fcnt(acc_fcnt'high) = '1' then
-											  wav_suppressed <= '0';
 											  wav_shift := '1';
 											  wav_fcnt  := unsigned(wav_freq);
 										 else
@@ -1673,6 +1673,7 @@ begin
 									-- Rotate wave table on rising edge of wav_shift
 									if wav_shift = '1' and wav_shift_r = '0' then
 										 wav_index  <= wav_index + 1;
+										 wav_wav_r  <= wav_ram(to_integer(wav_index + 1));
 										 wav_access <= "10";
 									end if;
 									wav_shift_r := wav_shift;
@@ -1698,15 +1699,6 @@ begin
 
 							  -- Check sample trigger and start playing
 							  if wav_trigger_r = '1' and wav_trigger = '0' then
-
-									wav_suppressed <= '1';      -- suppress 1st sample if channel wasn't active or keep playing the current one if enabled
-
-									if wav_playing = '0' then
-										 wav_wav_r <= "0000";  -- suppress 1st sample if channel wasn't active 
-									else
-										 wav_wav_r <= wav_wav;   -- keep playing the current sample if it was active
-									end if;
-
 									wav_fcnt := unsigned(wav_trigger_freq);
 									
 									wav_playing <= '1';
@@ -1738,7 +1730,6 @@ begin
 
 							  sq1_suppressed <= '1';
 							  sq2_suppressed <= '1';
-							  wav_suppressed <= '1';
 							  wav_wav_r <= "0000";
 
 							  sq1_sduty    := (others => '0');
