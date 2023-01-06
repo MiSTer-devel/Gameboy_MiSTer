@@ -20,7 +20,7 @@ This is port of [Gameboy for MiST](https://github.com/mist-devel/gameboy)
 * Cheats
 
 ## Open Source Bootstrap roms
-This now includes the open source boot ROMs from [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/). For maximum compatibility/authenticity you can still place the Gameboy bios/bootroms into the Gameboy folder and load them in the menu with Misc->Load GBC/DMG/SGB boot.
+This now includes the open source boot ROMs from [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/). For maximum compatibility/authenticity you can still place the Gameboy bios/bootroms into the Gameboy folder and load them in the menu with Misc->Load GBC/DMG/SGB boot. Loading an authentic Gameboy Color bios/bootroom is required in order to use GBA Mode.
 
 ## Palettes
 This core supports custom palettes (*.gbp) which should be placed into the Gameboy folder. Some examples are available in the palettes folder.
