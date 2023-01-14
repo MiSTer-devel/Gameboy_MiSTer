@@ -1033,6 +1033,10 @@ _ClearVRAMViaHDMA:
 
 ; clobbers AF and HL
 GetInputPaletteIndex:
+    ld a, [$143]
+    bit 7, a
+    ret nz ; if CGB game, palette cannot be chosen
+
     ld a, $20 ; Select directions
     ldh [rJOYP], a
     ldh a, [rJOYP]
