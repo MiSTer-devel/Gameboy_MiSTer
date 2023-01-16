@@ -1,5 +1,8 @@
-; SameBoy DMG bootstrap ROM
-; Todo: use friendly names for HW registers instead of magic numbers
+; DMG bootstrap ROM
+; Adapted from SameBoy
+
+INCLUDE	"hardware.inc"
+
 SECTION "BootCode", ROM0[$0]
 Start:
 ; Init stack pointer
@@ -15,17 +18,17 @@ Start:
 
 ; Init Audio
     ld a, $80
-    ldh [$26], a
-    ldh [$11], a
+    ldh [rNR52], a
+    ldh [rNR11], a
     ld a, $f3
-    ldh [$12], a
-    ldh [$25], a
+    ldh [rNR12], a
+    ldh [rNR51], a
     ld a, $77
-    ldh [$24], a
+    ldh [rNR50], a
 
 ; Init BG palette
-    ld a, $fc
-    ldh [$47], a
+    ld a, $54
+    ldh [rBGP], a
 
 ; Load logo from ROM.
 ; A nibble represents a 4-pixels line, 2 bytes represent a 4x4 tile, scaled to 8x8.
@@ -69,14 +72,36 @@ Start:
     jr .tilemapLoop
 .tilemapDone
 
+    ld a, 30
+    ldh [rSCY], a
+    
     ; Turn on LCD
     ld a, $91
-    ldh [$40], a
+    ldh [rLCDC], a
 
-; Wait ~0.75 seconds
-    ld b, 45
-    call WaitBFrames
-
+    ld d, (-119) & $FF
+    ld c, 15
+    
+.animate
+    call WaitFrame
+    ld a, d
+    sra a
+    sra a
+    ldh [rSCY], a
+    ld a, d
+    add c
+    ld d, a
+    ld a, c
+    cp 8
+    jr nz, .noPaletteChange
+    ld a, $A8
+    ldh [rBGP], a
+.noPaletteChange
+    dec c
+    jr nz, .animate
+    ld a, $fc
+    ldh [rBGP], a
+    
     ; Play first sound
     ld a, $83
     call PlaySound
@@ -85,13 +110,19 @@ Start:
     ; Play second sound
     ld a, $c1
     call PlaySound
+    
 
-; Wait ~1.15 seconds
-    ld b, 70
+
+; Wait ~1 second
+    ld b, 60
     call WaitBFrames
     
 ; Set registers to match the original DMG boot
+IF DEF(MGB)
+    ld hl, $FFB0
+ELSE
     ld hl, $01B0
+ENDC
     push hl
     pop af
     ld hl, $014D
@@ -139,9 +170,9 @@ WaitBFrames:
     ret
 
 PlaySound:
-    ldh [$13], a
+    ldh [rNR13], a
     ld a, $87
-    ldh [$14], a
+    ldh [rNR14], a
     ret
 
 
@@ -150,4 +181,4 @@ db $3c,$42,$b9,$a5,$b9,$a5,$42,$3c
 
 SECTION "BootGame", ROM0[$fe]
 BootGame:
-    ldh [$50], a
+    ldh [rBANK], a ; unmap boot ROM
