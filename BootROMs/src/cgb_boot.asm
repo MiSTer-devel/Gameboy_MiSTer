@@ -89,37 +89,26 @@ ELSE
 .tilemapRowLoop
 
     call .write_with_palette
-
-    ; Repeat the 3 tiles common between E and B. This saves 27 bytes after
-    ; compression, with a cost of 17 bytes of code.
-    push af
-    sub $20
-    sub $3
-    jr nc, .notspecial
-    add $20
-    call .write_with_palette
-    dec c
-.notspecial
-    pop af
-
     add d ; d = 3 for CGB logo, d = 1 for Nintendo logo
     dec c
     jr nz, .tilemapRowLoop
-    sub 44
+    sub 47 ; 3*16 = 48 not 44?
     push de
     ld de, $10
     add hl, de
     pop de
-    dec b
+
+    dec b ; Hit 3 times for CGB logo, then once more for Nintendo logo 
     jr nz, .tilemapLoop
 
-    dec d
+    dec d ; Hit twice, once at end of CGB logo, next at end of Nintendo logo
     jr z, .endTilemap
-    dec d
+    dec d ; Prev. dec + this one takes d = 3 to d = 1
 
-    ld a, $38
+    ; Nintendo Logo
+    ld a, $38    ; Offset into tile map? d is now 1 though?
     ld l, $a7
-    ld bc, $0107
+    ld bc, $0107 ; 1 row, 7 columns for Nintendo logo
     jr .tilemapRowLoop
 
 .write_with_palette
@@ -144,37 +133,25 @@ ENDC
     xor a
 .expandPalettesLoop:
     cpl
+
     ; One white
-    ld [hli], a
-    ld [hli], a
+    ldi [hl], a
+    ldi [hl], a
 
-    ; Mixed with white
+    ; The actual color
     ld a, [de]
-    inc e
-    or $20
-    ld b, a
-
+    inc de
+    ldi [hl], a
     ld a, [de]
-    dec e
-    or $84
-    rra
-    rr b
-    ld [hl], b
-    inc l
-    ld [hli], a
+    inc de
+    ldi [hl], a
 
-    ; One black
     xor a
-    ld [hli], a
-    ld [hli], a
-
-    ; One color
-    ld a, [de]
-    inc e
-    ld [hli], a
-    ld a, [de]
-    inc e
-    ld [hli], a
+    ; Two blacks
+    ldi [hl], a
+    ldi [hl], a
+    ldi [hl], a
+    ldi [hl], a
 
     xor a
     dec c
@@ -642,6 +619,7 @@ ReadTileLine:
     ret
 
 
+; Nintendo Logo
 ReadCGBLogoHalfTile:
     call .do_twice
 .do_twice
@@ -689,6 +667,7 @@ LoadTileset:
 .cgbLogoEnd
 ; Copy (unresized) ROM logo
     ld de, $104
+; Nintendo logo
 .CGBROMLogoLoop
     ld c, $f0
     call ReadCGBLogoHalfTile
@@ -824,9 +803,10 @@ ENDC
     ld e, c
     ld l, $0d
 
+    ; Check cart CGB compatibility byte
     ld a, [$143]
-    bit 7, a ; Set z = not a[7]
-    call z, EmulateDMG ;if z is 1, goto EmulateDMG
+    bit 7, a 
+    call z, EmulateDMG 
     bit 7, a 
 
     ldh [rKEY0], a ; write CGB compatibility byte, CGB mode

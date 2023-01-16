@@ -80,6 +80,9 @@ $(IMG_COMPRESS): $(COMPRESS_DEPS)
 	-@$(MKDIR) -p $(dir $@)
 	$(NATIVE_CC) -std=c99 -Wall -Werror $< -o $@
 
+.PHONY : force
+force: clean default
+
 .PHONY : clean
 clean:
 	rm -rf $(OBJ)
