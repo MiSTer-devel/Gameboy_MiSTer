@@ -174,6 +174,10 @@ wire sel_FF73  = isGBC && cpu_addr == 16'hff73;            // unused register, a
 wire sel_FF74  = isGBC && isGBC_mode && (cpu_addr == 16'hff74); // unused register, all bits read/write, only in CGB mode
 wire sel_FF75  = isGBC && cpu_addr == 16'hff75;            // unused register, bits 4-6 read/write
 
+// Special MiSTer register for signalling to cpu bootrom
+// Normally this register is write-only so no
+wire sel_FF50  = isGBC && boot_rom_enabled && cpu_addr == 16'hff50;
+
 wire ext_bus_wram_sel, ext_bus_cram_sel, ext_bus_rom_sel;
 wire ext_bus_rd, ext_bus_wr;
 wire [7:0] ext_bus_di;
@@ -279,6 +283,7 @@ wire [7:0] cpu_di =
 		sel_FF73?FF73: // unused register, all bits read/write
 		sel_FF74?FF74: // unused register, all bits read/write, only in CGB mode
 		sel_FF75?{1'b1,FF75, 4'b1111}: // unused register, bits 4-6 read/write
+        sel_FF50?{7'b0, boot_gba_en}: // MiSTer special instruction register 
 		8'hff;
 
 wire cpu_wr_n;
@@ -928,38 +933,17 @@ wire [10:0] boot_wr_addr =
         sgb_boot_download ? {4'hA, ioctl_addr[7:1] } :
         ioctl_addr[11:1];
 
-wire [7:0] boot_q;
 dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom (
 	.clock (clk_sys),
 
 	.address_a (boot_addr),
-	.q_a (boot_q),
+	.q_a (boot_do),
 
 	.address_b (boot_wr_addr),
 	.wren_b (ioctl_wr && boot_download),
 	.data_b (ioctl_dout)
 );
 
-reg [7:0] boot_do_gba;
-
-always begin
-	case (boot_addr)
-		12'h0F2: boot_do_gba = 8'h00;
-		12'h0F3: boot_do_gba = 8'h00;
-		12'h0F5: boot_do_gba = 8'hCD;
-		12'h0F6: boot_do_gba = 8'hD0;
-		12'h0F7: boot_do_gba = 8'h05;
-		12'h0F8: boot_do_gba = 8'hAF;
-		12'h0F9: boot_do_gba = 8'hE0;
-		12'h0FA: boot_do_gba = 8'h70;
-		12'h0FB: boot_do_gba = 8'h04;
-		12'h409: boot_do_gba = 8'h80;
-		12'h40A: boot_do_gba = 8'hFF;
-		default: boot_do_gba = boot_q;
-	endcase
-end
-
-assign boot_do = (isGBC & boot_gba_en) ? boot_do_gba : boot_q;
 
 // --------------------------------------------------------------------
 // ------------------ External bus (WRAM, Cartridge) ------------------

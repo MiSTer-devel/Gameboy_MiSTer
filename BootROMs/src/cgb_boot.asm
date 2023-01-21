@@ -191,9 +191,12 @@ ELSE
     call PlaySound
 ENDC
     call Preboot
-IF DEF(AGB)
-    ld b, 1
-ENDC
+    ld a, [rBANK] ; Special MiSTer read register to give menu boot options
+    bit 0, a
+    jr z, .cgbmode
+    ld b, 1 ; AGB mode set b = 1
+.cgbmode
+    ld a, $11 ; Correct final value for a
     jr BootGame
 
 HDMAData:
@@ -816,23 +819,10 @@ ENDC
     jr z, .skipDMGForCGBCheck
     ldh a, [InputPalette]
 .skipDMGForCGBCheck
-IF DEF(AGB)
-    ; Set registers to match the original AGB-CGB boot
-    ; AF = $1100, C = 0
-    xor a
-    ld c, a
-    add a, $11
-    ld h, c
-    ; B is set to 1 after ret
-ELSE
     ; Set registers to match the original CGB boot
-    ; AF = $1180, C = 0
     xor a
     ld c, a
-    ld a, $11
     ld h, c
-    ; B is set to the title checksum
-ENDC
     ret
 
 GetKeyComboPalette:

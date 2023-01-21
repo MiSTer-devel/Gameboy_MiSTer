@@ -225,7 +225,7 @@ localparam CONF_STR = {
 	"P1-;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1o4,Screen Shadow,No,Yes;",
-	"h6P1o5,Use GBA Mode,No,Yes;",
+	"P1o5,Use GBA Mode,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -357,7 +357,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sys_megaduck,using_real_cgb_bios,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({sys_megaduck,1'b0,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
 	.status_in({status[63:34],ss_slot,status[31:0]}),
 	.status_set(statusUpdate),
 	.direct_video(direct_video),
@@ -541,11 +541,8 @@ cart_top cart (
 );
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
-reg using_real_cgb_bios = 0;
 
 always @(posedge clk_sys) begin
-	if (cgb_boot_download)
-		using_real_cgb_bios <= 1;
 	if (palette_download & ioctl_wr) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
@@ -609,7 +606,7 @@ gb gb (
 
 	.nCS         ( nCS        ),
 
-	.boot_gba_en    ( status[37] && using_real_cgb_bios ),
+	.boot_gba_en    ( status[37] ),
 
 	.cgb_boot_download ( cgb_boot_download ),
 	.dmg_boot_download ( dmg_boot_download ),
