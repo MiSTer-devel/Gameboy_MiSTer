@@ -27,7 +27,7 @@ Start:
     ldh [rNR50], a
 
 ; Init BG palette
-    ld a, $54
+    ld a, $fc
     ldh [rBGP], a
 
 ; Load logo from ROM.
@@ -72,51 +72,42 @@ Start:
     jr .tilemapLoop
 .tilemapDone
 
-    ld a, 30
+    ld a, $64
     ldh [rSCY], a
-    
+	ld d, a	; Set loop count $64
+
     ; Turn on LCD
     ld a, $91
     ldh [rLCDC], a
 
-    ld d, (-119) & $FF
-    ld c, 15
-    
+	ld b, $83 ; Pre-load first sound
 .animate
     call WaitFrame
-    ld a, d
-    sra a
-    sra a
-    ldh [rSCY], a
-    ld a, d
-    add c
-    ld d, a
-    ld a, c
-    cp 8
-    jr nz, .noPaletteChange
-    ld a, $A8
-    ldh [rBGP], a
-.noPaletteChange
-    dec c
-    jr nz, .animate
-    ld a, $fc
-    ldh [rBGP], a
-    
-    ; Play first sound
-    ld a, $83
-    call PlaySound
-    ld b, 5
-    call WaitBFrames
-    ; Play second sound
-    ld a, $c1
-    call PlaySound
-    
+    call WaitFrame
 
+	ld a, d
 
+	cp $3  ; $62 frames in, play first sound
+	jr z, .soundFrame
+
+	cp $1	
+	jr nz, .noSoundFrame
+	ld b, $c1 ; Play second sound on final animation frame
+.soundFrame
+	ld a, b
+    call PlaySound
+.noSoundFrame
+	ldh a, [rSCY]
+    dec a
+	ldh [rSCY], a ; Scroll logo down 1 row
+	dec d
+	jr nz, .animate
+
+.endAnimation
 ; Wait ~1 second
     ld b, 60
     call WaitBFrames
-    
+
 ; Set registers to match the original DMG boot
 IF DEF(MGB)
     ld hl, $FFB0
@@ -128,7 +119,7 @@ ENDC
     ld hl, $014D
     ld bc, $0013
     ld de, $00D8
-    
+
 ; Boot the game
     jp BootGame
 
