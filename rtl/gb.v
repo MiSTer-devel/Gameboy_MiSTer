@@ -28,6 +28,7 @@ module gb (
 
 	input [7:0] joystick,
 	input isGBC,
+    input real_cgb_boot,
 	input isSGB,
 
 	// cartridge interface
@@ -933,18 +934,39 @@ wire [10:0] boot_wr_addr =
         sgb_boot_download ? {4'hA, ioctl_addr[7:1] } :
         ioctl_addr[11:1];
 
+wire [7:0] boot_q;
+
 dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom (
 	.clock (clk_sys),
 
 	.address_a (boot_addr),
-	.q_a (boot_do),
+	.q_a (boot_q),
 
 	.address_b (boot_wr_addr),
 	.wren_b (ioctl_wr && boot_download),
 	.data_b (ioctl_dout)
 );
 
+reg [7:0] boot_do_gba;
 
+always begin
+	case (boot_addr)
+		12'h0F2: boot_do_gba = 8'h00;
+		12'h0F3: boot_do_gba = 8'h00;
+		12'h0F5: boot_do_gba = 8'hCD;
+		12'h0F6: boot_do_gba = 8'hD0;
+		12'h0F7: boot_do_gba = 8'h05;
+		12'h0F8: boot_do_gba = 8'hAF;
+		12'h0F9: boot_do_gba = 8'hE0;
+		12'h0FA: boot_do_gba = 8'h70;
+		12'h0FB: boot_do_gba = 8'h04;
+		12'h409: boot_do_gba = 8'h80;
+		12'h40A: boot_do_gba = 8'hFF;
+		default: boot_do_gba = boot_q;
+	endcase
+end
+
+assign boot_do = (isGBC && boot_gba_en && real_cgb_boot) ? boot_do_gba : boot_q;
 // --------------------------------------------------------------------
 // ------------------ External bus (WRAM, Cartridge) ------------------
 // --------------------------------------------------------------------

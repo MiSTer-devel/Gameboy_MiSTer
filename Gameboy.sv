@@ -225,7 +225,7 @@ localparam CONF_STR = {
 	"P1-;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1o4,Screen Shadow,No,Yes;",
-	"P1o5,Use GBA Mode,No,Yes;",
+	"d6P1o5,Use GBA Mode,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -357,7 +357,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sys_megaduck,1'b0,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({sys_megaduck,boot_gba_en,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
 	.status_in({status[63:34],ss_slot,status[31:0]}),
 	.status_set(statusUpdate),
 	.direct_video(direct_video),
@@ -402,6 +402,36 @@ wire dmg_boot_download = ioctl_download && (filetype == 5);
 wire sgb_boot_download = ioctl_download && (filetype == 6);
 wire boot_download = cgb_boot_download | dmg_boot_download | sgb_boot_download;
 
+///////////////////////////// Bootrom GBA Enable  ///////////////////////////////
+// GBA mode is made available for built-in bootrom and original CGB bootrom.
+// We verify that a loaded bootrom is the original by calculating a
+// simple checksum.
+wire boot_gba_en = (!using_custom_bootrom || using_real_cgb_bios);
+wire using_real_cgb_bios = (checksum == 18'h2F3EA);
+
+wire boot_gba = boot_gba_en && status[37];
+
+reg using_custom_bootrom = 0;
+always @(posedge clk_sys) begin
+	if (boot_download)
+		using_custom_bootrom <= 1;
+end
+
+reg boot_download_r;
+always @(posedge clk_sys)
+    boot_download_r <= boot_download;
+
+// Calculate checksum for incoming bootrom downloads
+reg [17:0] checksum;
+always @(posedge clk_sys) begin
+    // Reset checksum on new boot download
+    if (cgb_boot_download && !boot_download_r)
+        checksum <= 0;
+    else if (cgb_boot_download && ioctl_wr)
+        checksum <= checksum + ioctl_dout[15:8] + ioctl_dout[7:0];
+end
+
+////////////////////////////////////////////////////////////////////////////////
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc_addr[0], ~mbc_addr[0]};
 wire [15:0] sdram_do;
@@ -589,6 +619,7 @@ gb gb (
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.isGBC       ( isGBC      ),
+    .real_cgb_boot ( using_real_cgb_bios ),  
 	.isSGB       ( |sgb_en & ~isGBC ),
 	.megaduck    ( megaduck   ),
 
@@ -606,7 +637,7 @@ gb gb (
 
 	.nCS         ( nCS        ),
 
-	.boot_gba_en    ( status[37] ),
+	.boot_gba_en    ( boot_gba ),
 
 	.cgb_boot_download ( cgb_boot_download ),
 	.dmg_boot_download ( dmg_boot_download ),
