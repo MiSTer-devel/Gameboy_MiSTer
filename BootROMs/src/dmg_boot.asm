@@ -29,7 +29,23 @@ Start:
 ; Init BG palette
     ld a, $fc
     ldh [rBGP], a
+    
+; Fast Boot option
+    ldh a, [rBANK]
+    bit 1, a
+    jr z, .noFastBoot
+    ; Turn on LCD
+    ld a, $91
+    ldh [rLCDC], a
 
+    ld a, $83
+    call PlaySound
+    ld b, 5
+    call WaitBFrames
+
+    jr .finalSetup
+
+.noFastBoot
 ; Load logo from ROM.
 ; A nibble represents a 4-pixels line, 2 bytes represent a 4x4 tile, scaled to 8x8.
 ; Tiles are ordered left to right, top to bottom.
@@ -97,16 +113,26 @@ Start:
 	ld a, b
     call PlaySound
 .noSoundFrame
-	ldh a, [rSCY]
-    dec a
-	ldh [rSCY], a ; Scroll logo down 1 row
 	dec d
+    ld a, d
+	ldh [rSCY], a ; Scroll logo down 1 row
 	jr nz, .animate
 
 .endAnimation
 ; Wait ~1 second
     ld b, 60
     call WaitBFrames
+
+.finalSetup
+; Play final sound if fast boot was used
+    ldh a, [rBANK]
+    bit 1, a
+    jr z, .skipSound
+    ld a, $c1
+    call PlaySound
+    ld b, 30 ; Wait ~0.5 s
+    call WaitBFrames
+.skipSound
 
 ; Set registers to match the original DMG boot
 IF DEF(MGB)

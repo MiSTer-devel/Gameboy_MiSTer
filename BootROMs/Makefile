@@ -41,7 +41,7 @@ default: cgb_boot.mif
 
 # All bins, including non-standard bootroms (e.g. CGB fast boot)
 .PHONY : all_bins
-all_bins: $(BIN)/agb_boot.bin $(BIN)/cgb0_boot.bin $(BIN)/cgb_boot.bin $(BIN)/cgb_boot_fast.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin $(BIN)/sgb2_boot.bin
+all_bins: $(BIN)/cgb0_boot.bin $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/mgb_boot.bin $(BIN)/sgb_boot.bin $(BIN)/sgb2_boot.bin
 
 # MiSTer bootrom has a specific memory mapping for each variant (CGB is allocated 2048 bytes, DMG and SGB have 256)
 cgb_boot.mif: $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin
@@ -60,11 +60,10 @@ cgb_boot.mif: $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin
 # Binary compiler
 $(BIN)/%.bin: $(SRC)/%.asm $(OBJ)/$(LOGO_FILE)$(LOGO_SUFFIX)
 	-@$(MKDIR) -p $(dir $@)
-	rgbasm -i $(OBJ) -i $(SRC) -o $@.tmp $<
+	rgbasm -l -i $(OBJ) -i $(SRC) -o $@.tmp $<
 	rgblink -o $@.tmp2 $@.tmp
-	dd if=$@.tmp2 of=$@ count=1 bs=$(if $(findstring dmg,$@)$(findstring sgb,$@),256,2304) 2> $(NULL)
+	dd if=$@.tmp2 of=$@ count=1 bs=$(if $(findstring mgb,$@)$(findstring dmg,$@)$(findstring sgb,$@),256,2304) 2> $(NULL)
 	@rm $@.tmp $@.tmp2
-
 
 # CGB logo compression, may be different for SameBoy and MiSTer logos
 $(OBJ)/$(LOGO_FILE)$(LOGO_SUFFIX): $(OBJ)/$(LOGO_INT) $(IMG_COMPRESS)
@@ -79,6 +78,13 @@ $(OBJ)/%.1bpp: %.png
 $(IMG_COMPRESS): $(COMPRESS_DEPS)
 	-@$(MKDIR) -p $(dir $@)
 	$(NATIVE_CC) -std=c99 -Wall -Werror $< -o $@
+
+$(OBJ)/checksum$(EXESUFFIX): $(SRC)/checksum.c
+	-@$(MKDIR) -p $(dir $@)
+	$(NATIVE_CC) -std=c99 -Wall -Werror $< -o $@
+    
+.PHONY : checksum
+checksum: $(OBJ)/checksum$(EXESUFFIX)
 
 .PHONY : force
 force: clean default

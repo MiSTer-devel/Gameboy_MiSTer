@@ -51,7 +51,9 @@ module gb (
 	input  [24:0] ioctl_addr,
 	input  [15:0] ioctl_dout,
 
+    // Bootrom features
 	input boot_gba_en,
+    input fast_boot_en,
 
 	// audio
 	output [15:0] audio_l,
@@ -176,8 +178,7 @@ wire sel_FF74  = isGBC && isGBC_mode && (cpu_addr == 16'hff74); // unused regist
 wire sel_FF75  = isGBC && cpu_addr == 16'hff75;            // unused register, bits 4-6 read/write
 
 // Special MiSTer register for signalling to cpu bootrom
-// Normally this register is write-only so no
-wire sel_FF50  = isGBC && boot_rom_enabled && cpu_addr == 16'hff50;
+wire sel_FF50  = boot_rom_enabled && cpu_addr == 16'hff50;
 
 wire ext_bus_wram_sel, ext_bus_cram_sel, ext_bus_rom_sel;
 wire ext_bus_rd, ext_bus_wr;
@@ -284,7 +285,7 @@ wire [7:0] cpu_di =
 		sel_FF73?FF73: // unused register, all bits read/write
 		sel_FF74?FF74: // unused register, all bits read/write, only in CGB mode
 		sel_FF75?{1'b1,FF75, 4'b1111}: // unused register, bits 4-6 read/write
-        sel_FF50?{7'b0, boot_gba_en}: // MiSTer special instruction register 
+        sel_FF50?{6'b0, fast_boot_en, boot_gba_en}: // MiSTer special instruction register 
 		8'hff;
 
 wire cpu_wr_n;

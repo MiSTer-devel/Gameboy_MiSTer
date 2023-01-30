@@ -71,13 +71,11 @@ ENDC
     ld a, 1
     ldh [rVBK], a
     call ClearMemoryPage8000
-    call LoadTileset
-
+    ldh a, [rBANK]
+    bit 1, a
+    call z, LoadTileset
+    
     ld b, 3
-IF DEF(FAST)
-    xor a
-    ldh [rVBK], a
-ELSE
 ; Load Tilemap
     ld hl, $98C2
     ld d, 3
@@ -124,7 +122,6 @@ ELSE
     ldi [hl], a
     ret
 .endTilemap
-ENDC
 
     ; Expand Palettes
     ld de, AnimationColors
@@ -163,7 +160,17 @@ ENDC
     ld a, $91
     ldh [rLCDC], a
 
-IF !DEF(FAST)
+    ldh a, [rBANK]
+    bit 1, a
+    jr z, .doAnimation
+
+    ld a, $83
+    call PlaySound
+    ld b, 5
+    call WaitBFrames
+    jr .fastBoot
+
+.doAnimation
     call DoIntroAnimation
 
     ld a, 48 ; frames to wait after playing the chime
@@ -186,10 +193,8 @@ IF !DEF(FAST)
     ld hl, WaitLoopCounter
     dec [hl]
     jr nz, .waitLoop
-ELSE
-    ld a, $c1
-    call PlaySound
-ENDC
+
+.fastBoot
     call Preboot
     ld a, [rBANK] ; Special MiSTer read register to give menu boot options
     bit 0, a
@@ -727,7 +732,13 @@ DoIntroAnimation:
     ret
 
 Preboot:
-IF !DEF(FAST)
+    ldh a, [rBANK]
+    bit 1, a
+    jr z, .fadeStart
+    ld a, $c1
+    call PlaySound
+
+.fadeStart
     ld b, 32 ; 32 times to fade
 .fadeLoop
     ld c, 32 ; 32 colors to fade
@@ -786,7 +797,7 @@ IF !DEF(FAST)
     call WaitFrame
     dec b
     jr nz, .fadeLoop
-ENDC
+
     ld a, 2
     ldh [rSVBK], a
     ; Clear RAM Bank 2 (Like the original boot ROM)

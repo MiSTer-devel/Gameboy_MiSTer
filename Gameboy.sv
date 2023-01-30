@@ -20,6 +20,10 @@
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //============================================================================
 
+// Bootrom checksums
+`define MISTER_CGB0_CHECKSUM 18'h2CC8C
+`define ORIGINAL_CGB_CHECKSUM 18'h2F3EA
+
 module emu
 (
 	//Master input clock
@@ -196,7 +200,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -225,7 +229,6 @@ localparam CONF_STR = {
 	"P1-;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1o4,Screen Shadow,No,Yes;",
-	"d6P1o5,Use GBA Mode,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -239,20 +242,26 @@ localparam CONF_STR = {
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
 
-	"P2,Misc.;",
+    "P2,Bootroms;",
 	"P2-;",
 	"P2FC4,BIN,Load GBC Boot;",
 	"P2FC5,BIN,Load DMG Boot;",
 	"P2FC6,BIN,Load SGB Boot;",
 	"P2-;",
-	"P2O6,Link Port,Disabled,Enabled;",
-	"P2o6,Rumble,On,Off;",
-	"P2-;",
-	"P2OP,FastForward Sound,On,Off;",
-	"P2OQ,Pause when OSD is open,Off,On;",
-	"P2OR,Rewind Capture,Off,On;",
-	"P2-;",
-	"P2o3,Super Game Boy + GBC,Off,On;",
+	"d6P2O[37],CGB/GBA mode,CGB,GBA;",
+    "d8P2O[42],Fast boot,Off,On;",
+
+	"P3,Misc.;",
+	"P3-;",
+	"P3O6,Link Port,Disabled,Enabled;",
+	"P3o6,Rumble,On,Off;",
+	"P3-;",
+	"P3OP,FastForward Sound,On,Off;",
+	"P3OQ,Pause when OSD is open,Off,On;",
+	"P3OR,Rewind Capture,Off,On;",
+	"P3-;",
+	"P3o3,Super Game Boy + GBC,Off,On;",
+    
 
 	"-;",
 	"R0,Reset;",
@@ -357,7 +366,10 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sys_megaduck,boot_gba_en,sgb_border_en,isGBC,cart_ready,sav_supported,|tint,gg_available}),
+	.status_menumask({7'h0, 
+        fastboot_available,
+        sys_megaduck, boot_gba_available, sgb_border_en, isGBC,
+        cart_ready, sav_supported, |tint, gg_available}),
 	.status_in({status[63:34],ss_slot,status[31:0]}),
 	.status_set(statusUpdate),
 	.direct_video(direct_video),
@@ -402,33 +414,36 @@ wire dmg_boot_download = ioctl_download && (filetype == 5);
 wire sgb_boot_download = ioctl_download && (filetype == 6);
 wire boot_download = cgb_boot_download | dmg_boot_download | sgb_boot_download;
 
-///////////////////////////// Bootrom GBA Enable  ///////////////////////////////
-// GBA mode is made available for built-in bootrom and original CGB bootrom.
-// We verify that a loaded bootrom is the original by calculating a
-// simple checksum.
-wire boot_gba_en = (!using_custom_bootrom || using_real_cgb_bios);
-wire using_real_cgb_bios = (checksum == 18'h2F3EA);
+///////////////////////////// Bootrom added features ///////////////////////////
 
-wire boot_gba = boot_gba_en && status[37];
+// Fastboot is available for MiSTer-built bootroms (except SGB)
+wire fastboot_available = !((isGBC && using_custom_cgb_bootrom &&  checksum_cgb != `MISTER_CGB0_CHECKSUM) || (!isGBC && using_custom_dmg_bootrom));
+// GBA mode is available for MiSTer-built CGB bootroms and the original CGB bootrom.
+// We verify that a loaded bootrom enables GBA mode by calculating a simple checksum.
+wire boot_gba_available = (!using_custom_cgb_bootrom || using_real_cgb_bios || checksum_cgb == `MISTER_CGB0_CHECKSUM);
+wire using_real_cgb_bios = (checksum_cgb == `ORIGINAL_CGB_CHECKSUM);
 
-reg using_custom_bootrom = 0;
+reg using_custom_dmg_bootrom = 0;
+reg using_custom_cgb_bootrom = 0;
 always @(posedge clk_sys) begin
-	if (boot_download)
-		using_custom_bootrom <= 1;
+	if (cgb_boot_download)
+		using_custom_cgb_bootrom <= 1;
+	if (dmg_boot_download)
+		using_custom_dmg_bootrom <= 1;
 end
 
 reg boot_download_r;
 always @(posedge clk_sys)
     boot_download_r <= boot_download;
 
-// Calculate checksum for incoming bootrom downloads
-reg [17:0] checksum;
+// Calculate checksum for incoming cgb bootrom downloads
+reg [17:0] checksum_cgb;
 always @(posedge clk_sys) begin
     // Reset checksum on new boot download
     if (cgb_boot_download && !boot_download_r)
-        checksum <= 0;
+        checksum_cgb <= 0;
     else if (cgb_boot_download && ioctl_wr)
-        checksum <= checksum + ioctl_dout[15:8] + ioctl_dout[7:0];
+        checksum_cgb <= checksum_cgb + ioctl_dout[15:8] + ioctl_dout[7:0];
 end
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -637,7 +652,8 @@ gb gb (
 
 	.nCS         ( nCS        ),
 
-	.boot_gba_en    ( boot_gba ),
+	.boot_gba_en    ( boot_gba_available && status[37] ),
+	.fast_boot_en   ( fastboot_available && status[42] ),
 
 	.cgb_boot_download ( cgb_boot_download ),
 	.dmg_boot_download ( dmg_boot_download ),
