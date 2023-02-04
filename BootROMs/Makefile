@@ -8,6 +8,7 @@ ifneq ($(findstring MSYS,$(PLATFORM)),)
 PLATFORM := windows32
 endif
 
+SRC := ./src
 OBJ := ./obj
 BIN := ./bin
 
@@ -25,26 +26,22 @@ MKDIR := mkdir
 NULL := /dev/null
 endif
 
-
-# PNG logo is first converted to an intermediate format with rgbgfx then further compressed.
-# MiSTer logo compilation
-SRC := ./src
 IMG_COMPRESS := $(OBJ)/logo-compress$(EXESUFFIX)
-COMPRESS_DEPS := $(SRC)/logo-compress.c
-LOGO_FILE := CGB_logo
-LOGO_SUFFIX := .rle
-LOGO_INT := $(LOGO_FILE).1bpp
 
 # MiSTer CGB, DMG and SGB bootroms are compiled into a memory initialization file to be stored in the GameBoy core at built time.
 .PHONY : default
 default: cgb_boot.mif
 
-# All bins, including non-standard bootroms (e.g. CGB fast boot)
-.PHONY : all_bins
-all_bins: $(BIN)/cgb0_boot.bin $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/mgb_boot.bin $(BIN)/sgb_boot.bin $(BIN)/sgb2_boot.bin
+.PHONY : all
+all: default bootroms checksum
+
+# All bins, including non-standard bootroms (e.g. CGB0, MGB)
+.PHONY : bootroms
+bootroms: $(BIN)/cgb0_boot.bin $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/mgb_boot.bin $(BIN)/sgb_boot.bin $(BIN)/sgb2_boot.bin
+
 
 # MiSTer bootrom has a specific memory mapping for each variant (CGB is allocated 2048 bytes, DMG and SGB have 256)
-cgb_boot.mif: $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin
+%.mif: $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin
 	srec_cat \
     $(BIN)/cgb_boot.bin -Binary -offset 0x000 -fill 0x00 0x000 0x900 \
     $(BIN)/dmg_boot.bin -Binary -offset 0x900 -fill 0x00 0x900 0xA00 \
@@ -58,38 +55,32 @@ cgb_boot.mif: $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin
 	@sed -i "/0B00/i --Padding" $@
 
 # Binary compiler
-$(BIN)/%.bin: $(SRC)/%.asm $(OBJ)/$(LOGO_FILE)$(LOGO_SUFFIX)
+$(BIN)/%.bin: $(SRC)/%.asm $(OBJ)/CGB_logo.rle
 	-@$(MKDIR) -p $(dir $@)
 	rgbasm -l -i $(OBJ) -i $(SRC) -o $@.tmp $<
 	rgblink -o $@.tmp2 $@.tmp
 	dd if=$@.tmp2 of=$@ count=1 bs=$(if $(findstring mgb,$@)$(findstring dmg,$@)$(findstring sgb,$@),256,2304) 2> $(NULL)
 	@rm $@.tmp $@.tmp2
 
-# CGB logo compression, may be different for SameBoy and MiSTer logos
-$(OBJ)/$(LOGO_FILE)$(LOGO_SUFFIX): $(OBJ)/$(LOGO_INT) $(IMG_COMPRESS)
+# CGB logo compression
+$(OBJ)/%.rle: $(OBJ)/%.1bpp $(IMG_COMPRESS)
 	-@$(MKDIR) -p $(dir $@)
 	$(realpath $(IMG_COMPRESS)) < $< > $@
 
-# MiSTer
+# Make CGB logo
 $(OBJ)/%.1bpp: %.png
 	-@$(MKDIR) -p $(dir $@)
 	rgbgfx -d 1 -L 0,0:16,3 -Z -o $@ $<
 
-$(IMG_COMPRESS): $(COMPRESS_DEPS)
+$(OBJ)/%$(EXESUFFIX): $(SRC)/%.c
 	-@$(MKDIR) -p $(dir $@)
 	$(NATIVE_CC) -std=c99 -Wall -Werror $< -o $@
 
-$(OBJ)/checksum$(EXESUFFIX): $(SRC)/checksum.c
-	-@$(MKDIR) -p $(dir $@)
-	$(NATIVE_CC) -std=c99 -Wall -Werror $< -o $@
-    
 .PHONY : checksum
 checksum: $(OBJ)/checksum$(EXESUFFIX)
-
-.PHONY : force
-force: clean default
 
 .PHONY : clean
 clean:
 	rm -rf $(OBJ)
 	rm -rf $(BIN)	
+	rm -f *.mif
