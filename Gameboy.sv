@@ -21,7 +21,7 @@
 //============================================================================
 
 // Bootrom checksums
-`define MISTER_CGB0_CHECKSUM 18'h2CC8C
+`define MISTER_CGB0_CHECKSUM 18'h2CE10
 `define ORIGINAL_CGB_CHECKSUM 18'h2F3EA
 
 module emu

@@ -40,7 +40,7 @@ all: default bootroms checksum
 bootroms: $(BIN)/cgb0_boot.bin $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/mgb_boot.bin $(BIN)/sgb_boot.bin $(BIN)/sgb2_boot.bin
 
 
-# MiSTer bootrom has a specific memory mapping for each variant (CGB is allocated 2048 bytes, DMG and SGB have 256)
+# MiSTer bootrom has a specific memory mapping for each variant (CGB is allocated 2308 bytes, DMG and SGB have 256)
 %.mif: $(BIN)/cgb_boot.bin $(BIN)/dmg_boot.bin $(BIN)/sgb_boot.bin
 	srec_cat \
     $(BIN)/cgb_boot.bin -Binary -offset 0x000 -fill 0x00 0x000 0x900 \
