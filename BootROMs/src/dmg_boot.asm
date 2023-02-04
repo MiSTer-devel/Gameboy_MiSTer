@@ -1,5 +1,3 @@
-; DMG bootstrap ROM
-; Adapted from SameBoy
 ;MIT License
 ;
 ;Copyright (c) 2015-2023 Lior Halphon

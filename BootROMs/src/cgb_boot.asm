@@ -1,5 +1,3 @@
-; CGB bootstrap ROM
-; Adapted from SameBoy
 ;MIT License
 ;
 ;Copyright (c) 2015-2023 Lior Halphon
@@ -21,6 +19,9 @@
 ;LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 ;OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;SOFTWARE.
+
+; Note:
+; rBANK ($ff50) is used as special MiSTer read-only register to add OSD boot options
 
 INCLUDE	"hardware.inc"
 
@@ -182,7 +183,7 @@ ENDC
     ldh [rLCDC], a
 
     ldh a, [rBANK]
-    bit 1, a
+    bit 1, a ; check MiSTer fastboot flag
     jr z, .doAnimation
 
     ld a, $83
@@ -217,12 +218,12 @@ ENDC
 
 .fastBoot
     call Preboot
-    ld a, [rBANK] ; Special MiSTer read register to give menu boot options
-    bit 0, a
+    ldh a, [rBANK] 
+    bit 0, a ; check MiSTer CGB/AGB flag, CGB mode sets zero flag
     jr z, .cgbmode
-    ld b, 1 ; AGB mode set b = 1
+    inc b ; AGB mode set b = 1, reset z flag
 .cgbmode
-    ld a, $11 ; Correct final value for a
+    ld a, $11
     jr BootGame
 
 HDMAData:
@@ -559,11 +560,8 @@ AnimationColors:
     dw $017D ; Orange
     dw $241D ; Red
     dw $6D38 ; Purple
-IF DEF(AGB)
-    dw $6D60 ; Blue
-ELSE
+    ;dw $6D60 ; Blue ; AGB version of blue, not used due to rom length limitations
     dw $5500 ; Blue
-ENDC
     
 AnimationColorsEnd:
 
@@ -754,10 +752,10 @@ DoIntroAnimation:
 
 Preboot:
     ldh a, [rBANK]
-    bit 1, a
+    bit 1, a ; check MiSTer fastboot flag
     jr z, .fadeStart
     ld a, $c1
-    call PlaySound
+    call PlaySound ; Play final sound, but fade loop still needed with fastboot to init LCD
 
 .fadeStart
     ld b, 32 ; 32 times to fade
@@ -919,6 +917,7 @@ GetPaletteIndex:
     inc l
     dec c
     jr nz, .checksumLoop
+    ldh [TitleChecksum], a
     ld b, a
 
     ; c = 0
