@@ -93,8 +93,7 @@ ENDC
     ld a, 1
     ldh [rVBK], a
     call ClearMemoryPage8000
-    ldh a, [rBANK]
-    bit 1, a
+    call CheckFastBoot
     call z, LoadTileset
     
     ld b, 3
@@ -158,6 +157,7 @@ ENDC
     ldi [hl], a
 
     ; The actual color
+    call CheckAGBPalette
     ld a, [de]
     inc de
     ldi [hl], a
@@ -172,7 +172,6 @@ ENDC
     ldi [hl], a
     ldi [hl], a
 
-    xor a
     dec c
     jr nz, .expandPalettesLoop
 
@@ -182,8 +181,7 @@ ENDC
     ld a, $91
     ldh [rLCDC], a
 
-    ldh a, [rBANK]
-    bit 1, a ; check MiSTer fastboot flag
+    call CheckFastBoot
     jr z, .doAnimation
 
     ld a, $83
@@ -218,8 +216,7 @@ ENDC
 
 .fastBoot
     call Preboot
-    ldh a, [rBANK] 
-    bit 0, a ; check MiSTer CGB/AGB flag, CGB mode sets zero flag
+    call CheckAGB
     jr z, .cgbmode
     inc b ; AGB mode set b = 1, reset z flag
 .cgbmode
@@ -560,8 +557,8 @@ AnimationColors:
     dw $017D ; Orange
     dw $241D ; Red
     dw $6D38 ; Purple
-    ;dw $6D60 ; Blue ; AGB version of blue, not used due to rom length limitations
     dw $5500 ; Blue
+    dw $6D60 ; Blue ; AGB version of blue, only used when AGB mode is set
     
 AnimationColorsEnd:
 
@@ -751,8 +748,7 @@ DoIntroAnimation:
     ret
 
 Preboot:
-    ldh a, [rBANK]
-    bit 1, a ; check MiSTer fastboot flag
+    call CheckFastBoot
     jr z, .fadeStart
     ld a, $c1
     call PlaySound ; Play final sound, but fade loop still needed with fastboot to init LCD
@@ -1177,6 +1173,31 @@ LoadDMGTilemap:
     jr .tilemapLoop
 .tilemapDone
     pop af
+    ret
+
+CheckAGB:
+    ldh a, [rBANK]
+    bit 0, a
+    ret
+
+CheckFastBoot:
+    ldh a, [rBANK]
+    bit 1, a
+    ret
+
+CheckAGBPalette:
+    push hl
+    call CheckAGB
+    jr z, .normalPalette
+; Check if we are loading the final blue color
+    ld hl, AnimationColors+14
+    ld a, e
+    cp a, l 
+    jr nz, .normalPalette
+    inc de ; Skip the CGB blue, use AGB blue
+    inc de
+.normalPalette
+    pop hl
     ret
 
 BootEnd:
