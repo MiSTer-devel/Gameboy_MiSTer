@@ -18,9 +18,15 @@ This is port of [Gameboy for MiST](https://github.com/mist-devel/gameboy)
 * Real-Time Clock Support
 * Gameboy Link Port Support - Requires USERIO adapter
 * Cheats
+* Fast boot
+* GBA mode for GBC games
 
 ## Open Source Bootstrap roms
-This now includes the open source boot ROMs from [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/). For maximum compatibility/authenticity you can still place the Gameboy bios/bootroms into the Gameboy folder and load them in the menu with Misc->Load GBC/DMG/SGB boot. Loading an authentic Gameboy Color bios/bootroom is required in order to use GBA Mode.
+Open source roms are included in the core, adapted from the SameBoy project [https://github.com/LIJI32/SameBoy/](https://github.com/LIJI32/SameBoy/). These roms have MiSTer-specific enhancements, allowing fast booting and GBA mode to be controlled by the on-screen display.
+
+ For maximum compatibility/authenticity you can still place the Gameboy bios/bootroms into the Gameboy folder and load them in the menu with `Bootroms->Load GBC/DMG/SGB boot`. 
+
+For more information see the [BootROM README](./BootROMs/README.md)  
 
 ## Palettes
 This core supports custom palettes (*.gbp) which should be placed into the Gameboy folder. Some examples are available in the palettes folder.

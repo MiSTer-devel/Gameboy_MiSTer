@@ -1,5 +1,27 @@
-; SameBoy SGB bootstrap ROM
-; Todo: use friendly names for HW registers instead of magic numbers
+;MIT License
+;
+;Copyright (c) 2015-2023 Lior Halphon
+;
+;Permission is hereby granted, free of charge, to any person obtaining a copy
+;of this software and associated documentation files (the "Software"), to deal
+;in the Software without restriction, including without limitation the rights
+;to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+;copies of the Software, and to permit persons to whom the Software is
+;furnished to do so, subject to the following conditions:
+;
+;The above copyright notice and this permission notice shall be included in all
+;copies or substantial portions of the Software.
+;
+;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+;IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+;FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+;AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+;LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+;OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+;SOFTWARE.
+
+INCLUDE	"hardware.inc"
+
 SECTION "BootCode", ROM0[$0]
 Start:
 ; Init stack pointer
@@ -15,17 +37,17 @@ Start:
 
 ; Init Audio
     ld a, $80
-    ldh [$26], a
-    ldh [$11], a
+    ldh [rNR52], a
+    ldh [rNR11], a
     ld a, $f3
-    ldh [$12], a
-    ldh [$25], a
+    ldh [rNR12], a
+    ldh [rNR51], a
     ld a, $77
-    ldh [$24], a
+    ldh [rNR50], a
 
 ; Init BG palette to white
     ld a, $0
-    ldh [$47], a
+    ldh [rBGP], a
 
 ; Load logo from ROM.
 ; A nibble represents a 4-pixels line, 2 bytes represent a 4x4 tile, scaled to 8x8.
@@ -71,10 +93,10 @@ Start:
 
     ; Turn on LCD
     ld a, $91
-    ldh [$40], a
+    ldh [rLCDC], a
 
     ld a, $f1 ; Packet magic, increases by 2 for every packet
-    ldh [$80], a
+    ldh [_HRAM], a
     ld hl, $104 ; Header start
     
     xor a
@@ -86,7 +108,7 @@ Start:
     ld a, $30
     ld [c], a
     
-    ldh a, [$80]
+    ldh a, [_HRAM]
     call SendByte
     push hl
     ld b, $e
@@ -117,9 +139,9 @@ Start:
     ld [c], a
     
     ; Update command
-    ldh a, [$80]
+    ldh a, [_HRAM]
     add 2
-    ldh [$80], a
+    ldh [_HRAM], a
     
     ld a, $58
     cp l
@@ -135,7 +157,7 @@ Start:
     
     ; Init BG palette
     ld a, $fc
-    ldh [$47], a
+    ldh [rBGP], a
     
 ; Set registers to match the original SGB boot
 IF DEF(SGB2)
@@ -210,4 +232,4 @@ db $3c,$42,$b9,$a5,$b9,$a5,$42,$3c
 
 SECTION "BootGame", ROM0[$fe]
 BootGame:
-    ldh [$50], a
+    ldh [rBANK], a

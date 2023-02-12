@@ -39,7 +39,6 @@ int main(int argc, char *argv[])
     size_t count = 1;
     uint8_t byte = getchar();
     int new;
-    size_t position = 0;
 
 #ifdef _WIN32
     _setmode(0,_O_BINARY);

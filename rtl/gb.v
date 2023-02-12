@@ -28,6 +28,7 @@ module gb (
 
 	input [7:0] joystick,
 	input isGBC,
+    input real_cgb_boot,
 	input isSGB,
 
 	// cartridge interface
@@ -50,7 +51,9 @@ module gb (
 	input  [24:0] ioctl_addr,
 	input  [15:0] ioctl_dout,
 
+    // Bootrom features
 	input boot_gba_en,
+    input fast_boot_en,
 
 	// audio
 	output [15:0] audio_l,
@@ -174,6 +177,9 @@ wire sel_FF73  = isGBC && cpu_addr == 16'hff73;            // unused register, a
 wire sel_FF74  = isGBC && isGBC_mode && (cpu_addr == 16'hff74); // unused register, all bits read/write, only in CGB mode
 wire sel_FF75  = isGBC && cpu_addr == 16'hff75;            // unused register, bits 4-6 read/write
 
+// Special MiSTer register for signalling to cpu bootrom
+wire sel_FF50  = boot_rom_enabled && cpu_addr == 16'hff50;
+
 wire ext_bus_wram_sel, ext_bus_cram_sel, ext_bus_rom_sel;
 wire ext_bus_rd, ext_bus_wr;
 wire [7:0] ext_bus_di;
@@ -279,6 +285,7 @@ wire [7:0] cpu_di =
 		sel_FF73?FF73: // unused register, all bits read/write
 		sel_FF74?FF74: // unused register, all bits read/write, only in CGB mode
 		sel_FF75?{1'b1,FF75, 4'b1111}: // unused register, bits 4-6 read/write
+        sel_FF50?{6'b0, fast_boot_en, boot_gba_en}: // MiSTer special instruction register 
 		8'hff;
 
 wire cpu_wr_n;
@@ -929,6 +936,7 @@ wire [10:0] boot_wr_addr =
         ioctl_addr[11:1];
 
 wire [7:0] boot_q;
+
 dpram_dif #(12,8,11,16,"BootROMs/cgb_boot.mif") boot_rom (
 	.clock (clk_sys),
 
@@ -959,8 +967,7 @@ always begin
 	endcase
 end
 
-assign boot_do = (isGBC & boot_gba_en) ? boot_do_gba : boot_q;
-
+assign boot_do = (isGBC && boot_gba_en && real_cgb_boot) ? boot_do_gba : boot_q;
 // --------------------------------------------------------------------
 // ------------------ External bus (WRAM, Cartridge) ------------------
 // --------------------------------------------------------------------
