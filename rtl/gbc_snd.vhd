@@ -1,3 +1,8 @@
+-- Notes:
+-- 	When the output DAC of each channel is disabled, the real voltage will drift
+--  to 0 V at some unknown rate. Here, it is implemented as an immediate return to "0 V".
+--  If this is found to not be accurate enough, an additional timer may be added.
+
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
@@ -975,11 +980,12 @@ begin
     SS_Sound3_BACK(          58) <= noi_playing;
     SS_Sound3_BACK(62 downto 59) <= noi_vol;
 
-	square1 : process(clk, sq1_out, sq1_vol, sq1_suppressed)
+	square1 : process(clk, sq1_vol, sq1_svol, sq1_envsgn, sq1_out, sq1_suppressed)
 		constant duty_0          : std_logic_vector(0 to 7) := "00000001";
 		constant duty_1          : std_logic_vector(0 to 7) := "10000001";
 		constant duty_2          : std_logic_vector(0 to 7) := "10000111";
-		constant duty_3          : std_logic_vector(0 to 7) := "01111110";
+		constant duty_3          : std_logic_vector(0 to 7) := "01111110";	
+		variable sq1_dac_en		 : boolean;
 		variable sq1_fcnt        : unsigned(10 downto 0);
 		variable sq1_phase       : integer range 0 to 7;
 		variable sq1_len         : std_logic_vector(6 downto 0);
@@ -997,10 +1003,15 @@ begin
 		variable acc_fcnt        : unsigned(11 downto 0);
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 	begin
-		if sq1_out = '1' and sq1_suppressed = '0' then
-			sq1_wav <= sq1_vol;
+		sq1_dac_en := (sq1_svol & sq1_envsgn) /= "00000";
+		if sq1_dac_en then
+			if sq1_out = '1' and sq1_suppressed = '0' then
+				sq1_wav <= sq1_vol;
+			else
+				sq1_wav <= "0000";
+			end if;
 		else
-			sq1_wav <= "0000";
+			sq1_wav <= "0111"; -- When DAC is off, settle to ~0 V.
 		end if;
 
 		if rising_edge(clk) then
@@ -1287,11 +1298,12 @@ begin
 		end if;
 	end process square1;
 
-	square2 : process(clk, sq2_out, sq2_vol, sq2_suppressed)
+	square2 : process(clk, sq2_vol, sq2_svol, sq2_envsgn, sq2_out, sq2_suppressed)
 		constant duty_0          : std_logic_vector(0 to 7) := "00000001";
 		constant duty_1          : std_logic_vector(0 to 7) := "10000001";
 		constant duty_2          : std_logic_vector(0 to 7) := "10000111";
 		constant duty_3          : std_logic_vector(0 to 7) := "01111110";
+		variable sq2_dac_en		 : boolean;
 		variable sq2_fcnt        : unsigned(10 downto 0);
 		variable sq2_phase       : integer range 0 to 7;
 		variable sq2_len         : std_logic_vector(6 downto 0);
@@ -1301,14 +1313,19 @@ begin
 		variable acc_fcnt        : unsigned(11 downto 0);
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 	begin
+		sq2_dac_en := (sq2_svol & sq2_envsgn) /= "00000";
+		if sq2_dac_en then
 			if sq2_out = '1' and sq2_suppressed = '0' then
 				sq2_wav <= sq2_vol;
 			else
 				sq2_wav <= "0000";
 			end if;
+		else 
+			sq2_wav <= "0111"; -- When DAC is off, settle to ~0 V.
+		end if;
 
-			if rising_edge(clk) then
-				if reset = '1' then
+		if rising_edge(clk) then
+			if reset = '1' then
 					sq2_playing       <= SS_Sound3(          39); -- '0';
 					sq2_fcnt          := (others => '0');
 					sq2_phase         := 0;
@@ -1499,11 +1516,13 @@ begin
 		variable acc_fcnt        : unsigned(11 downto 0);
 		variable wav_trigger_freq : std_logic_vector(10 downto 0);
 	begin
-		if wav_enable = '1' and wav_playing = '0' then
+		if wav_enable = '0' then
+			wav_wav <= "0111"; -- When DAC is off, settle to ~0 V.
+		elsif wav_playing = '0' then
 			-- DAC enabled but not playing
 			wav_wav <= (others => '0');
 		else
-			-- DAC disabled or playing. Outputting 0 when the DAC is disabled is not correct because the voltage should transition from the previous value to 0 volt.
+			-- DAC enabled and wave playing
 			case wav_volsh is
 				when "01" => wav_wav   <= wav_wav_r;
 				when "10" => wav_wav   <= '0' & wav_wav_r(3 downto 1);
@@ -1616,7 +1635,8 @@ begin
 		end if;
 	end process wave;
 
-	noise : process(clk, noi_vol)
+	noise : process(clk, noi_vol, noi_svol, noi_envsgn)
+		variable noi_dac_en      : boolean;
 		variable noi_divisor     : unsigned(10 downto 0); -- Noise frequency divisor
 		variable noi_period      : unsigned(10 downto 0); -- Noise period    (calculated)
 		variable noi_fcnt        : unsigned(10 downto 0);
@@ -1629,10 +1649,15 @@ begin
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 		variable acc_fcnt        : unsigned(11 downto 0);
 	begin
-		if noi_out = '1' then
-			noi_wav <= noi_vol;
-		else
-			noi_wav <= "0000";
+		noi_dac_en := (noi_svol & noi_envsgn) /= "00000";
+		if noi_dac_en then
+			if noi_out = '1' then
+				noi_wav <= noi_vol;
+			else
+				noi_wav <= "0000";
+			end if;
+		else 
+			noi_wav <= "0111"; -- When DAC is off, settle to ~0 V.
 		end if;
 
 		-- Sound processing
