@@ -1822,38 +1822,40 @@ begin
         variable snd_left_in  : signed(5 downto 0);
         variable snd_right_in : signed(5 downto 0);   
         variable snd_tmp      : signed(10 downto 0);
-        constant DC_OFFSET    : std_logic_vector(3 downto 0) := "1000";
+		variable wav	 	  : std_logic_vector(3 downto 0);
+		
+		-- Convert a DAC input code to a pseudo-analog value 
+		function dac_out(
+			wav : std_logic_vector(3 downto 0)
+		) return signed is
+		begin
+			return resize(signed(wav xor "0111"), snd_left_in'length);
+		end function;
     begin
-        snd_left_in  := (others => '0');
+		snd_left_in  := (others => '0');
         snd_right_in := (others => '0');
 
-        if ch_map(0) = '1' then
-            snd_right_in := snd_right_in + resize(signed(sq1_wav - DC_OFFSET), snd_right_in'length);
-        end if;                                                  
-        if ch_map(1) = '1' then                                  
-            snd_right_in := snd_right_in + resize(signed(sq2_wav - DC_OFFSET), snd_right_in'length);
-        end if;                                                  
-        if ch_map(2) = '1' then                                  
-            snd_right_in := snd_right_in + resize(signed(wav_wav - DC_OFFSET), snd_right_in'length);
-        end if;                                                  
-        if ch_map(3) = '1' then                                  
-            snd_right_in := snd_right_in + resize(signed(noi_wav - DC_OFFSET), snd_right_in'length);
-        end if;
+		for k in 0 to 7 loop
+			case k mod 4 is
+				when 0 => wav := sq1_wav;
+				when 1 => wav := sq2_wav;
+				when 2 => wav := wav_wav;
+				when 3 => wav := noi_wav;
+				when others => null;
+			end case;
 
-        if ch_map(4) = '1' then
-            snd_left_in := snd_left_in + resize(signed(sq1_wav - DC_OFFSET), snd_left_in'length);
-        end if;                          
-        if ch_map(5) = '1' then          
-            snd_left_in := snd_left_in + resize(signed(sq2_wav - DC_OFFSET), snd_left_in'length);
-        end if;                          
-        if ch_map(6) = '1' then          
-            snd_left_in := snd_left_in + resize(signed(wav_wav - DC_OFFSET), snd_left_in'length);
-        end if;                          
-        if ch_map(7) = '1' then          
-            snd_left_in := snd_left_in + resize(signed(noi_wav - DC_OFFSET), snd_left_in'length);
-        end if;
+			if k < 4 then
+				if ch_map(k) = '1' then
+					snd_right_in := snd_right_in + dac_out(wav);
+				end if;
+			else
+				if ch_map(k - 4) = '1' then
+					snd_left_in  := snd_left_in + dac_out(wav);
+				end if;
+			end if;
+		end  loop;
 
-        snd_tmp := snd_right_in * signed(("00" & ch_vol(2 downto 0)) + '1');
+		snd_tmp := snd_right_in * signed(("00" & ch_vol(2 downto 0)) + '1');
         snd_right <= std_logic_vector(snd_tmp) & "00000";
 
         snd_tmp := snd_left_in * signed(("00" & ch_vol(6 downto 4)) + '1');
