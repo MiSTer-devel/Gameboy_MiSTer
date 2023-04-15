@@ -248,7 +248,7 @@ localparam CONF_STR = {
 	"P2FC5,BIN,Load DMG Boot;",
 	"P2FC6,BIN,Load SGB Boot;",
 	"P2-;",
-	"d6P2O[37],CGB/GBA mode,CGB,GBA;",
+	"d6P2O[37],GBC/GBA mode,GBC,GBA;",
     "d8P2O[42],Fast boot,Off,On;",
 
 	"P3,Misc.;",
