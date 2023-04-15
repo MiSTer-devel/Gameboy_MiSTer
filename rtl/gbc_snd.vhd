@@ -1683,12 +1683,10 @@ begin
 				when others => null;
 			end case;
 
-			if k < 4 then
-				if ch_map(k) = '1' then
+			if ch_map(k) = '1' then
+				if k < 4 then
 					snd_right_in := snd_right_in + dac_out(wav);
-				end if;
-			else
-				if ch_map(k - 4) = '1' then
+				else
 					snd_left_in  := snd_left_in + dac_out(wav);
 				end if;
 			end if;
