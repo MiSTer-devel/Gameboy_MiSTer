@@ -40,6 +40,16 @@ entity gbc_snd is
 end gbc_snd;
 
 architecture SYN of gbc_snd is
+	component apu_dac is
+		port(
+			clk : in std_logic;
+			ce : in std_logic;
+			dac_en : in std_logic;
+			dac_input : in std_logic_vector(3 downto 0);
+			dac_output : out signed(8 downto 0)
+		);
+	end component;
+
 
     subtype wav_t is std_logic_vector(3 downto 0);
     type wav_arr_t is array(0 to 31) of wav_t;
@@ -173,6 +183,17 @@ architecture SYN of gbc_snd is
     
     signal SS_Wave1_GBC       : std_logic_vector(REG_SAVESTATE_Wave1_GBC.upper downto REG_SAVESTATE_Wave1_GBC.lower);
     signal SS_Wave2_GBC       : std_logic_vector(REG_SAVESTATE_Wave2_GBC.upper downto REG_SAVESTATE_Wave2_GBC.lower);
+
+	-- Analog
+	signal sq1_dac_en        : std_logic;
+	signal sq2_dac_en        : std_logic;
+    -- wav_enable
+	signal noi_dac_en        : std_logic;
+    
+	signal sq1_dac_out		 : signed(8 downto 0);
+	signal sq2_dac_out		 : signed(8 downto 0);
+	signal wav_dac_out		 : signed(8 downto 0);
+	signal noi_dac_out		 : signed(8 downto 0);
     
 begin
 
@@ -814,7 +835,6 @@ begin
 		constant duty_1          : std_logic_vector(0 to 7) := "10000001";
 		constant duty_2          : std_logic_vector(0 to 7) := "10000111";
 		constant duty_3          : std_logic_vector(0 to 7) := "01111110";	
-		variable sq1_dac_en		 : boolean;
 		variable sq1_fcnt        : unsigned(10 downto 0);
 		variable sq1_phase       : integer range 0 to 7;
 		variable sq1_len         : std_logic_vector(6 downto 0);
@@ -832,15 +852,15 @@ begin
 		variable acc_fcnt        : unsigned(11 downto 0);
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 	begin
-		sq1_dac_en := (sq1_svol & sq1_envsgn) /= "00000";
-		if sq1_dac_en then
-			if sq1_out = '1' and sq1_suppressed = '0' then
-				sq1_wav <= sq1_vol;
-			else
-				sq1_wav <= "0000";
-			end if;
+		sq1_dac_en <= '1';
+		if sq1_svol & sq1_envsgn = "00000" then
+			sq1_dac_en <= '0';
+		end if;
+
+		if sq1_out = '1' and sq1_suppressed = '0' then
+			sq1_wav <= sq1_vol;
 		else
-			sq1_wav <= "0111"; -- When DAC is off, settle to ~0 V.
+			sq1_wav <= "0000";
 		end if;
 
 		if rising_edge(clk) then
@@ -1128,7 +1148,6 @@ begin
 		constant duty_1          : std_logic_vector(0 to 7) := "10000001";
 		constant duty_2          : std_logic_vector(0 to 7) := "10000111";
 		constant duty_3          : std_logic_vector(0 to 7) := "01111110";
-		variable sq2_dac_en		 : boolean;
 		variable sq2_fcnt        : unsigned(10 downto 0);
 		variable sq2_phase       : integer range 0 to 7;
 		variable sq2_len         : std_logic_vector(6 downto 0);
@@ -1138,15 +1157,15 @@ begin
 		variable acc_fcnt        : unsigned(11 downto 0);
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 	begin
-		sq2_dac_en := (sq2_svol & sq2_envsgn) /= "00000";
-		if sq2_dac_en then
-			if sq2_out = '1' and sq2_suppressed = '0' then
-				sq2_wav <= sq2_vol;
-			else
-				sq2_wav <= "0000";
-			end if;
-		else 
-			sq2_wav <= "0111"; -- When DAC is off, settle to ~0 V.
+		sq2_dac_en <= '1';
+		if sq2_svol & sq2_envsgn = "00000" then
+			sq2_dac_en <= '0';
+		end if;
+		
+		if sq2_out = '1' and sq2_suppressed = '0' then
+			sq2_wav <= sq2_vol;
+		else
+			sq2_wav <= "0000";
 		end if;
 
 		if rising_edge(clk) then
@@ -1338,13 +1357,9 @@ begin
 		variable acc_fcnt        : unsigned(11 downto 0);
 		variable wav_trigger_freq : std_logic_vector(10 downto 0);
 	begin
-		if wav_enable = '0' then
-			wav_wav <= "0111"; -- When DAC is off, settle to ~0 V.
-		elsif wav_playing = '0' then
-			-- DAC enabled but not playing
+		if wav_playing = '0' then
 			wav_wav <= (others => '0');
 		else
-			-- DAC enabled and wave playing
 			case wav_volsh is
 				when "01" => wav_wav   <= wav_wav_r;
 				when "10" => wav_wav   <= '0' & wav_wav_r(3 downto 1);
@@ -1455,7 +1470,6 @@ begin
 	end process wave;
 
 	noise : process(clk, noi_vol, noi_svol, noi_envsgn)
-		variable noi_dac_en      : boolean;
 		variable noi_divisor     : unsigned(10 downto 0); -- Noise frequency divisor
 		variable noi_period      : unsigned(10 downto 0); -- Noise period    (calculated)
 		variable noi_fcnt        : unsigned(10 downto 0);
@@ -1468,15 +1482,15 @@ begin
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
 		variable acc_fcnt        : unsigned(11 downto 0);
 	begin
-		noi_dac_en := (noi_svol & noi_envsgn) /= "00000";
-		if noi_dac_en then
-			if noi_out = '1' then
-				noi_wav <= noi_vol;
-			else
-				noi_wav <= "0000";
-			end if;
-		else 
-			noi_wav <= "0111"; -- When DAC is off, settle to ~0 V.
+		noi_dac_en <= '1';
+		if noi_svol & noi_envsgn = "00000" then
+			noi_dac_en <= '0';
+		end if;
+
+		if noi_out = '1' then
+			noi_wav <= noi_vol;
+		else
+			noi_wav <= "0000";
 		end if;
 
 		-- Sound processing
@@ -1653,50 +1667,112 @@ begin
 		end if;
 	end process noise;
 
-    -- DACs and Mixer
-    -- https://gbdev.io/pandocs/Audio_details.html#dacs 
-    -- The DACs linearly map input codes 0x0 to 0xF to analog outputs 1 to -1 (0x0 is the most positive signal, 0xF is the most negative signal) 
-    -- Finally, all channels are mixed through NR51, scaled through NR50, and sent to the output. 
-    mixer : process (sq1_wav, sq2_wav, noi_wav, wav_wav, ch_map, ch_vol)
-        variable snd_left_in  : signed(5 downto 0);
-        variable snd_right_in : signed(5 downto 0);   
-        variable snd_tmp      : signed(10 downto 0);
-		variable wav	 	  : std_logic_vector(3 downto 0);
-		
-		-- Convert a DAC input code to a pseudo-analog value 
-		function dac_out(
-			wav : std_logic_vector(3 downto 0)
-		) return signed is
-		begin
-			return resize(signed(wav xor "0111"), snd_left_in'length);
-		end function;
+	-- Analog hardware emulation
+
+	sq1_dac : apu_dac port map (clk=>clk, ce=>ce, dac_en=>sq1_dac_en, dac_input=>sq1_wav,dac_output=>sq1_dac_out);
+	sq2_dac : apu_dac port map (clk=>clk, ce=>ce, dac_en=>sq2_dac_en, dac_input=>sq2_wav,dac_output=>sq2_dac_out);
+	wav_dac : apu_dac port map (clk=>clk, ce=>ce, dac_en=>wav_enable, dac_input=>wav_wav,dac_output=>wav_dac_out);
+	noi_dac : apu_dac port map (clk=>clk, ce=>ce, dac_en=>noi_dac_en, dac_input=>noi_wav,dac_output=>noi_dac_out);
+
+
+	mixer : process (sq1_dac_out, sq2_dac_out, wav_dac_out, noi_dac_out, ch_map, ch_vol)
+        variable snd_left_in  : signed(10 downto 0);
+        variable snd_right_in : signed(10 downto 0);   
+        variable snd_tmp      : signed(15 downto 0);
+		variable wav_analog	  : signed(8 downto 0);
     begin
 		snd_left_in  := (others => '0');
         snd_right_in := (others => '0');
-
-		for k in 0 to 7 loop
-			case k mod 4 is
-				when 0 => wav := sq1_wav;
-				when 1 => wav := sq2_wav;
-				when 2 => wav := wav_wav;
-				when 3 => wav := noi_wav;
+		for k in 0 to 3 loop
+			case k is
+				when 0 =>
+					wav_analog := sq1_dac_out;
+				when 1 =>
+					wav_analog := sq2_dac_out;
+				when 2 =>
+					wav_analog := wav_dac_out;
+				when 3 =>
+					wav_analog := noi_dac_out;
 				when others => null;
 			end case;
 
 			if ch_map(k) = '1' then
-				if k < 4 then
-					snd_right_in := snd_right_in + dac_out(wav);
-				else
-					snd_left_in  := snd_left_in + dac_out(wav);
-				end if;
+				snd_right_in := snd_right_in + wav_analog;
 			end if;
-		end  loop;
 
+			if ch_map(k + 4) = '1' then
+				snd_left_in  := snd_left_in + wav_analog;
+			end if;
+		end loop;
+		
 		snd_tmp := snd_right_in * signed(("00" & ch_vol(2 downto 0)) + '1');
-        snd_right <= std_logic_vector(snd_tmp) & "00000";
+        snd_right <= std_logic_vector(snd_tmp);
 
         snd_tmp := snd_left_in * signed(("00" & ch_vol(6 downto 4)) + '1');
-        snd_left <= std_logic_vector(snd_tmp) & "00000";
+        snd_left <= std_logic_vector(snd_tmp);
     end process;
 
 end SYN;
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity apu_dac is
+	port (
+		clk           : in std_logic;
+		ce            : in std_logic;
+		dac_en        : in std_logic;
+		dac_input     : in std_logic_vector(3 downto 0);
+		dac_output    : out signed(8 downto 0)
+	);
+end apu_dac;
+
+architecture apu_dac_arch of apu_dac is
+	-- Analog value has range [-256, 255], which will decay to zero when a DAC is disabled.
+	-- Sameboy uses a DAC decay speed tick of every 50 us, with 120 amplitude steps => Total decay in 6 ms.
+	-- For a 6 ms decay from max output (255), we want to tick the analog value down every ~100 clock cycles (f_clk = 4.19 MHz).
+	signal   dac_decay_timer 	: integer range 0 to 100 := 0;
+	constant DAC_DECAY_PERIOD	: integer := dac_decay_timer'high;  -- Tick rate 41.5 kHz, full decay  6.1 ms
+	signal   dac_analog 	   	: signed(8 downto 0);
+
+	-- Convert a DAC input code to a pseudo-analog value
+	function dac_out(
+		wav : std_logic_vector(3 downto 0)
+	) return signed is
+	begin
+		return signed((wav xor "0111") & "00000");
+	end function;
+begin
+	dac_output <= dac_analog;
+
+	timers : process(clk, ce, dac_en, dac_analog, dac_decay_timer)
+	begin
+		if rising_edge(clk) and ce = '1' then
+			if dac_en = '1' then
+				dac_decay_timer <= DAC_DECAY_PERIOD;
+			else
+				if dac_decay_timer > 0 then
+					dac_decay_timer <= dac_decay_timer - 1;
+				else
+					dac_decay_timer <= DAC_DECAY_PERIOD; -- Automatically reset timer while DAC disabled.
+				end if;
+			end if;
+		end if;
+	end process timers;
+
+	process(clk, ce, dac_en, dac_input, dac_decay_timer) 
+	begin
+		if rising_edge(clk) and ce = '1' then
+			if dac_en = '1' then
+				dac_analog <= dac_out(dac_input);
+			elsif dac_decay_timer = 0 then
+				if dac_analog < 0 then
+					dac_analog <= dac_analog + 1;
+				elsif dac_analog > 0 then
+					dac_analog <= dac_analog - 1;
+				end if;
+			end if;
+		end if;
+	end process;	
+end apu_dac_arch;
