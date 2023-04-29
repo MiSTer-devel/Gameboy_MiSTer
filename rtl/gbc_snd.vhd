@@ -1720,12 +1720,12 @@ use ieee.numeric_std.all;
 
 entity apu_dac is
 	port (
-        clk           : in std_logic;
-		ce			  : in std_logic;
-		dac_en		  : in std_logic;
+		clk           : in std_logic;
+		ce            : in std_logic;
+		dac_en        : in std_logic;
 		dac_input     : in std_logic_vector(3 downto 0);
-        dac_output    : out signed(8 downto 0)
-    );
+		dac_output    : out signed(8 downto 0)
+	);
 end apu_dac;
 
 architecture apu_dac_arch of apu_dac is
