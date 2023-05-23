@@ -1470,17 +1470,15 @@ begin
 	end process wave;
 
 	noise : process(clk, noi_vol, noi_svol, noi_envsgn)
-		variable noi_divisor     : unsigned(10 downto 0); -- Noise frequency divisor
-		variable noi_period      : unsigned(10 downto 0); -- Noise period    (calculated)
-		variable noi_fcnt        : unsigned(10 downto 0);
+		variable noi_period      : unsigned(19 downto 0); -- Noise period    (calculated)
+		variable noi_fcnt        : unsigned(19 downto 0);
 		variable noi_lfsr        : unsigned(14 downto 0); -- 15 bits
 		variable noi_len         : std_logic_vector(6 downto 0);
-		variable noi_envcnt      : std_logic_vector(3 downto 0); -- Noise envelope timer count
+		variable noi_envcnt      : std_logic_vector(2 downto 0); -- Noise envelope timer count
 		variable noi_out         : std_logic;
 		variable noi_xor         : std_logic;
 
 		variable tmp_volume      : unsigned(7 downto 0); -- used in zombie mode
-		variable acc_fcnt        : unsigned(11 downto 0);
 	begin
 		noi_dac_en <= '1';
 		if noi_svol & noi_envsgn = "00000" then
@@ -1498,9 +1496,9 @@ begin
 			if reset = '1' then
 				noi_playing       <= SS_Sound3(          58); -- '0';
 				noi_fcnt          := (others => '0');
-				noi_lfsr          := (others => '1');
+				noi_lfsr          := (others => '0');
 				noi_vol           <= SS_Sound3(62 downto 59); -- "0000";
-				noi_envcnt        := "0000";
+				noi_envcnt        := "000";
 				noi_out           := '0';
 				noi_len           := (others => '0');
 				noi_trigger_r     <= '0'; 
@@ -1512,73 +1510,73 @@ begin
 				-- used to detect trigger negedge
 				noi_trigger_r <= noi_trigger;
 
-				if snd_enable = '1' then
-					-- Noi frequency timer Frequency = 524288 Hz / r / 2^(s+1) ;For r=0 assume r=0.5 instead  
-					if en_snd4 = '1' then
-						if noi_playing = '1' then
-								acc_fcnt := ('0' & noi_fcnt) - to_unsigned(1, acc_fcnt'length);
-								if acc_fcnt = 0 then
-									-- Noise LFSR
-									noi_xor  := noi_lfsr(0) xor noi_lfsr(1);
-									noi_lfsr := noi_xor & noi_lfsr(14 downto 1);
-
-									if noi_short = '1' then
-										noi_lfsr(6) := noi_xor;
-									end if;
-
-									noi_out  := not noi_lfsr(0);
-									noi_fcnt := noi_period;
-								else
-									noi_fcnt := acc_fcnt(noi_fcnt'range);
-								end if;
-						end if;
+				if snd_enable = '0' then
+					noi_playing <= '0';
+					noi_fcnt := (others => '0');
+					noi_lfsr := (others => '0');
+					noi_vol <= "0000";
+					noi_envcnt      := "000";
+					noi_out         := '0';
+					if is_gbc = '1' then
+						noi_len  := (others => '0');
 					end if;
 
+					noi_trigger_r   <= '0'; 
+				else
+					-- LFSR 
+					if noi_playing = '1' and en_snd4 = '1' then
+						if noi_fcnt = 0 then
+							-- Noise LFSR
+							noi_xor  := not(noi_lfsr(0) xor noi_lfsr(1));
+							noi_lfsr := noi_xor & noi_lfsr(14 downto 1);
+
+							if noi_short = '1' then
+								noi_lfsr(6) := noi_xor;
+							end if;
+
+							noi_out  := noi_lfsr(0);
+							noi_fcnt := noi_period;
+						else
+							noi_fcnt := noi_fcnt - 1;
+						end if;
+					end if;
+					
 					-- Length counter
-					if en_len = '1' or noi_lenquirk = '1' then
-						if noi_len > 0 and noi_lenchk = '1' then
-								noi_len := std_logic_vector(unsigned(noi_len) - 1);
+					if (en_len = '1' or noi_lenquirk = '1') and noi_lenchk = '1' then
+						if noi_len > 0 then
+							noi_len := std_logic_vector(unsigned(noi_len) - 1);
 						end if;
 					end if;
 
-					if noi_playing = '1' then
-						-- Envelope counter
-						if en_env = '1' and noi_envper /= "000" then
+					-- Check for end of playing conditions            	
+					if noi_lenchk = '1' and noi_len = 0 then
+						noi_playing <= '0';
+					end if;
 
-								noi_envcnt := std_logic_vector(unsigned(noi_envcnt) - 1); -- decrement counter 
+					-- Envelope counter
+					if noi_playing = '1' and en_env = '1' and noi_envper /= "000" then
+						noi_envcnt := std_logic_vector(unsigned(noi_envcnt) - 1); -- decrement counter 
 
-								if noi_envcnt = 0 then
-									if noi_envsgn = '1' then
-										if noi_vol /= "1111" then -- noi_vol < 15
-												noi_vol <= std_logic_vector(unsigned(noi_vol) + 1);
-										end if;
-									else
-										if noi_vol /= "0000" then -- noi_vol > 0
-												noi_vol <= std_logic_vector(unsigned(noi_vol) - 1);
-										end if;
-									end if;
-
-									-- reload counter with period
-									if noi_envper = "000" then
-										noi_envcnt := "1000"; -- set to 8
-									else
-										noi_envcnt := '0' & noi_envper; -- set to period
-									end if;
+						if noi_envcnt = 0 then
+							if noi_envsgn = '1' then
+								if noi_vol /= "1111" then
+									noi_vol <= std_logic_vector(unsigned(noi_vol) + 1);
 								end if;
-						end if;
+							else
+								if noi_vol /= "0000" then
+									noi_vol <= std_logic_vector(unsigned(noi_vol) - 1);
+								end if;
+							end if;
 
-						-- Check for end of playing conditions            	
-						if noi_lenchk = '1' and noi_len = 0 -- Play length timer overrun
-								then
-								noi_playing <= '0';
-								noi_envcnt := "0000";
+							-- reload counter with period
+							noi_envcnt := noi_envper;
 						end if;
 					end if;
 
+					-- Zombie mode
 					if ((noi_trigger = '0' and noi_trigger_r = '1') or noi_nr2change = '1') and noi_playing = '1' then
 
 						-- using sameboy's logic
-						-- "zombie" mode
 						tmp_volume := "0000" & unsigned(noi_vol);
 
 						if noi_envsgn = '1' then 
@@ -1598,70 +1596,46 @@ begin
 						end if;
 
 						noi_vol <= std_logic_vector(tmp_volume(3 downto 0));
-						-- "zombie" mode
-
-						-- check if dac is enabled
-						if noi_svol = "00000" and noi_envsgn = '0' then -- dac disabled
-								noi_playing <= '0';
-						end if;
 					end if;
 
-					if noi_trigger = '1'or noi_freqchange = '1' then
-
-						-- Calculate noise frequency
-						case noi_div is
-								when "000"  => noi_period  := to_unsigned(2, noi_period'length);
-								when "001"  => noi_period  := to_unsigned(4, noi_period'length);
-								when "010"  => noi_period  := to_unsigned(8, noi_period'length);
-								when "011"  => noi_period  := to_unsigned(12, noi_period'length);
-								when "100"  => noi_period  := to_unsigned(16, noi_period'length);
-								when "101"  => noi_period  := to_unsigned(20, noi_period'length);
-								when "110"  => noi_period  := to_unsigned(24, noi_period'length);
-								when others => noi_period := to_unsigned(28, noi_divisor'length);
-						end case;
+					-- Calculate noise period
+					if noi_trigger = '1' or noi_freqchange = '1' then						
+						-- Calculate LFSR clock period from frequency formula:
+						-- 	256 KiHz / (r * 2^S)
+						-- When r = 0, it is treated as 0.5 (i.e. 512 KiHz/2^S)
+						-- Here, the LFSR block frequency is 1 MiHz (en_snd4)
+						-- r = noi_div and S = noi_freqsh
+						
+						--  First, set period to 4*r, or 2 if r == 0
+						noi_period := (others => '0');
+						noi_period(4 downto 2) := unsigned(noi_div);
+						if noi_div = "000" then
+							noi_period(1) := '1';
+						end if;
 
 						noi_period := noi_period sll to_integer(unsigned(noi_freqsh));
 						noi_fcnt   := noi_period;
-
 					end if;
 
 					-- Check sample trigger and start playing
 					if noi_trigger_r = '1' and noi_trigger = '0' then -- falling edge of trigger
+						noi_playing <= '1';
 						noi_vol <= noi_svol;
-
-						noi_lfsr := (others => '1');
-
-						-- reload envelope counter with period
-						if noi_envper = "000" then
-								noi_envcnt := "1000"; -- set to 8
-						else
-								noi_envcnt := '0' & noi_envper; -- set to period
-						end if;
-
-						if not (noi_svol = "00000" and noi_envsgn = '0') then -- dac enabled
-								noi_playing <= '1';
-						end if;
+						noi_lfsr := (others => '0');
+						noi_envcnt := noi_envper;
 
 						if noi_len = 0 then -- trigger quirks 
-								if noi_lenchk = '1' and en_len_r = '1' then
-									noi_len := "0111111"; -- 63
-								else
-									noi_len := "1000000"; -- 64
-								end if;
+							if noi_lenchk = '1' and en_len_r = '1' then
+								noi_len := "0111111"; -- 63
+							else
+								noi_len := "1000000"; -- 64
+							end if;
 						end if;
 					end if;
-				else		  
-					noi_playing <= '0';
-					noi_fcnt := (others => '0');
-					noi_lfsr := (others => '1');
-					noi_vol <= "0000";
-					noi_envcnt      := "0000";
-					noi_out         := '0';
-					if is_gbc = '1' then
-						noi_len  := (others => '0');
-					end if;
 
-					noi_trigger_r   <= '0'; 
+					if noi_svol & noi_envsgn = "00000" then -- dac disabled, disable channel
+						noi_playing <= '0';
+					end if;
 				end if; 
 			end if;
 		end if;
