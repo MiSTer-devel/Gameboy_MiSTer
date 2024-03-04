@@ -1,6 +1,6 @@
 # [Gameboy](https://en.wikipedia.org/wiki/Game_Boy)  / [Gameboy Color](https://en.wikipedia.org/wiki/Game_Boy_Color) port to [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki)
 
-[Документация на русском!](https://github.com/sapbotgit/RussianTranslations/blob/main/MiSTer-gameboy.md)
+[Документация на русском!](README-RU.md)
 
 This is port of [Gameboy for MiST](https://github.com/mist-devel/gameboy)
 
