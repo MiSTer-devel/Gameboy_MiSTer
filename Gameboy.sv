@@ -500,7 +500,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-assign AUDIO_S = 0;
+assign AUDIO_S = 1;
 
 wire reset = (RESET | status[0] | buttons[1] | cart_download | boot_download | bk_loading);
 
@@ -905,13 +905,13 @@ wire [3:0] joy2_do      = joy2_dir & joy2_buttons;
 
 assign AUDIO_L = (status[17:16] == 3'd0) ? AUDIO_L1 : 
                  (status[17:16] == 3'd1) ? AUDIO_L2 : 
-                 (status[17:16] == 3'd2) ? ({1'b0, AUDIO_L1[15:1]} + {1'b0, AUDIO_L2[15:1]}) : 
-                                           ({1'b0, AUDIO_L1[15:1]} + {1'b0, AUDIO_R1[15:1]});
+                 (status[17:16] == 3'd2) ? ($signed(AUDIO_L1[15:1]) + $signed(AUDIO_L2[15:1])) :
+                                           ($signed(AUDIO_L1[15:1]) + $signed(AUDIO_R1[15:1]));
 
 assign AUDIO_R = (status[17:16] == 3'd0) ? AUDIO_R1 : 
                  (status[17:16] == 3'd1) ? AUDIO_R2 : 
-                 (status[17:16] == 3'd2) ? ({1'b0, AUDIO_R1[15:1]} + {1'b0, AUDIO_R2[15:1]}) : 
-                                           ({1'b0, AUDIO_L2[15:1]} + {1'b0, AUDIO_R2[15:1]});
+                 (status[17:16] == 3'd2) ? ($signed(AUDIO_R1[15:1]) + $signed(AUDIO_R2[15:1])) :
+                                           ($signed(AUDIO_L2[15:1]) + $signed(AUDIO_R2[15:1]));
 
 
 // the lcd to vga converter
