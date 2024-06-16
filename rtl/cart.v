@@ -52,6 +52,7 @@ module cart_top (
 
 	input  [15:0] joystick_analog_0,
 
+	input         ce_32k,
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
 	output [47:0] RTC_savedtimeOut,
@@ -133,6 +134,7 @@ mappers mappers (
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
+	.ce_32k            ( ce_32k           ),
 	.RTC_time          ( RTC_time         ),
 	.RTC_timestampOut  ( RTC_timestampOut ),
 	.RTC_savedtimeOut  ( RTC_savedtimeOut ),
