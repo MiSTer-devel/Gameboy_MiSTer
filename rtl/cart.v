@@ -277,11 +277,12 @@ always @(posedge clk_sys) begin
 		mmm01 <= 0;
 		{ sachen, sachen_t1, sachen_t2 } <= 0;
 		mapper_sel_r <= mapper_sel;
+		rom_mask <= 9'd0;
 	end
 
 	if(cart_download & ioctl_wr) begin
 
-		rom_mask <= ioctl_addr[22:14];
+		rom_mask <= ioctl_addr[22:14] | rom_mask;
 
 		if (megaduck) begin
 			cart_cgb_flag <= 0;
