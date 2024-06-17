@@ -56,7 +56,6 @@ always @(posedge clk) begin
 	ss_info_req  <= 1'b0;
 	statusUpdate <= 1'b0;
 	
-	lastOSDsetting <= status_slot;
 	
 	if(allow_ss) begin
 	
@@ -70,7 +69,8 @@ always @(posedge clk) begin
 				'h0C: begin ss_save <= pressed & alt; ss_load <= pressed & ~alt; ss_base <= 3; statusUpdate <= 1'b1; end // F4
 			endcase
 		end
-		
+	
+		lastOSDsetting <= status_slot;
 		if (lastOSDsetting != status_slot) begin
 			ss_base      <= status_slot;
 			statusUpdate <= 1'b1;

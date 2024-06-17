@@ -25,8 +25,10 @@ module video (
 	input  ce, // 4 Mhz cpu clock
 	input  ce_cpu, // 4 or 8Mhz
 	input  isGBC,
-	input  isGBC_game,
+	input  isGBC_mode,
 	input  megaduck,
+
+	input  boot_rom_en,
 
 	// cpu register adn oam interface
 	input  cpu_sel_oam,
@@ -81,13 +83,13 @@ wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
 wire [60:0] SS_Video1;
 wire [60:0] SS_Video1_BACK;
-wire [61:0] SS_Video2;
-wire [61:0] SS_Video2_BACK;
+wire [63:0] SS_Video2;
+wire [63:0] SS_Video2_BACK;
 wire [63:0] SS_Video3;
 wire [63:0] SS_Video3_BACK;
 
 eReg_SavestateV #(0,  9, 60, 0, 64'h0000000000000000) iREG_SAVESTATE_Video1 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 0], SS_Video1_BACK, SS_Video1);  
-eReg_SavestateV #(0, 10, 61, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
+eReg_SavestateV #(0, 10, 63, 0, 64'h00000000FFFFFC00) iREG_SAVESTATE_Video2 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[ 1], SS_Video2_BACK, SS_Video2);  
 eReg_SavestateV #(0, 27, 63, 0, 64'h0000000000000000) iREG_SAVESTATE_Video3 (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[18], SS_Video3_BACK, SS_Video3);  
 
 wire [63:0] SS_BPAL [7:0];
@@ -150,7 +152,7 @@ wire lcdc_spr_ena          = megaduck ? lcdc[0] : lcdc[1];
 //  When Bit 0 is cleared, the background and window lose their priority
 //  - the sprites will be always displayed on top of background and window,
 //  independently of the priority flags in OAM and BG Map attributes."
-wire lcdc_bg_ena           =  (megaduck ? lcdc[6] : lcdc[0]) | (isGBC&&isGBC_game);
+wire lcdc_bg_ena           =  (megaduck ? lcdc[6] : lcdc[0]) | (isGBC&&isGBC_mode);
 wire lcdc_bg_prio          =  megaduck ? lcdc[6] : lcdc[0];
 
 assign lcd_on = lcdc_on;
@@ -196,6 +198,13 @@ reg obpi_ai;    //Bit 7     Auto Increment  (0=Disabled, 1=Increment after Writi
 
 //FF6B - OCPD/OBPD - Sprite Palette Data
 reg[7:0] obpd [63:0]; //64 bytes
+
+//FF6C Bit 0 OBJ priority mode select
+// 0: smaller OBJ-NO has higher priority (GBC)
+// 1: smaller X coordinate has higher priority (DMG)
+// https://forums.nesdev.org/viewtopic.php?t=19888
+reg ff6c_opri;
+reg obj_prio_dmg_mode;
 
 // --------------------------------------------------------------------
 // ----------------------------- DMA engine ---------------------------
@@ -301,7 +310,7 @@ always @(posedge clk) begin
 end
 
 wire pcnt_reset, pcnt_end;
-wire mode3_end = (lcd_clk & pcnt == 8'd167) | pcnt_end;
+wire mode3_end = ~sprite_found & pcnt_end & ~(isGBC & win_first_fetch);
 
 reg mode3_end_l;
 
@@ -385,6 +394,8 @@ assign SS_Video2_BACK[   44] = bgpi_ai;
 assign SS_Video2_BACK[   45] = obpi_ai;
 assign SS_Video2_BACK[53:46] = lyc_r_gbc;
 assign SS_Video2_BACK[61:54] = lyc_r_dmg;
+assign SS_Video2_BACK[   62] = ff6c_opri;
+assign SS_Video2_BACK[   63] = obj_prio_dmg_mode;
 
 genvar palI;
 generate
@@ -443,6 +454,8 @@ always @(posedge clk) begin
 		bgpi_ai <= SS_Video2[   44]; // 1'b0;
 		obpi_ai <= SS_Video2[   45]; // 1'b0;
 		lyc_r_gbc <= SS_Video2[53:46]; // 8'h00;
+		ff6c_opri <= SS_Video2[   62]; // 1'b0;
+		obj_prio_dmg_mode <= SS_Video2[   63]; // 1'b0;
 
 		bgpd[ 0] <= SS_BPAL[0][ 7: 0]; bgpd[16] <= SS_BPAL[2][ 7: 0]; bgpd[32] <= SS_BPAL[4][ 7: 0]; bgpd[48] <= SS_BPAL[6][ 7: 0]; //8'h00;
 		bgpd[ 1] <= SS_BPAL[0][15: 8]; bgpd[17] <= SS_BPAL[2][15: 8]; bgpd[33] <= SS_BPAL[4][15: 8]; bgpd[49] <= SS_BPAL[6][15: 8]; //8'h00;
@@ -491,13 +504,15 @@ always @(posedge clk) begin
 				8'h49:	obp1 <= cpu_di;
 				8'h4a:	wy <= cpu_di;
 				8'h4b:	wx <= cpu_di;
+			endcase
 
-				//gbc
+			//gbc
+			if (isGBC) case(cpu_addr)
 				8'h68: begin
 							bgpi <= cpu_di[5:0];
 							bgpi_ai <= cpu_di[7];
 						 end
-				8'h69: begin
+				8'h69: if (isGBC_mode) begin
 							if (vram_cpu_allow) begin
 								bgpd[bgpi] <= cpu_di;
 							end
@@ -508,12 +523,20 @@ always @(posedge clk) begin
 							obpi <= cpu_di[5:0];
 							obpi_ai <= cpu_di[7];
 						 end
-				8'h6B: begin
+				8'h6B: if (isGBC_mode) begin
 							if (vram_cpu_allow) begin
 								obpd[obpi] <= cpu_di;
 							end
 							if (obpi_ai) obpi <= obpi + 6'h1;
 						 end
+				8'h6C: begin
+							// Reportedly can be written to when boot rom is enabled or FF4C Bit2=0 (GBC mode)
+							// but only affects OBJ prio if written when boot rom is enabled.
+							if (boot_rom_en | isGBC_mode) begin
+								ff6c_opri <= cpu_di[0];
+							end
+							if (boot_rom_en) obj_prio_dmg_mode <= cpu_di[0];
+						end
 			endcase
 		end
 	end
@@ -536,9 +559,10 @@ assign cpu_do =
 	(cpu_addr == 8'h4b)?wx:
 	isGBC?
 		(cpu_addr == 8'h68)?{bgpi_ai,1'd1,bgpi}:
-		(cpu_addr == 8'h69 && isGBC_game && vram_cpu_allow)?bgpd[bgpi]:
+		(cpu_addr == 8'h69 && isGBC_mode && vram_cpu_allow)?bgpd[bgpi]:
 		(cpu_addr == 8'h6a)?{obpi_ai,1'd1,obpi}:
-		(cpu_addr == 8'h6b && isGBC_game && vram_cpu_allow)?obpd[obpi]:
+		(cpu_addr == 8'h6b && isGBC_mode && vram_cpu_allow)?obpd[obpi]:
+		(cpu_addr == 8'h6c) ? { 7'h7f, ff6c_opri } :
 		8'hff:
 	8'hff;
 
@@ -546,56 +570,44 @@ assign cpu_do =
 // -------------- counters & background tilemap address----------------
 // --------------------------------------------------------------------
 
-reg skip_done;
-reg [2:0] skip_cnt;
 reg [7:0] pcnt;
-wire sprite_fetch_hold;
-wire bg_shift_empty;
-wire skip_end = (skip_cnt == scx[2:0] || &skip_cnt);
-wire skip_en = ~skip_done & ~skip_end;
+reg bg_first_fetch_done;
+reg win_first_fetch;
+reg bg_scroll_done;
 
-assign pcnt_end = ( pcnt == 8'd168 );
+wire bg_paused = ~bg_first_fetch_done | win_first_fetch | sprite_found | mode3_end;
+wire bg_scroll_end = ~bg_paused & (bg_shift_cnt == scx[2:0]) & ~bg_scroll_done;
+wire pcnt_paused = bg_paused | ~(bg_scroll_done | bg_scroll_end);
+
+assign pcnt_end = ( pcnt == 8'd167 );
 assign pcnt_reset = h_clk_en & end_of_line & ~vblank;
 
-assign SS_Video3_BACK[ 9: 7] = skip_cnt;
 assign SS_Video3_BACK[17:10] = pcnt;
-assign SS_Video3_BACK[   18] = skip_done;
-assign SS_Video3_BACK[21:19] = 0;
+assign SS_Video3_BACK[   18] = bg_scroll_done;
 
+// Pixel counter
+// Pixels 0-7 are for fetching partially offscreen sprites and window.
+// Pixels 8-167 are output to the display.
 always @(posedge clk) begin
 	if (reset) begin
-		skip_cnt  <= SS_Video3[ 9: 7]; // 3'd0;
-		pcnt      <= SS_Video3[17:10]; // 8'd0;
-		skip_done <= SS_Video3[   18]; // 1'd0;
+		pcnt           <= SS_Video3[17:10]; // 8'd0;
+		bg_scroll_done <= SS_Video3[   18]; // 1'b0;
 	end else if (!lcd_on) begin
-		skip_cnt <= 3'd0;
-		pcnt     <= 8'd0;
-		skip_done <= 1'b0;
+		pcnt           <= 8'd0;
+		bg_scroll_done <= 1'b0;
 	end else if (ce) begin
-		// Only skip when not paused for sprites and fifo is not empty.
-		// Skipping pixels must happen at pcnt = 0 to pass Wilbertpol intr2_mode0_scx_timing tests.
-		if (~sprite_fetch_hold & ~bg_shift_empty) begin
-
-			if (~skip_done) begin
-				if (~skip_end)
-					skip_cnt <= skip_cnt + 1'd1;
-				else
-					skip_done <= 1'd1;
-			end
-
-			// Pixels 0-7 are for fetching partially offscreen sprites and window.
-			// Pixels 8-167 are output to the display.
-			if(~skip_en & ~pcnt_end)
-				pcnt <= pcnt + 1'd1;
-
-		end
 
 		if (pcnt_reset) begin
 			pcnt <= 8'd0;
-			skip_done <= 1'b0;
-			skip_cnt <= 3'd0;
+		end else if (~pcnt_paused) begin
+			pcnt <= pcnt + 1'b1;
 		end
 
+		if (~mode3) begin
+			bg_scroll_done <= 1'b0;
+		end else if (bg_scroll_end) begin
+			bg_scroll_done <= 1'b1;
+		end
 	end
 end
 
@@ -666,10 +678,19 @@ wire [9:0] bg_tile_map_addr = window_ena ? win_map_addr : bg_map_addr;
 
 wire [2:0] tile_line = window_ena ? win_line[2:0] : bg_line[2:0];
 
-reg wy_match, window_match, window_ena_d;
+reg wy_match, wxy_match_d, window_match, window_ena_d;
 
-wire win_start = ~window_match & mode3 && lcdc_win_ena && ~sprite_fetch_hold && ~skip_en && ~bg_shift_empty && wy_match && (pcnt == wx) && (wx < 8'hA7);
-assign window_ena = window_match & ~pcnt_reset & lcdc_win_ena;
+wire wxy_match = wy_match & (pcnt == wx);
+
+// Using the latched wxy_match_d here causes 2 Window glitches on DMG:
+// 1. WX = 166 causes all following lines and the first line after VBlank to show the Window.
+//    This happens because the last latch is at pixel 166 and it is not reset in H/VBlank.
+// 2. Window start can be delayed by 1 pixel if lcdc_win_ena goes high right after wxy_match goes low.
+//    This can be seen in Mealybug test m3_lcdc_win_en_change_multiple_wx.
+wire win_start = ~window_match & lcdc_win_ena & ((~bg_paused & wxy_match) | wxy_match_d);
+wire win_reset = pcnt_reset | ~lcdc_win_ena;
+
+assign window_ena = window_match & ~win_reset;
 
 assign SS_Video3_BACK[39:33] = h_cnt       ;
 assign SS_Video3_BACK[41:40] = h_div_cnt   ;
@@ -678,6 +699,7 @@ assign SS_Video3_BACK[   43] = window_ena_d;
 assign SS_Video3_BACK[48:44] = win_col     ;
 assign SS_Video3_BACK[56:49] = win_line    ;
 assign SS_Video3_BACK[   63] = wy_match    ;
+assign SS_Video3_BACK[   19] = wxy_match_d ;
 
 always @(posedge clk) begin
 
@@ -689,6 +711,7 @@ always @(posedge clk) begin
 		win_col      <= SS_Video3[48:44]; // 5'd0;
 		win_line     <= SS_Video3[56:49]; // 8'd0;
 		wy_match     <= SS_Video3[   63]; // 1'b0;
+		wxy_match_d  <= SS_Video3[   19]; // 1'b0;
 	end else if (!lcdc_on) begin
 		//reset counters
 		h_cnt        <= 7'd0;
@@ -698,6 +721,7 @@ always @(posedge clk) begin
 		win_col      <= 5'd0;
 		win_line     <= 8'd0;
 		wy_match     <= 1'b0;
+		wxy_match_d  <= 1'b0;
 	end else if (ce) begin
 
 		h_div_cnt <= h_div_cnt + 1'b1;
@@ -711,33 +735,32 @@ always @(posedge clk) begin
 			wy_match <= 1'b1;
 		end
 
-		if(win_start) begin
+		if (isGBC & ~mode3) begin
+			wxy_match_d <= 0;
+		end else if (~bg_paused) begin
+			wxy_match_d <= wxy_match;
+		end
+
+		if (win_reset) begin
+			window_match <= 1'b0;
+		end else if (win_start) begin
 			window_match <= 1'b1;
 		end
 
+		// Increment line when Window turns off. This means it is possible to increment
+		// multiple times per line by changing WX and toggling the Window bit in LCDC.
 		window_ena_d <= window_ena;
 		if (vblank_l)
 			win_line <= 8'd0;
 		else if (window_ena_d & ~window_ena)
 			win_line <= win_line + 1'b1;
 
-		if (window_match) begin
-			if (~mode3_end_l & mode3_end) begin
-				// DMG glitch: If WX = A6 then window_match stays high through VBlank
-				// until WY > v_cnt which means the window always appears on line 0.
-				if (isGBC || wx != 8'hA6 || wy > v_cnt) begin
-					window_match <= 1'b0;   // next line starts with background
-				end
-			end
-
-			if (~lcdc_win_ena) window_match <= 1'b0;
-		end
-
 		// Increment when fetching is done and not waiting for sprites.
-		if(window_ena && ~sprite_fetch_hold && bg_fetch_done && bg_reload_shift)
+		if (win_reset) begin
+			win_col <= 5'd0;
+		end else if (window_ena & bg_reload_shift) begin
 			win_col <= win_col + 1'b1;
-
-		if (~lcdc_win_ena | pcnt_reset) win_col <= 5'd0;
+		end
 
 	end
 end
@@ -773,23 +796,29 @@ reg [7:0] spr_tile_data0;
 
 reg [7:0] bg_tile_attr,bg_tile_attr_new; //GBC
 //gbc check tile bank
-wire [7:0] bg_vram_data_a = (isGBC & isGBC_game & bg_tile_attr_new[3]) ? vram1_data : vram_data;
+wire [7:0] bg_vram_data_a = (isGBC & isGBC_mode & bg_tile_attr_new[3]) ? vram1_data : vram_data;
 //gbc x-flip
-wire [7:0] bg_vram_data_in = (isGBC & isGBC_game & bg_tile_attr_new[5]) ? bit_reverse(bg_vram_data_a) : bg_vram_data_a;
+wire [7:0] bg_vram_data_in = (isGBC & isGBC_mode & bg_tile_attr_new[5]) ? bit_reverse(bg_vram_data_a) : bg_vram_data_a;
 
 // A bg or sprite fetch takes 6 cycles
 reg [2:0] bg_fetch_cycle;
 reg [2:0] sprite_fetch_cycle;
 
 assign bg_fetch_done = (bg_fetch_cycle >= 3'd5);
-wire sprite_fetch_done = (sprite_fetch_hold && sprite_fetch_cycle >= 3'd5);
+wire sprite_fetch_done = (sprite_found && sprite_fetch_cycle >= 3'd5);
 
-// The first B01 cycle does not fetch sprites so wait until the bg shift register is not empty
-assign sprite_fetch_hold = sprite_found & ~bg_shift_empty;
+reg [2:0] bg_shift_cnt;
 
-reg [3:0] bg_shift_cnt;
-assign bg_shift_empty = (bg_shift_cnt == 0);
-assign bg_reload_shift = (bg_shift_cnt <= 1);
+wire bg_shift_end = &bg_shift_cnt;
+
+// The pixel shift register is reloaded when:
+// 1. The first BG or Window fetch is done. (bg_shift_cnt = 5)
+// 2. Last pixel is shifted out (bg_shift_cnt = 7) and not paused.
+//    If wxy_match is high here but the Window is disabled then the
+//    reload is delayed. That is what causes the extra pixel glitch
+//    on DMG and also the WX=0 & SCX=7 glitch.
+assign bg_reload_shift = (bg_fetch_done & (~bg_first_fetch_done | win_first_fetch))
+                         | (~bg_paused & bg_shift_end & ~(wxy_match & (lcdc_win_ena | ~isGBC)));
 
 wire spr_prio          = sprite_attr[7];
 wire spr_attr_h_flip   = sprite_attr[5];
@@ -797,7 +826,7 @@ wire spr_pal           = sprite_attr[4];
 wire spr_attr_cgb_bank = sprite_attr[3];
 wire [2:0] spr_cgb_pal = sprite_attr[2:0];
 
-wire [7:0] spr_vram_data = (isGBC & isGBC_game & spr_attr_cgb_bank) ? vram1_data : vram_data;
+wire [7:0] spr_vram_data = (isGBC & isGBC_mode & spr_attr_cgb_bank) ? vram1_data : vram_data;
 wire [7:0] spr_tile_data_in = spr_attr_h_flip ? bit_reverse(spr_vram_data) : spr_vram_data;
 
 // CGB sprite priority. Non-transparent pixels with lower sprite_index have priority.
@@ -814,7 +843,7 @@ wire [7:0] spr_cgb_index_prio = spr_cgb_prio(spr_cgb_index_shift[3], spr_cgb_ind
 
 // DMG sprite pixels are only loaded into the shift register if the old pixel is transparent.
 // CGB will mask the old pixel to 0 if the new pixel has higher priority.
-wire [7:0] spr_tile_mask = (spr_tile_shift_0 | spr_tile_shift_1) & ((isGBC & isGBC_game) ? ~spr_cgb_index_prio : 8'hFF);
+wire [7:0] spr_tile_mask = (spr_tile_shift_0 | spr_tile_shift_1) & ((isGBC & ~obj_prio_dmg_mode) ? ~spr_cgb_index_prio : 8'hFF);
 
 // cycle through the B01s states
 wire bg_tile_map_rd = (mode3 && bg_fetch_cycle[2:1] == 2'b00);
@@ -825,21 +854,25 @@ wire bg_tile_obj1_rd = (mode3 && sprite_fetch_cycle[2:1] == 2'b10);
 
 assign SS_Video3_BACK[59:57] = bg_fetch_cycle;
 assign SS_Video3_BACK[62:60] = sprite_fetch_cycle;
+assign SS_Video3_BACK[ 9: 7] = bg_shift_cnt;
+assign SS_Video3_BACK[   20] = bg_first_fetch_done;
+assign SS_Video3_BACK[   21] = win_first_fetch;
 
 always @(posedge clk) begin
 	
 	if (reset) begin
-	
-		bg_fetch_cycle     <= SS_Video3[59:57]; // 3'b000;
-		sprite_fetch_cycle <= SS_Video3[62:60]; // 3'b000;
-
+		bg_fetch_cycle      <= SS_Video3[59:57]; // 3'b000;
+		sprite_fetch_cycle  <= SS_Video3[62:60]; // 3'b000;
+		bg_shift_cnt        <= SS_Video3[ 9: 7]; // 3'b000;
+		bg_first_fetch_done <= SS_Video3[   20]; // 1'b0;
+		win_first_fetch     <= SS_Video3[   21]; // 1'b0;
 	end else if (ce) begin
 
 		// every memory access is two pixel cycles
 		if (bg_fetch_cycle[0]) begin
 			if(bg_tile_map_rd) begin
 				bg_tile <= vram_data;
-				if (isGBC & isGBC_game) bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
+				if (isGBC & isGBC_mode) bg_tile_attr_new <= vram1_data; //get tile attr from vram bank1
 			end
 
 			if(bg_tile_data0_rd) bg_tile_data0 <= bg_vram_data_in;
@@ -847,7 +880,7 @@ always @(posedge clk) begin
 		end
 
 		// Shift sprite data out
-		if (~sprite_fetch_hold & ~skip_en & ~bg_shift_empty) begin
+		if (~pcnt_paused) begin
 			spr_tile_shift_0       <=  spr_tile_shift_0       << 1;
 			spr_tile_shift_1       <=  spr_tile_shift_1       << 1;
 			spr_pal_shift          <=  spr_pal_shift          << 1;
@@ -884,37 +917,49 @@ always @(posedge clk) begin
 			bg_fetch_cycle <= bg_fetch_cycle + 1'b1;
 		end
 
-		if (~sprite_fetch_hold) begin
-			// shift bg/window pixels out
-			tile_shift_0 <= tile_shift_0 << 1;
-			tile_shift_1 <= tile_shift_1 << 1;
-
-			if (|bg_shift_cnt) bg_shift_cnt <= bg_shift_cnt - 1'b1;
-
-			if (bg_fetch_done && bg_reload_shift) begin
-				bg_tile_attr <= bg_tile_attr_new;
-				tile_shift_0 <= bg_tile_data0;
-				// bg_tile_data1 only has valid data at cycle 6 so at cycle 5 bg_vram_data_in is loaded instead.
-				tile_shift_1 <= (bg_fetch_cycle == 3'd5) ? bg_vram_data_in : bg_tile_data1;
-				bg_shift_cnt <= 4'd8;
-				bg_fetch_cycle <= 0;
-			end
+		if (~mode3) begin
+			bg_first_fetch_done <= 0;
+		end else if (bg_fetch_done) begin
+			bg_first_fetch_done <= 1'b1;
 		end
 
-		// Start sprite fetch after background fetching is done
+		if (~pcnt_paused) begin
+			// shift bg/window pixels out
+			tile_shift_0 <= { tile_shift_0[6:0], 1'b0 };
+			tile_shift_1 <= { tile_shift_1[6:0], 1'b0 };
+		end
+
+		if (bg_reload_shift) begin
+			bg_tile_attr <= bg_tile_attr_new;
+			tile_shift_0 <= bg_tile_data0;
+			// bg_tile_data1 only has valid data at cycle 6 so at cycle 5 bg_vram_data_in is loaded instead.
+			tile_shift_1 <= (bg_fetch_cycle == 3'd5) ? bg_vram_data_in : bg_tile_data1;
+			bg_shift_cnt <= 0;
+			bg_fetch_cycle <= 0;
+		end
+
+		if (~bg_paused) begin
+			if (~bg_shift_end) bg_shift_cnt <= bg_shift_cnt + 1'b1;
+		end
+
+		// Start sprite fetch after background fetching is done and not in BG or Window first fetch.
 		// Sprite fetching continues until there are no more sprites on the current x position
-		if (sprite_fetch_hold && bg_fetch_done) begin
+		if (sprite_found & bg_fetch_done & ~win_first_fetch & bg_first_fetch_done) begin
 			sprite_fetch_cycle <= sprite_fetch_cycle + 1'b1;
 		end
 
-		if (~sprite_fetch_hold || sprite_fetch_done) sprite_fetch_cycle <= 0;
+		if (~sprite_found || sprite_fetch_done) sprite_fetch_cycle <= 0;
 
 		// Window start, reset fetching
-		// DMG glitch: fetching is not reset if WX = A6. The following lines all show
-		// the window from the start of the line.
-		if ( (win_start && (isGBC || wx != 8'hA6)) || !mode3) begin
+		if (win_start | ~mode3) begin
 			bg_fetch_cycle <= 0;
 			bg_shift_cnt <= 0;
+		end
+
+		if (~lcd_on | (win_first_fetch & bg_fetch_done)) begin
+			win_first_fetch <= 0;
+		end else if (win_start) begin
+			win_first_fetch <= 1'b1;
 		end
 
 	end
@@ -929,7 +974,7 @@ wire bg_tile_a12 = !lcdc_tile_data_sel?(~bg_tile[7]):1'b0;
 wire tile_map_sel = window_ena?lcdc_win_tile_map_sel:lcdc_bg_tile_map_sel;
 
 //GBC: check if flipped y
-wire [2:0] tile_line_flip = (isGBC && isGBC_game && bg_tile_attr_new[6]) ? ~tile_line : tile_line;
+wire [2:0] tile_line_flip = (isGBC && isGBC_mode && bg_tile_attr_new[6]) ? ~tile_line : tile_line;
 
 assign vram_addr =
 	bg_tile_map_rd?{2'b11, tile_map_sel, bg_tile_map_addr}:
@@ -979,7 +1024,7 @@ sprites sprites (
 
 // https://forums.nesdev.com/viewtopic.php?f=20&t=10771&sid=8fdb6e110fd9b5434d4a567b1199585e#p122222
 // priority list: BG0 < OBJL < BGL < OBJH < BGH
-wire bg_piority = isGBC && isGBC_game && bg_tile_attr[7];
+wire bg_piority = isGBC && isGBC_mode && bg_tile_attr[7];
 
 reg sprite_pixel_visible;
 
@@ -992,7 +1037,7 @@ always @(*) begin
 	sprite_pixel_visible = 1'b0;
 	if (|sprite_pixel_data && lcdc_spr_ena) begin		// pixel active and sprites enabled
 
-		if (isGBC&&isGBC_game) begin
+		if (isGBC&&isGBC_mode) begin
 			if (sprite_pixel_data == 2'b00)
 				sprite_pixel_visible = 1'b0;
 			else if (bg_pix_data == 2'b00)
@@ -1030,7 +1075,7 @@ wire [1:0] obp_data =   (sprite_pixel_data == 2'b00) ? obp[1:0] :
 						(sprite_pixel_data == 2'b10) ? obp[5:4] :
 													obp[7:6];
 
-wire [5:0] palette_index = isGBC_game ? {bg_tile_attr[2:0], bg_pix_data, 1'b0} :  //GBC game
+wire [5:0] palette_index = isGBC_mode ? {bg_tile_attr[2:0], bg_pix_data, 1'b0} :  //GBC game
 									{3'd0, bgp_data , 1'b0}; //GB game in GBC mode
 
 // apply bg palette
@@ -1039,13 +1084,13 @@ wire [14:0] pix_rgb_data = isGBC ? {bgpd[palette_index+1][6:0],bgpd[palette_inde
 
 // apply sprite palette
 wire [2:0] spr_cgb_pal_out = {spr_cgb_pal_shift[2][7], spr_cgb_pal_shift[1][7],spr_cgb_pal_shift[0][7]};
-wire [5:0] sprite_palette_index = isGBC_game? {spr_cgb_pal_out, sprite_pixel_data, 1'b0 } : //gbc game
+wire [5:0] sprite_palette_index = isGBC_mode? {spr_cgb_pal_out, sprite_pixel_data, 1'b0 } : //gbc game
 								{sprite_pixel_cmap, obp_data, 1'b0}; //GB game in GBC mode
 
 wire [14:0] sprite_pix = isGBC ? {obpd[sprite_palette_index+1][6:0],obpd[sprite_palette_index]} : //gbc
 							{13'd0,obp_data};
 
-wire lcd_clk = mode3 && ~skip_en && ~sprite_fetch_hold && ~bg_shift_empty && (pcnt >= 8);
+wire lcd_clk = (~pcnt_paused & (pcnt >= 8)) | (~mode3_end_l & mode3_end);
 
 reg [14:0] lcd_data_out;
 reg  [1:0] lcd_data_gb_out;

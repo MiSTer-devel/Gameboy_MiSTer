@@ -34,7 +34,7 @@ wire [44:0] SS_HDMA_BACK;
 eReg_SavestateV #(0, 7, 44, 0, 64'h0000000001FFFFF0) iREG_SAVESTATE_HDMA (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_HDMA_BACK, SS_HDMA);  
 
 //"The preparation time (4 clocks) is the same in single and double speed mode"
-localparam START_DELAY = 3'd4;
+localparam START_DELAY = 3'd4, END_DELAY = 3'd4;
 
 
 // ff51-ff55 HDMA1-5 (GBC)
@@ -61,6 +61,8 @@ reg [2:0] dma_delay;
 reg [1:0] hdma_state;
 parameter active=2'd0,blocksent=2'd1,wait_h=2'd2;
 
+wire mode_gdma = (hdma_mode == 1'b0);
+wire mode_hdma = (hdma_mode == 1'b1);
 
 assign SS_HDMA_BACK[    0] = hdma_active ;
 assign SS_HDMA_BACK[ 2: 1] = hdma_state  ;
@@ -103,12 +105,9 @@ always @(posedge clk) begin
 				// writing the hdma register engages the dma engine
 				4'h5: begin
 							hdma_length <= {1'b0,din[6:0]};
-							if (hdma_mode == 1 && hdma_enabled && !din[7]) begin  //terminate an active H-Blank transfer by writing zero to Bit 7 of FF55
-								hdma_state <= wait_h;
-								hdma_end <= 1'b1;
-								hdma_rd <= 1'b0;
+							if (hdma_mode == 1 && hdma_enabled && !din[7]) begin  //terminate a pending H-Blank transfer by writing zero to Bit 7 of FF55
 								hdma_enabled <= 1'b0;
-							end else begin															  //normal trigger
+							end else begin  //normal trigger
 								hdma_enabled <= 1'b1;
 								hdma_mode <= din[7];
 								dma_delay <= START_DELAY;
@@ -123,84 +122,65 @@ always @(posedge clk) begin
 		// Currently IRAM takes 1 CPU cycle to get data. If hdma_active is lowered
 		// at the same time as hdma_rd then the CPU will read invalid data.
 		if (hdma_end) begin
-			hdma_active <= 0;
-			hdma_end <= 0;
+			if (dma_delay > 0) begin
+				dma_delay <= dma_delay - 1'b1;
+			end else begin
+				hdma_active <= 0;
+				hdma_end <= 0;
+			end
 		end
 
+		//mode 0 GDMA do the transfer in one go after inital delay
+		//mode 1 HDMA transfer 1 block (16bytes) in each H-Blank only
 		if (hdma_enabled) begin
-			if(hdma_mode==0) begin 				                    //mode 0 GDMA do the transfer in one go after inital delay
+
+			if (mode_gdma || (mode_hdma && hdma_state == active)) begin
 				hdma_active <= 1'b1;
-				hdma_rd <= 1'b1; // get data from RAM ready while waiting
 				if (dma_delay>0) begin
-				dma_delay <= dma_delay - 1'b1;
+					dma_delay <= dma_delay - 1'b1;
+					if (dma_delay == 1)
+						hdma_rd <= 1'b1;
 				end else begin
-					if(hdma_length != 8'hFF) begin
-						hdma_cnt <= hdma_cnt + 1'd1;
-						if (hdma_cnt == byte_cycles) begin
-							hdma_cnt <= 2'd0;
-							byte_cnt <= byte_cnt + 1'b1;
-							if (&byte_cnt) begin
-								hdma_source <= hdma_source + 1'b1;
-								hdma_target <= hdma_target + 1'b1;
-								hdma_length <= hdma_length - 1'd1;
-								if (hdma_length == 0) begin
-									hdma_end <= 1'b1;
-									hdma_rd <= 1'b0;
-									hdma_enabled <= 1'b0;
-								end
+					hdma_cnt <= hdma_cnt + 1'd1;
+					if (hdma_cnt == byte_cycles) begin
+						hdma_cnt <= 2'd0;
+						byte_cnt <= byte_cnt + 1'b1;
+						if (&byte_cnt) begin
+							hdma_source <= hdma_source + 1'b1;
+							hdma_target <= hdma_target + 1'b1;
+							hdma_length <= hdma_length - 1'd1;
+							if (hdma_length == 0 || &hdma_target) begin
+								hdma_enabled <= 1'b0;
+								hdma_end <= 1'b1;
+								hdma_rd <= 1'b0;
+								dma_delay <= END_DELAY;
+							end
+							if (mode_hdma) begin
+								hdma_state <= blocksent;
+								hdma_end <= 1'b1;
+								hdma_rd <= 1'b0;
+								dma_delay <= END_DELAY;
 							end
 						end
 					end
-			    end
+				end
+			end
 
-			end else begin        			                       //mode 1 HDMA transfer 1 block (16bytes) in each H-Blank only
+			if (mode_hdma) begin
 				case (hdma_state)
-					
-					wait_h:    begin 
-								    if (lcd_mode == 2'b00 ) begin	// Mode 00:  h-blank
+
+					wait_h: begin
+									if (lcd_mode == 2'b00) begin	// Mode 00:  h-blank
 										dma_delay <= START_DELAY;
 										hdma_state <= active;
 									end
-									 hdma_end <= 1'b1;
-									 hdma_rd <= 1'b0;
-							     end
-				   
-					blocksent: begin
-									if (hdma_length == 8'hFF) begin //check if finished
-										hdma_enabled <= 1'b0;
-									end
-									if (lcd_mode == 2'b11) // wait for mode 3, mode before h-blank
-										hdma_state <= wait_h;	
-								end
+							end
 
-					active:    begin
-									if(hdma_length != 8'hFF) begin
-									  hdma_active <= 1'b1;
-									  hdma_rd <= 1'b1; // get data from RAM ready while waiting
-									  if (dma_delay>0) begin
-										  dma_delay <= dma_delay - 1'b1;
-									  end else begin
-											hdma_cnt <= hdma_cnt + 1'd1;
-											if (hdma_cnt == byte_cycles) begin
-												hdma_cnt <= 2'd0;
-												byte_cnt <= byte_cnt + 1'b1;
-												if (&byte_cnt) begin
-													hdma_source <= hdma_source + 1'b1;
-													hdma_target <= hdma_target + 1'b1;
-													hdma_length <= hdma_length - 1'd1;
-													hdma_state <= blocksent;
-													hdma_end <= 1'b1;
-													hdma_rd <= 1'b0;
-												end
-											end
-										end
-									end else begin
-										hdma_end <= 1'b1;
-										hdma_rd <= 1'b0;
-										hdma_enabled <= 1'b0;
-									end
-								 end
-				endcase 	
+					blocksent: begin
+									if (lcd_mode == 2'b11) // wait for mode 3, mode before h-blank
+										hdma_state <= wait_h;
+								end
+				endcase
 			end
 		end
 	end

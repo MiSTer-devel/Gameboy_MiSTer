@@ -52,6 +52,7 @@ module cart_top (
 
 	input  [15:0] joystick_analog_0,
 
+	input         ce_32k,
 	input  [32:0] RTC_time,
 	output [31:0] RTC_timestampOut,
 	output [47:0] RTC_savedtimeOut,
@@ -133,6 +134,7 @@ mappers mappers (
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
+	.ce_32k            ( ce_32k           ),
 	.RTC_time          ( RTC_time         ),
 	.RTC_timestampOut  ( RTC_timestampOut ),
 	.RTC_savedtimeOut  ( RTC_savedtimeOut ),
@@ -275,11 +277,12 @@ always @(posedge clk_sys) begin
 		mmm01 <= 0;
 		{ sachen, sachen_t1, sachen_t2 } <= 0;
 		mapper_sel_r <= mapper_sel;
+		rom_mask <= 9'd0;
 	end
 
 	if(cart_download & ioctl_wr) begin
 
-		rom_mask <= ioctl_addr[22:14];
+		rom_mask <= ioctl_addr[22:14] | rom_mask;
 
 		if (megaduck) begin
 			cart_cgb_flag <= 0;

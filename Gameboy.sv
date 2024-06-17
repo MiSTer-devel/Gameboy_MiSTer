@@ -20,6 +20,10 @@
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //============================================================================
 
+// Bootrom checksums
+`define MISTER_CGB0_CHECKSUM 18'h2CE10
+`define ORIGINAL_CGB_CHECKSUM 18'h2F3EA
+
 module emu
 (
 	//Master input clock
@@ -204,7 +208,7 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXX XXXXXXXXXXXX      X       XXXXX
+// XXXXXX XXXX XXXXXXXXXXXX      X       XXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -220,9 +224,8 @@ localparam CONF_STR = {
 
 	"P1,Audio & Video;",
 	"P1-;",
-   "P1ON,Seperator Line,Off,On;",
+	"P1ON,Seperator Line,Off,On;",
 	"P1OC,Inverted color,No,Yes;",
-	"h6P1o5,Use GBA Mode,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
 	"P1-;",
@@ -233,7 +236,7 @@ localparam CONF_STR = {
 	"P1O5,Sync Video,Off,On;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
-   "P1OGH,Audioselect,GB 1,GB 2,Mixed,Split 1=L 2=R;",
+	"P1OGH,Audioselect,GB 1,GB 2,Mixed,Split 1=L 2=R;",
 
 	"P2,Misc.;",
 	"P2-;",
@@ -241,6 +244,8 @@ localparam CONF_STR = {
 	"P2FC5,BIN,Load DMG Boot;",
 	"P2FC6,BIN,Load SGB Boot;",
 	"P2-;",
+	"d6P2O[37],GBC/GBA mode,GBC,GBA;",
+	"d8P2O[42],Fast boot,Off,On;",
 	"P2o6,Rumble,On,Off;",
 
 	"-;",
@@ -331,7 +336,10 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({sys_megaduck,using_real_cgb_bios,1'b0,isGBC,(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
+	.status_menumask({7'h0, 
+		fastboot_available,
+		sys_megaduck, boot_gba_available,1'b0,isGBC,
+		(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
 	.status_in(status),
 	.status_set(1'b0),
 	.direct_video(direct_video),
@@ -386,6 +394,40 @@ wire cgb_boot_download = ioctl_download && (filetype == 4);
 wire dmg_boot_download = ioctl_download && (filetype == 5);
 wire sgb_boot_download = ioctl_download && (filetype == 6);
 wire boot_download = cgb_boot_download | dmg_boot_download | sgb_boot_download;
+
+///////////////////////////// Bootrom added features ///////////////////////////
+
+// Fastboot is available for MiSTer-built bootroms (except SGB)
+wire fastboot_available = !((isGBC && using_custom_cgb_bootrom &&  checksum_cgb != `MISTER_CGB0_CHECKSUM) || (!isGBC && using_custom_dmg_bootrom));
+// GBA mode is available for MiSTer-built CGB bootroms and the original CGB bootrom.
+// We verify that a loaded bootrom enables GBA mode by calculating a simple checksum.
+wire boot_gba_available = (!using_custom_cgb_bootrom || using_real_cgb_bios || checksum_cgb == `MISTER_CGB0_CHECKSUM);
+wire using_real_cgb_bios = (checksum_cgb == `ORIGINAL_CGB_CHECKSUM);
+
+reg using_custom_dmg_bootrom = 0;
+reg using_custom_cgb_bootrom = 0;
+always @(posedge clk_sys) begin
+	if (cgb_boot_download)
+		using_custom_cgb_bootrom <= 1;
+	if (dmg_boot_download)
+		using_custom_dmg_bootrom <= 1;
+end
+
+reg boot_download_r;
+always @(posedge clk_sys)
+    boot_download_r <= boot_download;
+
+// Calculate checksum for incoming cgb bootrom downloads
+reg [17:0] checksum_cgb;
+always @(posedge clk_sys) begin
+    // Reset checksum on new boot download
+    if (cgb_boot_download && !boot_download_r)
+        checksum_cgb <= 0;
+    else if (cgb_boot_download && ioctl_wr)
+        checksum_cgb <= checksum_cgb + ioctl_dout[15:8] + ioctl_dout[7:0];
+end
+
+////////////////////////////////////////////////////////////////////////////////
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc1_addr[0], ~mbc1_addr[0]};
 wire [15:0] sdram_do;
@@ -451,17 +493,14 @@ wire rumbling1, rumbling2;
 wire [2:0] mapper_sel = status[41:39];
 
 reg [127:0] palette = 128'h828214517356305A5F1A3B4900000000;
-reg using_real_cgb_bios = 0;
 
 always @(posedge clk_sys) begin
-	if (cgb_boot_download)
-		using_real_cgb_bios <= 1;
 	if (palette_download & ioctl_wr) begin
 			palette[127:0] <= {palette[111:0], ioctl_dout[7:0], ioctl_dout[15:8]};
 	end
 end
 
-assign AUDIO_S = 0;
+assign AUDIO_S = 1;
 
 wire reset = (RESET | status[0] | buttons[1] | cart_download | boot_download | bk_loading);
 
@@ -485,6 +524,13 @@ wire speed1;
 wire SaveStateBus_rst1;
 
 assign joy0_rumble = {8'd0, ((rumbling1 & ~status[38]) ? 8'd128 : 8'd0)};
+
+reg ce_32k; // 32768Hz clock for RTC
+reg [9:0] ce_32k_div;
+always @(posedge clk_sys) begin
+	ce_32k_div <= ce_32k_div + 1'b1;
+	ce_32k <= !ce_32k_div;
+end
 
 cart_top cart1 (
 	.reset	     ( reset      ),
@@ -540,6 +586,7 @@ cart_top cart1 (
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
+	.ce_32k           ( ce_32k           ),
 	.RTC_time         ( RTC_time         ),
 	.RTC_timestampOut ( RTC_timestampOut ),
 	.RTC_savedtimeOut ( RTC_savedtimeOut ),
@@ -573,7 +620,7 @@ gb gb1 (
 	.ce_2x       ( ce1_cpu2x  ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.isGBC       ( isGBC      ),
-	.isGBC_game  ( isGBC_game ),
+	.real_cgb_boot ( using_real_cgb_bios ),
 	.isSGB       ( 1'b0 ),
 	.megaduck    ( megaduck   ),
 
@@ -591,7 +638,8 @@ gb gb1 (
 
 	.nCS         ( gb1_nCS     ),
 
-	.boot_gba_en    ( status[37] && using_real_cgb_bios ),
+	.boot_gba_en    ( boot_gba_available && status[37] ),
+	.fast_boot_en   ( fastboot_available && status[42] ),
 
 	.cgb_boot_download ( cgb_boot_download ),
 	.dmg_boot_download ( dmg_boot_download ),
@@ -726,6 +774,7 @@ cart_top cart2 (
 
 	.joystick_analog_0 ( joystick_analog_1 ),
 
+	.ce_32k           ( ce_32k           ),
 	.RTC_time         ( RTC_time         ),
 	.RTC_timestampOut (  ),
 	.RTC_savedtimeOut (  ),
@@ -760,7 +809,7 @@ gb gb2 (
 	
 
 	.isGBC       ( isGBC      ),
-	.isGBC_game  ( isGBC_game ),
+	.real_cgb_boot ( using_real_cgb_bios ),
 	.isSGB       ( 1'b0 ),
 	.megaduck    ( megaduck   ),
 
@@ -778,7 +827,8 @@ gb gb2 (
 
 	.nCS         ( gb2_nCS     ),
 
-	.boot_gba_en    ( status[37] && using_real_cgb_bios ),
+	.boot_gba_en    ( boot_gba_available && status[37] ),
+	.fast_boot_en   ( fastboot_available && status[42] ),
 
 	.cgb_boot_download ( cgb_boot_download ),
 	.dmg_boot_download ( dmg_boot_download ),
@@ -855,13 +905,13 @@ wire [3:0] joy2_do      = joy2_dir & joy2_buttons;
 
 assign AUDIO_L = (status[17:16] == 3'd0) ? AUDIO_L1 : 
                  (status[17:16] == 3'd1) ? AUDIO_L2 : 
-                 (status[17:16] == 3'd2) ? ({1'b0, AUDIO_L1[15:1]} + {1'b0, AUDIO_L2[15:1]}) : 
-                                           ({1'b0, AUDIO_L1[15:1]} + {1'b0, AUDIO_R1[15:1]});
+                 (status[17:16] == 3'd2) ? ($signed(AUDIO_L1[15:1]) + $signed(AUDIO_L2[15:1])) :
+                                           ($signed(AUDIO_L1[15:1]) + $signed(AUDIO_R1[15:1]));
 
 assign AUDIO_R = (status[17:16] == 3'd0) ? AUDIO_R1 : 
                  (status[17:16] == 3'd1) ? AUDIO_R2 : 
-                 (status[17:16] == 3'd2) ? ({1'b0, AUDIO_R1[15:1]} + {1'b0, AUDIO_R2[15:1]}) : 
-                                           ({1'b0, AUDIO_L2[15:1]} + {1'b0, AUDIO_R2[15:1]});
+                 (status[17:16] == 3'd2) ? ($signed(AUDIO_R1[15:1]) + $signed(AUDIO_R2[15:1])) :
+                                           ($signed(AUDIO_L2[15:1]) + $signed(AUDIO_R2[15:1]));
 
 
 // the lcd to vga converter
