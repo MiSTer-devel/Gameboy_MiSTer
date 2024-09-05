@@ -200,7 +200,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -241,6 +241,7 @@ localparam CONF_STR = {
 	"P1o2,Analog width,Narrow,Wide;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
+	"P1O[43],Audio mode,Accurate,No Pops;",
 
     "P2,Bootroms;",
 	"P2-;",
@@ -665,6 +666,7 @@ gb gb (
 	// audio
 	.audio_l 	 ( GB_AUDIO_L ),
 	.audio_r 	 ( GB_AUDIO_R ),
+	.audio_no_pops (status[43]),
 	
 	// interface to the lcd
 	.lcd_clkena  ( lcd_clkena ),
