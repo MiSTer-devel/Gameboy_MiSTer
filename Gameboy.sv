@@ -208,7 +208,7 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXX XXXXXXXXXXXX      X       XXXXXX
+// XXXXXX XXXX XXXXXXXXXXXX      X       XXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -236,6 +236,7 @@ localparam CONF_STR = {
 	"P1O5,Sync Video,Off,On;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
+	"P1O[43],Audio mode,Accurate,No Pops;",
 	"P1OGH,Audioselect,GB 1,GB 2,Mixed,Split 1=L 2=R;",
 
 	"P2,Misc.;",
@@ -651,6 +652,7 @@ gb gb1 (
 	// audio
 	.audio_l 	 ( AUDIO_L1 ),
 	.audio_r 	 ( AUDIO_R1 ),
+	.audio_no_pops (status[43]),
 	
 	// interface to the lcd
 	.lcd_clkena  ( lcd1_clkena ),
@@ -840,6 +842,7 @@ gb gb2 (
 	// audio
 	.audio_l 	 ( AUDIO_L2 ),
 	.audio_r 	 ( AUDIO_R2 ),
+	.audio_no_pops (status[43]),
 	
 	// interface to the lcd
 	.lcd_clkena  ( lcd2_clkena ),

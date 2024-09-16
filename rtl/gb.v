@@ -58,6 +58,7 @@ module gb (
 	// audio
 	output [15:0] audio_l,
 	output [15:0] audio_r,
+	input         audio_no_pops,
 
 	// Megaduck?
 	input megaduck,
@@ -135,7 +136,7 @@ wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
 wire [56:0] SS_Top;
 wire [56:0] SS_Top_BACK;
-eReg_SavestateV #(0, 31, 56, 0, 64'h0000000000800000) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);  
+eReg_SavestateV #(0, 31, 56, 0, 64'h0000000000800000) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);
 
 wire [10:0] SS_Top2;
 wire [10:0] SS_Top2_BACK;
@@ -445,6 +446,7 @@ gbc_snd audio (
 	.reset			( reset_ss			),
 	
 	.is_gbc        ( isGBC           ),
+	.remove_pops   ( audio_no_pops   ),
 
 	.s1_read  		( audio_rd  		),
 	.s1_write 		( audio_wr  		),
