@@ -208,16 +208,18 @@ assign DDRAM_WE       = 0;
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXX XXXX XXXXXXXXXXXX      X       XXXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXX      X       XXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
 	"GAMEBOY2P;SS3E000000:40000;",
 	"FS1,GBCGB BIN,Load ROM;",
+	"O[6],Rom for second GB,Off,On;",
 	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
 	"D7o79,Mapper,Auto,WisdomTree,Mani161,MBC1,MBC3;",
 	"-;",
-	"h2R9,Load Backup RAM;",
+	"O[11],Dupe Save to GB 2,Off,On;",
+	"h2R9,Reload Backup RAM;",
 	"h2RA,Save Backup RAM;",
 	"OD,Autosave,Off,On;",
 	"-;",
@@ -283,7 +285,7 @@ wire        ioctl_download;
 wire        ioctl_wr;
 wire [24:0] ioctl_addr;
 wire [15:0] ioctl_dout;
-wire        ioctl_wait;
+reg         ioctl_wait;
 
 wire [15:0] joystick_0, joystick_1, joystick_2, joystick_3;
 wire [15:0] joystick_analog_0, joystick_analog_1;
@@ -309,6 +311,9 @@ wire [32:0] RTC_time;
 wire        sys_auto     = (status[15:14] == 0);
 wire        sys_gbc      = (status[15:14] == 2);
 wire        sys_megaduck = (status[15:14] == 3);
+
+wire        dupe_save_gb2 = status[11];
+wire        rom_load_gb2  = status[6];
 
 hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
@@ -340,7 +345,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.status_menumask({7'h0, 
 		fastboot_available,
 		sys_megaduck, boot_gba_available,1'b0,isGBC,
-		(cart1_ready & cart2_ready),sav_supported,|tint,1'b0}),
+		1'b0,sav_supported,|tint,1'b0}),
 	.status_in(status),
 	.status_set(1'b0),
 	.direct_video(direct_video),
@@ -429,17 +434,33 @@ always @(posedge clk_sys) begin
 end
 
 ////////////////////////////////////////////////////////////////////////////////
+reg rom_bank_gb2;
+always @(posedge clk_sys) begin
+	if (~old_downloading & downloading) begin
+		rom_bank_gb2 <= rom_load_gb2;
+	end
+end
+
+reg dn_write;
+always @(posedge clk_sys) begin
+	if(ioctl_wr) ioctl_wait <= 1;
+
+	if(ce1_cpu2x) begin
+		dn_write <= ioctl_wait;
+		if(dn_write) {ioctl_wait, dn_write} <= 0;
+	end
+end
 
 wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc1_addr[0], ~mbc1_addr[0]};
 wire [15:0] sdram_do;
 wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
-wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc1_addr[22:1]};
+wire [23:0] sdram_addr = cart_download? { 1'b0, rom_bank_gb2, ioctl_addr[22:1] } : {2'b00, mbc1_addr[22:1]};
 wire sdram_oe = ~cart_download & cart1_rd & ~cram1_rd;
 wire sdram_ack;
 wire sdram_we = cart_download & dn_write;
 
 wire [15:0] sdram_do2;
-wire [23:0] sdram_addr2 = {2'b00, mbc2_addr[22:1]};
+wire [23:0] sdram_addr2 = {1'b0, rom_bank_gb2, mbc2_addr[22:1]};
 wire        sdram_oe2   = ~cart_download & cart2_rd & ~cram2_rd;
 wire        sdram_ack2;
 
@@ -477,16 +498,12 @@ sdram sdram (
    .ack2           ( sdram_ack2                )
 );
 
-wire dn_write;
-wire cart1_ready;
-wire cart2_ready;
 wire cram1_rd, cram1_wr;
 wire cram2_rd, cram2_wr;
 wire [7:0] rom1_do = (mbc1_addr[0]) ? sdram_do[15:8]  : sdram_do[7:0];
 wire [7:0] rom2_do = (mbc2_addr[0]) ? sdram_do2[15:8] : sdram_do2[7:0];
-wire [7:0] cart_ram_size;
-wire isGBC_game, isSGB_game;
-wire cart_has_save;
+wire isGBC_game1, isGBC_game2;
+wire cart1_has_save, cart2_has_save;
 wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
@@ -515,7 +532,7 @@ always @(posedge clk_sys) if(reset) begin
 
 	if(~sys_auto) isGBC <= sys_gbc;
 	else if(cart_download) begin
-		if (!filetype[5:0]) isGBC <= isGBC_game;
+		if (!filetype[5:0]) isGBC <= (isGBC_game1 | isGBC_game2);
 		else isGBC <= !filetype[7:6];
 	end
 end
@@ -555,26 +572,26 @@ cart_top cart1 (
 
 	.mbc_addr    ( mbc1_addr   ),
 
-	.dn_write    ( dn_write    ),
-	.cart_ready  ( cart1_ready  ),
+	.dn_write    (             ),
+	.cart_ready  (             ),
 
 	.cram_rd     ( cram1_rd     ),
 	.cram_wr     ( cram1_wr     ),
 
-	.cart_download ( cart_download ),
+	.cart_download ( cart_download & ~rom_load_gb2),
 
 	.ram_mask_file (  ),
-	.ram_size      ( cart_ram_size ),
-	.has_save      ( cart_has_save ),
+	.ram_size      (  ),
+	.has_save      ( cart1_has_save ),
 
-	.isGBC_game    ( isGBC_game    ),
-	.isSGB_game    ( isSGB_game    ),
+	.isGBC_game    ( isGBC_game1   ),
+	.isSGB_game    (               ),
 
-	.ioctl_download ( ioctl_download ),
-	.ioctl_wr       ( ioctl_wr       ),
+	.ioctl_download ( 1'b0           ),
+	.ioctl_wr       ( ioctl_wr & ~rom_load_gb2),
 	.ioctl_addr     ( ioctl_addr     ),
 	.ioctl_dout     ( ioctl_dout     ),
-	.ioctl_wait     ( ioctl_wait     ),
+	.ioctl_wait     (                ),
 
 	.bk_wr          ( bk_wr1         ),
 	.bk_rtc_wr      ( 1'b0           ),
@@ -681,7 +698,7 @@ gb gb1 (
 	
 	// savestates
 	.increaseSSHeaderCount (1'b0),
-	.cart_ram_size   (cart_ram_size),
+	.cart_ram_size   (8'd0),
 	.save_state      (1'b0),
 	.load_state      (1'b0),
 	.savestate_number(2'b00),
@@ -745,7 +762,7 @@ cart_top cart2 (
 	.mbc_addr    ( mbc2_addr   ),
 
 	.dn_write    (      ),
-	.cart_ready  ( cart2_ready  ),
+	.cart_ready  (      ),
 
 	.cram_rd     ( cram2_rd     ),
 	.cram_wr     ( cram2_wr     ),
@@ -754,16 +771,16 @@ cart_top cart2 (
 
 	.ram_mask_file (  ),
 	.ram_size      (  ),
-	.has_save      (  ),
+	.has_save      ( cart2_has_save ),
 
-	.isGBC_game    (     ),
-	.isSGB_game    (     ),
+	.isGBC_game    ( isGBC_game2 ),
+	.isSGB_game    (             ),
 
-	.ioctl_download ( ioctl_download ),
+	.ioctl_download ( 1'b0           ),
 	.ioctl_wr       ( ioctl_wr       ),
 	.ioctl_addr     ( ioctl_addr     ),
 	.ioctl_dout     ( ioctl_dout     ),
-	.ioctl_wait     (      ),
+	.ioctl_wait     (  ),
 
 	.bk_wr          ( bk_wr2         ),
 	.bk_rtc_wr      ( 1'b0           ),
@@ -871,7 +888,7 @@ gb gb2 (
 	
 	// savestates
 	.increaseSSHeaderCount (1'b0),
-	.cart_ram_size   (cart_ram_size),
+	.cart_ram_size   (8'd0),
 	.save_state      (1'b0),
 	.load_state      (1'b0),
 	.savestate_number(2'b00),
@@ -1099,8 +1116,8 @@ assign ser2_clk_in  = ser1_clk_out;
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
 wire [16:0] bk_addr = {sd_lba[7:0],sd_buff_addr};
-wire bk_wr1 = ( sd_lba[8]) ? 1'b0 : sd_buff_wr & sd_ack; 
-wire bk_wr2 = (~sd_lba[8]) ? 1'b0 : sd_buff_wr & sd_ack; 
+wire bk_wr1 = ~sd_lba[8] & ~(rom_load_gb2 & dupe_save_gb2) & sd_buff_wr & sd_ack;
+wire bk_wr2 = (sd_lba[8] | dupe_save_gb2) & sd_buff_wr & sd_ack;
 wire [15:0] bk_data = sd_buff_dout;
 wire [15:0] bk_q1;
 wire [15:0] bk_q2;
@@ -1114,7 +1131,7 @@ reg  bk_ena          = 0;
 reg  new_load        = 0;
 reg  old_downloading = 0;
 reg  sav_pending     = 0;
-wire sav_supported   = cart_has_save && bk_ena;
+wire sav_supported   = (cart1_has_save | cart2_has_save) && bk_ena;
 
 always @(posedge clk_sys) begin
 	old_downloading <= downloading;
@@ -1167,7 +1184,8 @@ always @(posedge clk_sys) begin
 	end else begin
 		if(old_ack & ~sd_ack) begin
 			
-			if(sd_lba[8:0] == 9'h1FF) begin
+			// read max possible size or read half size for dupe mode
+			if(sd_lba[8:0] == 9'h1FF || (sd_lba[8:0] == 9'h0FF && dupe_save_gb2)) begin
 				bk_loading <= 0;
 				bk_state <= 0;
 			end else begin
