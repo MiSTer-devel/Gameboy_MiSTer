@@ -904,10 +904,10 @@ assign SS_Top_BACK[23] = boot_rom_enabled;
 always @(posedge clk_sys) begin
 	if(reset_ss)
 		boot_rom_enabled <= SS_Top[23]; // 1'b1;
-	else if (ce) begin 
-		if((cpu_addr == 16'hff50) && !cpu_wr_n_edge)
-          if ((isGBC && cpu_do[7:0]==8'h11) || (!isGBC && cpu_do[0]))
-		          boot_rom_enabled <= 1'b0;
+	else if (ce) begin
+		if((cpu_addr == 16'hff50) && !cpu_wr_n_edge && cpu_do[0]) begin
+			boot_rom_enabled <= 1'b0;
+		end
 	end
 end
 			
