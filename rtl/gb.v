@@ -120,7 +120,13 @@ module gb (
 	input         SAVE_out_done,    // should be one cycle high when write is done or read value is valid
 	
 	input         rewind_on,
-	input         rewind_active
+	input         rewind_active,
+
+	// Translation overlay VRAM snoop interface
+	output        vram_snoop_we,
+	output [12:0] vram_snoop_addr,
+	output [7:0]  vram_snoop_wdata,
+	output        vram_snoop_bank
 );
 
 // savestates
@@ -753,6 +759,12 @@ wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
 
 wire [15:0] hdma_target_addr;
 wire [12:0] vram_addr = video_rd?video_addr:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
+
+// Translation overlay VRAM snoop - captures CPU writes to VRAM
+assign vram_snoop_we    = vram_wren | vram1_wren;
+assign vram_snoop_addr  = vram_addr;
+assign vram_snoop_wdata = vram_di;
+assign vram_snoop_bank  = vram_bank;
 
 wire [7:0] Savestate_RAMReadData_VRAM0, Savestate_RAMReadData_VRAM1;
 

@@ -729,11 +729,23 @@ gb gb (
 	.SAVE_out_done(ss_ack),            // should be one cycle high when write is done or read value is valid
 	
 	.rewind_on(status[27]),
-	.rewind_active(status[27] & joystick_0[10])
+	.rewind_active(status[27] & joystick_0[10]),
+
+	// Translation overlay VRAM snoop
+	.vram_snoop_we    ( vram_snoop_we    ),
+	.vram_snoop_addr  ( vram_snoop_addr  ),
+	.vram_snoop_wdata ( vram_snoop_wdata ),
+	.vram_snoop_bank  ( vram_snoop_bank  )
 );
 
 assign AUDIO_L = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_L;
 assign AUDIO_R = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_R;
+
+// Translation overlay VRAM snoop signals
+wire        vram_snoop_we;
+wire [12:0] vram_snoop_addr;
+wire [7:0]  vram_snoop_wdata;
+wire        vram_snoop_bank;
 
 // the lcd to vga converter
 wire [7:0] R,G,B;
@@ -789,6 +801,71 @@ lcd lcd
 	.h_cnt  ( h_cnt      ),
 	.v_cnt  ( v_cnt      ),
 	.h_end  ( h_end      )
+);
+
+//------------------------------------------------------------------------------
+// Translation Overlay - monitors VRAM for Japanese text and renders captions
+//------------------------------------------------------------------------------
+
+// Configuration from OSD status bits
+// status[45]: Enable translation overlay
+// status[46]: Caption mode (1) vs Replace mode (0)
+wire translation_enable = status[45];
+wire translation_mode   = status[46];
+
+// Translation overlay output signals
+wire [14:0] vid_rgb_translated;
+wire        vid_de_translated;
+wire        vid_vs_translated;
+wire        vid_hs_translated;
+wire        dbg_tile_detected;
+wire [15:0] dbg_tile_hash;
+wire        dbg_match_found;
+
+translation_overlay_top translation_overlay (
+	.clk             ( clk_sys              ),
+	.clk_vid         ( CLK_VIDEO            ),
+	.rst_n           ( ~reset               ),
+
+	// VRAM snoop interface
+	.vram_we         ( vram_snoop_we        ),
+	.vram_addr       ( vram_snoop_addr      ),
+	.vram_wdata      ( vram_snoop_wdata     ),
+
+	// VRAM replacement (unused for now - caption mode only)
+	.vram_replace_en (                      ),
+	.vram_replace_data(                     ),
+
+	// Video input (from lcd module RGB output)
+	.vid_rgb_in      ( {R[7:3], G[7:3], B[7:3]} ),
+	.vid_de_in       ( ~(HBlank | VBlank)   ),
+	.vid_vs_in       ( video_vs             ),
+	.vid_hs_in       ( video_hs             ),
+	.vid_x           ( h_cnt[7:0]           ),
+	.vid_y           ( v_cnt[7:0]           ),
+
+	// Video output (caption overlay composited)
+	.vid_rgb_out     ( vid_rgb_translated   ),
+	.vid_de_out      ( vid_de_translated    ),
+	.vid_vs_out      ( vid_vs_translated    ),
+	.vid_hs_out      ( vid_hs_translated    ),
+
+	// External memory (tie off - use internal dictionary)
+	.ext_mem_rd      (                      ),
+	.ext_mem_addr    (                      ),
+	.ext_mem_rdata   ( 32'h0                ),
+	.ext_mem_rvalid  ( 1'b0                 ),
+
+	// Configuration
+	.cfg_enable      ( translation_enable   ),
+	.cfg_mode        ( translation_mode     ),
+	.cfg_caption_color( 15'h7FFF            ),
+	.cfg_caption_y   ( 8'd128               ),
+
+	// Debug outputs
+	.dbg_tile_detected( dbg_tile_detected   ),
+	.dbg_tile_hash    ( dbg_tile_hash       ),
+	.dbg_match_found  ( dbg_match_found     )
 );
 
 wire [1:0] joy_p54;

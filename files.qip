@@ -41,3 +41,13 @@ set_global_assignment -name VERILOG_FILE rtl/mappers/megaduck.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/misc.v
 set_global_assignment -name SDC_FILE Gameboy.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Gameboy.sv
+
+# Translation overlay modules
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/translation_overlay_top.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/vram_snooper.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/tile_hash_generator.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/hash_lookup_table.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/caption_renderer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/alpha_blender.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/replace_mode_ctrl.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/translation/font_rom.sv
