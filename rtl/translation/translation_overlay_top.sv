@@ -5,8 +5,10 @@
 // Intercepts VRAM writes, detects Japanese text tiles, and provides translation
 // via two modes: Replace (in-place tile swap) or Caption (subtitle overlay)
 //
-// Target: Analogue Pocket (openFPGA, Cyclone V)
+// Target: Analogue Pocket (openFPGA, Cyclone V) / MiSTer FPGA
 //------------------------------------------------------------------------------
+
+`timescale 1ns / 1ps
 
 module translation_overlay_top #(
     parameter MODE_REPLACE = 1'b0,
@@ -65,8 +67,14 @@ module translation_overlay_top #(
     // From VRAM snooper
     logic        tile_capture_done;
     logic [15:0] tile_hash;
-    logic [10:0] tile_index;
+    logic [8:0]  tile_index;        // 9-bit for 384 tiles
     logic        tile_is_text_region;
+
+    // Snooper to hash generator
+    logic        hash_data_valid;
+    logic [7:0]  hash_data;
+    logic        hash_data_last;
+    logic        tile_hash_valid;
 
     // From hash lookup
     logic        hash_match_found;
@@ -85,6 +93,10 @@ module translation_overlay_top #(
     // For replace mode
     logic [7:0]  replacement_tile_data;
     logic        do_replace;
+    logic [3:0]  byte_offset;
+
+    // Derive byte offset from VRAM address low bits
+    assign byte_offset = vram_addr[3:0];
 
     //--------------------------------------------------------------------------
     // VRAM Snooper - monitors VRAM writes for Japanese text tiles
@@ -109,7 +121,9 @@ module translation_overlay_top #(
         .hash_data_last     (hash_data_last),
 
         // Configuration
-        .cfg_enable         (cfg_enable)
+        .cfg_enable         (cfg_enable),
+        .cfg_text_tile_start(9'd0),     // Default: all tiles
+        .cfg_text_tile_end  (9'd383)    // All 384 tiles
     );
 
     //--------------------------------------------------------------------------
@@ -132,6 +146,8 @@ module translation_overlay_top #(
     //--------------------------------------------------------------------------
     // Hash Lookup Table - Bloom filter + hash table for character matching
     //--------------------------------------------------------------------------
+    logic lookup_done;
+
     hash_lookup_table u_hash_lookup (
         .clk                (clk),
         .rst_n              (rst_n),
@@ -142,6 +158,7 @@ module translation_overlay_top #(
 
         // Match output
         .match_found        (hash_match_found),
+        .lookup_done        (lookup_done),
         .char_code          (matched_char_code),
         .translation_ptr    (translation_ptr),
 
@@ -149,7 +166,15 @@ module translation_overlay_top #(
         .ext_mem_rd         (ext_mem_rd),
         .ext_mem_addr       (ext_mem_addr),
         .ext_mem_rdata      (ext_mem_rdata),
-        .ext_mem_rvalid     (ext_mem_rvalid)
+        .ext_mem_rvalid     (ext_mem_rvalid),
+
+        // Dictionary loading (tie off - use built-in ROM)
+        .dict_load_en       (1'b0),
+        .dict_load_addr     (16'h0),
+        .dict_load_data     (41'h0),
+        .bloom_load_en      (1'b0),
+        .bloom_load_addr    (16'h0),
+        .bloom_load_bit     (1'b0)
     );
 
     //--------------------------------------------------------------------------
@@ -174,9 +199,10 @@ module translation_overlay_top #(
         .caption_alpha  (caption_alpha),
 
         // Configuration
-        .cfg_text_color (cfg_caption_color),
-        .cfg_y_position (cfg_caption_y),
-        .cfg_enable     (cfg_enable && cfg_mode == MODE_CAPTION)
+        .cfg_text_color    (cfg_caption_color),
+        .cfg_outline_color (15'h0000),      // Black outline
+        .cfg_y_position    (cfg_caption_y),
+        .cfg_enable        (cfg_enable && cfg_mode == MODE_CAPTION)
     );
 
     //--------------------------------------------------------------------------
@@ -200,7 +226,11 @@ module translation_overlay_top #(
         .vid_rgb_out    (vid_rgb_out),
         .vid_de_out     (vid_de_out),
         .vid_vs_out     (vid_vs_out),
-        .vid_hs_out     (vid_hs_out)
+        .vid_hs_out     (vid_hs_out),
+
+        // Configuration
+        .cfg_enable     (cfg_enable),
+        .cfg_blend_alpha(4'd15)     // Full opacity
     );
 
     //--------------------------------------------------------------------------
@@ -212,7 +242,13 @@ module translation_overlay_top #(
 
         // From hash lookup
         .match_found        (hash_match_found),
+        .lookup_done        (lookup_done),
         .char_code          (matched_char_code),
+        .translation_ptr    (translation_ptr),
+
+        // Tile position info
+        .tile_index         (tile_index),
+        .byte_offset        (byte_offset),
 
         // VRAM replacement
         .vram_replace_en    (do_replace),
