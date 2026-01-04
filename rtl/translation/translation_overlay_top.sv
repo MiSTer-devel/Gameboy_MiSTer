@@ -81,10 +81,27 @@ module translation_overlay_top #(
     logic [7:0]  matched_char_code;
     logic [15:0] translation_ptr;
 
-    // From translation engine
+    // From translation engine (or test mode)
     logic        translation_ready;
     logic [255:0] english_string;  // Up to 32 ASCII chars
     logic [4:0]  english_length;
+
+    // Test mode: show hardcoded text when enabled (for debugging)
+    // TODO: Replace with actual translation engine
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            translation_ready <= 1'b0;
+            english_string <= 256'h0;
+            english_length <= 5'd0;
+        end else if (cfg_enable && cfg_mode == MODE_CAPTION) begin
+            // Test message: "MEDAROT TEST"
+            translation_ready <= 1'b1;
+            english_string <= {"MEDAROT TEST", {20{8'h20}}};  // Pad with spaces
+            english_length <= 5'd12;
+        end else begin
+            translation_ready <= 1'b0;
+        end
+    end
 
     // For caption renderer
     logic [14:0] caption_rgb;
