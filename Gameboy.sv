@@ -750,7 +750,8 @@ wire [7:0]  vram_snoop_wdata;
 wire        vram_snoop_bank;
 
 // the lcd to vga converter
-wire [7:0] R,G,B;
+wire [7:0] R_lcd, G_lcd, B_lcd;  // Raw LCD output
+wire [7:0] R, G, B;              // Final output (may have overlay)
 wire video_hs, video_vs;
 wire HBlank, VBlank;
 wire ce_pix;
@@ -796,9 +797,9 @@ lcd lcd
 	.vs     ( video_vs   ),
 	.hbl    ( HBlank     ),
 	.vbl    ( VBlank     ),
-	.r      ( R          ),
-	.g      ( G          ),
-	.b      ( B          ),
+	.r      ( R_lcd      ),
+	.g      ( G_lcd      ),
+	.b      ( B_lcd      ),
 	.ce_pix ( ce_pix     ),
 	.h_cnt  ( h_cnt      ),
 	.v_cnt  ( v_cnt      ),
@@ -839,12 +840,14 @@ translation_overlay_top translation_overlay (
 	.vram_replace_data(                     ),
 
 	// Video input (from lcd module RGB output)
-	.vid_rgb_in      ( {R[7:3], G[7:3], B[7:3]} ),
+	// Note: h_cnt/v_cnt include blanking. GB visible area starts at H_START=57, VSTART=105
+	// Use clamped coordinates to prevent unsigned underflow during blanking
+	.vid_rgb_in      ( {R_lcd[7:3], G_lcd[7:3], B_lcd[7:3]} ),
 	.vid_de_in       ( ~(HBlank | VBlank)   ),
 	.vid_vs_in       ( video_vs             ),
 	.vid_hs_in       ( video_hs             ),
-	.vid_x           ( h_cnt[7:0]           ),
-	.vid_y           ( v_cnt[7:0]           ),
+	.vid_x           ( (h_cnt >= 9'd57) ? (h_cnt - 9'd57) : 8'd255 ),   // Clamp to 255 when outside visible
+	.vid_y           ( (v_cnt >= 9'd105) ? (v_cnt - 9'd105) : 8'd255 ), // Clamp to 255 when outside visible
 
 	// Video output (caption overlay composited)
 	.vid_rgb_out     ( vid_rgb_translated   ),
@@ -861,14 +864,20 @@ translation_overlay_top translation_overlay (
 	// Configuration
 	.cfg_enable      ( translation_enable   ),
 	.cfg_mode        ( translation_mode     ),
-	.cfg_caption_color( 15'h7FFF            ),
-	.cfg_caption_y   ( 8'd128               ),
+	.cfg_caption_color( 15'h7FFF            ),  // White text
+	.cfg_caption_y   ( 8'd128               ),  // Near bottom (Y=128-135 of 144)
 
 	// Debug outputs
 	.dbg_tile_detected( dbg_tile_detected   ),
 	.dbg_tile_hash    ( dbg_tile_hash       ),
 	.dbg_match_found  ( dbg_match_found     )
 );
+
+// Select between LCD output and translated output
+// When translation enabled in caption mode, use the blended output
+assign R = (translation_enable && translation_mode) ? {vid_rgb_translated[14:10], 3'b0} : R_lcd;
+assign G = (translation_enable && translation_mode) ? {vid_rgb_translated[9:5], 3'b0} : G_lcd;
+assign B = (translation_enable && translation_mode) ? {vid_rgb_translated[4:0], 3'b0} : B_lcd;
 
 wire [1:0] joy_p54;
 wire [3:0] joy_do_sgb;

@@ -99,18 +99,27 @@ module caption_renderer #(
     // Caption area detection
     //--------------------------------------------------------------------------
 
-    wire in_caption_area = (pixel_y >= cfg_y_position) &&
-                           (pixel_y < cfg_y_position + CAPTION_HEIGHT);
+    // Bounds check: ensure we're within valid screen coordinates
+    wire in_screen = (pixel_x < SCREEN_WIDTH) && (pixel_y < SCREEN_HEIGHT);
 
     // Which line and character are we rendering?
     wire [7:0] caption_y_offset = pixel_y - cfg_y_position;
-    wire [0:0] text_line = caption_y_offset[4:3];  // 0 or 1 (16 pixels per text line)
-    wire [2:0] glyph_row = caption_y_offset[2:0];  // Row within glyph (0-7)
+    wire [1:0] text_line_raw = caption_y_offset[4:3];  // 0-3 (16 pixels per text line)
+    wire [0:0] text_line = text_line_raw[0];           // Line index (0 or 1)
+    wire [2:0] glyph_row = caption_y_offset[2:0];      // Row within glyph (0-7)
+
+    // Only render exactly 8 pixels of caption (single line, no duplicates)
+    // Strict bounds check: cfg_y_position to cfg_y_position + 7
+    wire in_text_y = in_screen &&
+                     (pixel_y >= cfg_y_position) &&
+                     (pixel_y < (cfg_y_position + 8'd8));
+    wire in_caption_area = in_text_y;
 
     // Center text horizontally
-    wire [4:0] text_start_x = (SCREEN_WIDTH - line_length[text_line] * FONT_WIDTH) >> 1;
+    wire [7:0] text_width = line_length[text_line] * FONT_WIDTH;
+    wire [7:0] text_start_x = (SCREEN_WIDTH > text_width) ? ((SCREEN_WIDTH - text_width) >> 1) : 8'd0;
     wire       in_text_x = (pixel_x >= text_start_x) &&
-                           (pixel_x < text_start_x + line_length[text_line] * FONT_WIDTH);
+                           (pixel_x < text_start_x + text_width);
 
     wire [4:0] char_index = (pixel_x - text_start_x) >> 3;  // Which character (0-17)
     wire [2:0] glyph_col = pixel_x[2:0];                    // Column within glyph (0-7)
