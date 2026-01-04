@@ -103,6 +103,10 @@ module vram_snooper #(
             tile_write_mask <= 16'h0000;
             capturing_tile <= 9'd0;
             capture_in_progress <= 1'b0;
+        end else if (state == DONE) begin
+            // Clear capture state after streaming complete
+            capture_in_progress <= 1'b0;
+            tile_write_mask <= 16'h0000;
         end else if (cfg_enable && vram_we && in_tile_region) begin
             // VRAM write detected in tile region
 
@@ -198,18 +202,5 @@ module vram_snooper #(
     assign tile_capture_done = (state == DONE);
     assign tile_index = capturing_tile;
     assign tile_is_text_region = in_text_range;
-
-    //--------------------------------------------------------------------------
-    // Clear capture state after streaming complete
-    //--------------------------------------------------------------------------
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            // Reset handled above
-        end else if (state == DONE) begin
-            capture_in_progress <= 1'b0;
-            tile_write_mask <= 16'h0000;
-        end
-    end
 
 endmodule
