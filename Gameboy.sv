@@ -267,7 +267,9 @@ localparam CONF_STR = {
 	"P3OR,Rewind Capture,Off,On;",
 	"P3-;",
 	"P3o3,Super Game Boy + GBC,Off,On;",
-    
+	"P3-;",
+	"P3O[45],Translation,Off,On;",
+	"P3O[46],Trans. Mode,Replace,Caption;",
 
 	"-;",
 	"R0,Reset;",
