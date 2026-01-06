@@ -86,20 +86,70 @@ module translation_overlay_top #(
     logic [255:0] english_string;  // Up to 32 ASCII chars
     logic [4:0]  english_length;
 
-    // Test mode: show hardcoded text when enabled (for debugging)
-    // TODO: Replace with actual translation engine
+    // Translation display: shift register for matched characters
+    // Display up to 16 matched characters (romanized katakana)
+    logic [7:0] char_buf [0:15];  // 16-character display buffer
+    logic [3:0] char_count;       // Number of valid characters
+    logic [7:0] match_count;      // Total matches detected
+    logic [15:0] last_hash;       // For deduplication
+
+    // Convert 4-bit nibble to ASCII hex character
+    function automatic [7:0] nibble_to_hex(input [3:0] nibble);
+        return (nibble < 10) ? (8'h30 + nibble) : (8'h41 + nibble - 10);
+    endfunction
+
     always_ff @(posedge clk or negedge rst_n) begin
+        integer i;
         if (!rst_n) begin
             translation_ready <= 1'b0;
             english_string <= 256'h0;
             english_length <= 5'd0;
+            for (i = 0; i < 16; i = i + 1) begin
+                char_buf[i] <= 8'h20;  // Space
+            end
+            char_count <= 4'd0;
+            match_count <= 8'd0;
+            last_hash <= 16'h0;
         end else if (cfg_enable && cfg_mode == MODE_CAPTION) begin
-            // Test message: "MEDAROT TEST"
+            // Capture matched characters when lookup finds a match
+            if (lookup_done && hash_match_found && tile_hash != last_hash) begin
+                last_hash <= tile_hash;
+                match_count <= match_count + 1'd1;
+
+                // Shift characters left, add new at end
+                if (char_count < 4'd15) begin
+                    char_buf[char_count] <= matched_char_code;
+                    char_count <= char_count + 1'd1;
+                end else begin
+                    // Buffer full - shift left and add at end
+                    for (i = 0; i < 15; i = i + 1) begin
+                        char_buf[i] <= char_buf[i + 1];
+                    end
+                    char_buf[15] <= matched_char_code;
+                end
+            end
+
+            // Build display string: "MM: <matched_chars>"
+            // Format: match_count (2 hex digits), colon, space, then characters
             translation_ready <= 1'b1;
-            english_string <= {"MEDAROT TEST", {20{8'h20}}};  // Pad with spaces
-            english_length <= 5'd12;
+            english_string <= {
+                nibble_to_hex(match_count[7:4]), nibble_to_hex(match_count[3:0]),
+                8'h3A, 8'h20,  // ": "
+                char_buf[0], char_buf[1], char_buf[2], char_buf[3],
+                char_buf[4], char_buf[5], char_buf[6], char_buf[7],
+                char_buf[8], char_buf[9], char_buf[10], char_buf[11],
+                char_buf[12], char_buf[13], char_buf[14], char_buf[15],
+                {8{8'h20}}
+            };
+            english_length <= 5'd20;
         end else begin
             translation_ready <= 1'b0;
+            for (i = 0; i < 16; i = i + 1) begin
+                char_buf[i] <= 8'h20;
+            end
+            char_count <= 4'd0;
+            match_count <= 8'd0;
+            last_hash <= 16'h0;
         end
     end
 
