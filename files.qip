@@ -21,6 +21,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/savestate_ui.sv
 set_global_assignment -name VERILOG_FILE rtl/gb.v
 set_global_assignment -name VERILOG_FILE rtl/hdma.v
 set_global_assignment -name VERILOG_FILE rtl/link.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/workboy.sv
 set_global_assignment -name VERILOG_FILE rtl/sgb.v
 set_global_assignment -name VERILOG_FILE rtl/cart.v
 set_global_assignment -name VERILOG_FILE rtl/mappers/mappers.v
