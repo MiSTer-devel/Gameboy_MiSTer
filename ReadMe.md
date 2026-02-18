@@ -17,6 +17,7 @@ _This is a port of [Gameboy for MiST](https://github.com/mist-devel/gameboy)_
 * Custom Palette Loading
 * Real-Time Clock Support
 * Gameboy Link Port Support - Requires USERIO adapter
+* Workboy
 * Cheats
 * Fast boot
 * GBA mode for GBC games
