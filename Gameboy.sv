@@ -204,7 +204,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -261,6 +261,7 @@ localparam CONF_STR = {
 	"P3-;",
 	"P3O6,Link Port,Disabled,Enabled;",
 	"P3O[45],WorkBoy Keyboard,Off,On;",
+	"P3O[46],iG Keyboard/Mouse,Off,On;",
 	"P3o6,Rumble,On,Off;",
 	"P3-;",
 	"P3OP,FastForward Sound,On,Off;",
@@ -324,6 +325,7 @@ wire        ioctl_wait;
 wire [15:0] joystick_0, joy0_unmod, joystick_1, joystick_2, joystick_3;
 wire [15:0] joystick_analog_0;
 wire [10:0] ps2_key;
+wire [24:0] ps2_mouse;
 
 wire [7:0]  filetype;
 
@@ -393,7 +395,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_0_rumble(joy0_rumble),
 	
 	.ps2_key(ps2_key),
-	
+	.ps2_mouse(ps2_mouse),
+
 	.info_req(ss_info_req),
 	.info(ss_info),
 	
@@ -1056,8 +1059,10 @@ wire ser_data_out;
 wire ser_clk_in;
 wire ser_clk_out;
 wire workboy_ena = status[45];
-wire serial_ena = status[6] & ~workboy_ena;
+wire ig_kb_ena   = status[46];
+wire serial_ena  = status[6] & ~workboy_ena & ~ig_kb_ena;
 wire workboy_data_out;
+wire ig_kb_data_out;
 
 workboy workboy
 (
@@ -1070,7 +1075,19 @@ workboy workboy
 	.serial_data_out(workboy_data_out)
 );
 
-assign ser_data_in = workboy_ena ? workboy_data_out : (serial_ena ? USER_IN[2] : 1'b1);
+ig_kb ig_kb
+(
+	.clk_sys(clk_sys),
+	.reset(reset | ~ig_kb_ena),
+	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
+	.serial_clk_in(ser_clk_out),
+	.serial_data_out(ig_kb_data_out)
+);
+
+assign ser_data_in = ig_kb_ena   ? ig_kb_data_out   :
+                     workboy_ena ? workboy_data_out  :
+                     serial_ena  ? USER_IN[2]        : 1'b1;
 assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
 
 assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;
