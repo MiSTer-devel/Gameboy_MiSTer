@@ -62,6 +62,8 @@ module emu
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
+	output        HDMI_BLACKOUT,
+	output        HDMI_BOB_DEINT,
 
 `ifdef MISTER_FB
 	// Use framebuffer in DDRAM
@@ -193,6 +195,8 @@ assign BUTTONS   = 0;
 assign HDMI_FREEZE = 0;
 assign VGA_SCALER= 0;
 assign VGA_DISABLE = 0;
+assign HDMI_BLACKOUT = 0;
+assign HDMI_BOB_DEINT = 0;
 
 assign AUDIO_MIX = status[8:7];
 
@@ -200,7 +204,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXX					XXXX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -227,20 +231,22 @@ localparam CONF_STR = {
 
 	"P1,Audio & Video;",
 	"P1-;",
+	"P1O[44],Extra sprites,No,Yes;",
 	"P1OC,Inverted color,No,Yes;",
 	"P1o4,Screen Shadow,No,Yes;",
 	"P1O12,Custom Palette,Off,Auto,On;",
 	"h1P1FC3,GBP,Load Palette;",
+	"P1OG,Frame blend,Off,On;",
+	"d4P1OU,GBC Colors,Corrected,Raw;",
+	"P1O5,Stabilize video(buffer),Off,On;",
 	"P1-;",
 	"P1O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1OLM,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"P1O5,Stabilize video(buffer),Off,On;",
-	"P1OG,Frame blend,Off,On;",
-	"d4P1OU,GBC Colors,Corrected,Raw;",
 	"P1o2,Analog width,Narrow,Wide;",
 	"P1-;",
 	"P1O78,Stereo mix,none,25%,50%,100%;",
+	"P1O[43],Audio mode,Accurate,No Pops;",
 
     "P2,Bootroms;",
 	"P2-;",
@@ -254,6 +260,8 @@ localparam CONF_STR = {
 	"P3,Misc.;",
 	"P3-;",
 	"P3O6,Link Port,Disabled,Enabled;",
+	"P3O[45],WorkBoy Keyboard,Off,On;",
+	"P3O[46],iG Keyboard/Mouse,Off,On;",
 	"P3o6,Rumble,On,Off;",
 	"P3-;",
 	"P3OP,FastForward Sound,On,Off;",
@@ -323,6 +331,7 @@ wire        ioctl_wait;
 wire [15:0] joystick_0, joy0_unmod, joystick_1, joystick_2, joystick_3;
 wire [15:0] joystick_analog_0;
 wire [10:0] ps2_key;
+wire [24:0] ps2_mouse;
 
 wire [7:0]  filetype;
 
@@ -339,6 +348,7 @@ wire        img_readonly;
 wire [63:0] img_size;
 wire [15:0] joy0_rumble;
 
+wire [64:0] RTC_bcd;
 wire [32:0] RTC_time;
 
 wire        sys_auto     = (status[15:14] == 0);
@@ -391,10 +401,12 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_0_rumble(joy0_rumble),
 	
 	.ps2_key(ps2_key),
-	
+	.ps2_mouse(ps2_mouse),
+
 	.info_req(ss_info_req),
 	.info(ss_info),
 	
+	.RTC(RTC_bcd),
 	.TIMESTAMP(RTC_time)
 );
 
@@ -637,14 +649,14 @@ gb gb (
 	
 	.clk_sys     ( clk_sys    ),
 	.ce          ( ce_cpu     ),   // the whole gameboy runs on 4mhnz
+	.ce_n        ( ce_cpu_n   ),   // 4MHz falling edge clock enable
 	.ce_2x       ( ce_cpu2x   ),   // ~8MHz in dualspeed mode (GBC)
 	
 	.isGBC       ( isGBC      ),
     .real_cgb_boot ( using_real_cgb_bios ),  
 	.isSGB       ( |sgb_en & ~isGBC ),
 	.megaduck    ( megaduck   ),
-
-	.apu_channel_enable (~status[63:60]),
+	.extra_spr_en( status[44] ),
 
 	.joy_p54     ( joy_p54     ),
 	.joy_din     ( joy_do_sgb  ),
@@ -673,6 +685,7 @@ gb gb (
 	// audio
 	.audio_l 	 ( GB_AUDIO_L ),
 	.audio_r 	 ( GB_AUDIO_R ),
+	.audio_no_pops (status[43]),
 	
 	// interface to the lcd
 	.lcd_clkena  ( lcd_clkena ),
@@ -884,7 +897,7 @@ video_freak video_freak
 //////////////////////////////// CE ////////////////////////////////////
 
 
-wire ce_cpu, ce_cpu2x;
+wire ce_cpu, ce_cpu_n, ce_cpu2x;
 wire cart_act = cart_wr | cart_rd;
 
 wire fastforward = joystick_0[8] && !ioctl_download && !OSD_STATUS;
@@ -905,6 +918,7 @@ speedcontrol speedcontrol
 	.cart_act    (cart_act),
 	.DMA_on      (DMA_on),
 	.ce          (ce_cpu),
+	.ce_n        (ce_cpu_n),
 	.ce_2x       (ce_cpu2x),
 	.refresh     (sdram_refresh_force),
 	.ff_on       (ff_on)
@@ -1050,9 +1064,36 @@ wire ser_data_in;
 wire ser_data_out;
 wire ser_clk_in;
 wire ser_clk_out;
-wire serial_ena = status[6];
+wire workboy_ena = status[45];
+wire ig_kb_ena   = status[46];
+wire serial_ena  = status[6] & ~workboy_ena & ~ig_kb_ena;
+wire workboy_data_out;
+wire ig_kb_data_out;
 
-assign ser_data_in = serial_ena ? USER_IN[2] : 1'b1;
+workboy workboy
+(
+	.clk_sys(clk_sys),
+	.reset(reset | ~workboy_ena),
+	.ps2_key(ps2_key),
+	.rtc_bcd(RTC_bcd),
+	.serial_clk_in(ser_clk_out),
+	.serial_data_in(ser_data_out),
+	.serial_data_out(workboy_data_out)
+);
+
+ig_kb ig_kb
+(
+	.clk_sys(clk_sys),
+	.reset(reset | ~ig_kb_ena),
+	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
+	.serial_clk_in(ser_clk_out),
+	.serial_data_out(ig_kb_data_out)
+);
+
+assign ser_data_in = ig_kb_ena   ? ig_kb_data_out   :
+                     workboy_ena ? workboy_data_out  :
+                     serial_ena  ? USER_IN[2]        : 1'b1;
 assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
 
 assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;

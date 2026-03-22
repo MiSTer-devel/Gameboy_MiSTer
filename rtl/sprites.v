@@ -32,7 +32,8 @@ module sprites (
 	// pixel position input which the current pixel is generated for
 	input [7:0] v_cnt,
 	input [7:0] h_cnt,
-	
+
+	input sprite_fetch_c1,
 	input sprite_fetch_done,
 	output sprite_fetch,
 
@@ -41,7 +42,7 @@ module sprites (
 	output oam_eval,
 
 	output [10:0] sprite_addr,
-	output reg [7:0] sprite_attr,
+	output [7:0] sprite_attr,
 	output [3:0] sprite_index,
 
 	output oam_eval_end,
@@ -52,6 +53,21 @@ module sprites (
 	input [7:0] oam_addr_in,
 	input [7:0] oam_di,
 	output [7:0] oam_do,
+
+	input extra_spr_en,
+	input extra_wait,
+
+	output extra_tile_fetch,
+	output [11:0] extra_tile_addr,
+	input [7:0] tile_data_in,
+
+	output spr_extra_found,
+	output [7:0] spr_extra_tile0,
+	output [7:0] spr_extra_tile1,
+	output [2:0] spr_extra_cgb_pal,
+	output [3:0] spr_extra_index,
+	output spr_extra_pal,
+	output spr_extra_prio,
    
    // savestates
    input [7:0] Savestate_OAMRAMAddr,     
@@ -62,48 +78,72 @@ module sprites (
 
 localparam SPRITES_PER_LINE = 10;
 
-reg [7:0] oam_spr_addr;
-wire [7:0] oam_fetch_addr;
-reg [7:0] oam_q;
+wire [7:2] oam_eval_addr, oam_fetch_addr;
+wire [7:0] oam_l_q, oam_h_q;
 
 reg oam_eval_en;
 assign oam_eval = lcd_on & ~oam_eval_end & oam_eval_en & ~oam_eval_reset;
 
-wire [7:0] oam_addr = dma_active ? oam_addr_in :
-						oam_eval ? oam_spr_addr :
-						oam_fetch ? oam_fetch_addr :
-						oam_addr_in;
+wire [3:0] fetch_row;
+
+wire oam_eval_extra;
+wire [7:1] oam_extra_addr;
+wire [7:0] spr_extra_fetch_attr;
+
+wire [7:1] oam_addr = dma_active ? oam_addr_in[7:1] :
+						oam_eval_extra ? { oam_extra_addr } :
+						oam_eval ? { oam_eval_addr, 1'b0 } :
+						oam_fetch ? { oam_fetch_addr, 1'b1 } :
+						oam_addr_in[7:1];
                   
 wire valid_oam_addr = (oam_addr[7:4] < 4'hA); // $FEA0 - $FEFF unused range
-assign oam_do = dma_active ? 8'hFF : valid_oam_addr ? oam_q : 8'd0;
+assign oam_do = ~valid_oam_addr ? 8'd0 : (oam_addr_in[0] ? oam_h_q : oam_l_q);
 
+wire [7:0] Savestate_OAMRAMReadDataL, Savestate_OAMRAMReadDataH;
 
-dpram #(8) oam_data (
+dpram #(7,8) oam_data_l (
 	.clock_a   (clk      ),
-	.address_a (oam_addr ),
-	.wren_a    (ce_cpu && oam_wr && valid_oam_addr),
+	.address_a (oam_addr[7:1]),
+	.wren_a    (ce_cpu && oam_wr && valid_oam_addr && ~oam_addr_in[0]),
 	.data_a    (oam_di   ),
-	.q_a       (oam_q    ),
+	.q_a       (oam_l_q  ),
 	
 	.clock_b   (clk),
-	.address_b (Savestate_OAMRAMAddr     ),
-	.wren_b    (Savestate_OAMRAMRWrEn    ),
+	.address_b (Savestate_OAMRAMAddr[7:1]),
+	.wren_b    (Savestate_OAMRAMRWrEn & ~Savestate_OAMRAMAddr[0]),
 	.data_b    (Savestate_OAMRAMWriteData),
-	.q_b       (Savestate_OAMRAMReadData )
+	.q_b       (Savestate_OAMRAMReadDataL)
 );
+
+dpram #(7,8) oam_data_h (
+	.clock_a   (clk      ),
+	.address_a (oam_addr[7:1] ),
+	.wren_a    (ce_cpu && oam_wr && valid_oam_addr && oam_addr_in[0]),
+	.data_a    (oam_di   ),
+	.q_a       (oam_h_q  ),
+
+	.clock_b   (clk),
+	.address_b (Savestate_OAMRAMAddr[7:1]),
+	.wren_b    (Savestate_OAMRAMRWrEn & Savestate_OAMRAMAddr[0]),
+	.data_b    (Savestate_OAMRAMWriteData),
+	.q_b       (Savestate_OAMRAMReadDataH)
+);
+
+assign Savestate_OAMRAMReadData = Savestate_OAMRAMAddr[0] ? Savestate_OAMRAMReadDataH : Savestate_OAMRAMReadDataL;
 
 reg [7:0] sprite_x[0:SPRITES_PER_LINE-1];
 reg [3:0] sprite_y[0:SPRITES_PER_LINE-1];
 reg [5:0] sprite_no[0:SPRITES_PER_LINE-1];
 
 // OAM evaluation. Get the first 10 sprites on the current line.
-reg [5:0] spr_index; // 40 sprites
+reg [5:0] spr_index, spr_index_d; // 40 sprites
 reg [3:0] sprite_cnt;
-reg sprite_cycle;
+reg oam_eval_clk, oam_eval_clk_d, oam_eval_save;
 
-reg [7:0] spr_y;
+reg [7:0] sprite_x_attr, tile_index_y;
 wire [7:0] spr_height = size16 ? 8'd16 : 8'd8;
-wire sprite_on_line = (v_cnt + 8'd16 >= spr_y) && (v_cnt + 8'd16 < spr_y + spr_height);
+wire sprite_on_line = (v_cnt + 8'd16 >= tile_index_y) && (v_cnt + 8'd16 < tile_index_y + spr_height);
+wire sprite_save = oam_eval_clk_d & oam_eval_en & sprite_on_line;
 
 assign oam_eval_end = (spr_index == 6'd40);
 
@@ -117,8 +157,8 @@ always @(posedge clk) begin
 		if (oam_eval_reset | ~lcd_on) begin
 			sprite_cnt <= 0;
 			spr_index <= ~lcd_on ? 6'd1 : 6'd0;
-			sprite_cycle <= 0;
-			oam_spr_addr <= 0;
+			oam_eval_clk <= 0;
+			oam_eval_clk_d <= 0;
 			oam_eval_en <= oam_eval_reset ? 1'b1 : 1'b0; // OAM evaluation does not run on the first line after enabling the lcd
 			for (spr_i=0; spr_i < SPRITES_PER_LINE; spr_i=spr_i+1) begin
 				sprite_x[spr_i] <= 8'hFF;
@@ -127,24 +167,19 @@ always @(posedge clk) begin
 		end else begin
 
 			if (~oam_eval_end) begin
-				if (sprite_cycle) spr_index <= spr_index + 1'b1;
-
-				if (oam_eval_en && sprite_cnt < SPRITES_PER_LINE) begin
-					if (~sprite_cycle) begin
-						spr_y <= oam_do;
-						oam_spr_addr <= {spr_index,2'b01};
-					end else begin
-						if (sprite_on_line) begin
-							sprite_no[sprite_cnt] <= spr_index;
-							sprite_x[sprite_cnt] <= oam_do;
-							sprite_y[sprite_cnt] <= v_cnt[3:0] - spr_y[3:0];
-							sprite_cnt <= sprite_cnt + 1'b1;
-						end
-						oam_spr_addr <= {spr_index+1'b1, 2'b00};
-					end
+				if (oam_eval_clk) begin
+					spr_index <= spr_index + 1'b1;
+					spr_index_d <= spr_index;
 				end
+				oam_eval_clk <= ~oam_eval_clk;
+			end
 
-				sprite_cycle <= ~sprite_cycle;
+			oam_eval_clk_d <= oam_eval_clk;
+			if (sprite_save & (sprite_cnt < SPRITES_PER_LINE)) begin
+				sprite_no[sprite_cnt] <= spr_index_d;
+				sprite_x[sprite_cnt] <= sprite_x_attr;
+				sprite_y[sprite_cnt] <= v_cnt[3:0] - tile_index_y[3:0];
+				sprite_cnt <= sprite_cnt + 1'b1;
 			end
 
 			// Set X-position to FF after fetching the sprite to prevent fetching it again.
@@ -166,6 +201,18 @@ always @(posedge clk) begin
 	end
 end
 
+assign oam_eval_addr = spr_index;
+
+wire eval_save_xy = (~oam_eval_end & oam_eval_en & oam_eval_clk & ~dma_active);
+wire fetch_save_index_attr = (sprite_fetch & sprite_fetch_c1);
+always @(posedge clk) begin
+	if (ce) begin
+		if (eval_save_xy | fetch_save_index_attr) begin
+			tile_index_y <= oam_l_q;
+			sprite_x_attr <= oam_h_q;
+		end
+	end
+end
 
 // Sprite fetching
 assign sprite_x_matches = {
@@ -195,31 +242,56 @@ wire [3:0] active_sprite =
 		sprite_x_matches[8] ? 4'd8 :
 							  4'd9;
 assign sprite_index = active_sprite;
+assign sprite_attr = oam_eval_extra ? spr_extra_fetch_attr : sprite_x_attr;
 
-wire [5:0] oam_fetch_index = sprite_no[active_sprite];
+assign oam_fetch_addr = sprite_no[active_sprite];
 
-reg [3:0] row;
-reg [7:0] tile_no;
-reg oam_fetch_cycle;
-assign oam_fetch_addr = {oam_fetch_index, 1'b1, oam_fetch_cycle};
-assign sprite_addr = size16 ? {tile_no[7:1],row} : {tile_no,row[2:0]};
+assign fetch_row = sprite_attr[6] ? ~sprite_y[active_sprite] : sprite_y[active_sprite];
 
-always @(posedge clk) begin
-	if (ce) begin
-		if (sprite_fetch) begin
+assign sprite_addr = size16 ? {tile_index_y[7:1],fetch_row} : {tile_index_y,fetch_row[2:0]};
 
-			if (~oam_fetch_cycle) begin
-				tile_no <= oam_do;
-			end else begin
-				sprite_attr <= oam_do;
-				row <= oam_do[6] ? ~sprite_y[active_sprite] : sprite_y[active_sprite];
-			end
+// Extra sprites:
+// Sprite tile fetching during mode3 reduces the length of HBlank.
+// Simply adding more sprites will shorten HBlank even more which breaks timing.
+// Instead, this module will try to fetch tile data for extra sprites during mode2 if VRAM is idle.
+sprites_extra sprites_extra (
+	.clk            ( clk ),
+	.ce             ( ce  ),
 
-			oam_fetch_cycle <= ~oam_fetch_cycle;
-		end else begin
-			oam_fetch_cycle <= 0;
-		end
-	end
-end
+	.extra_spr_en   ( extra_spr_en ),
+
+	.v_cnt          ( v_cnt ),
+	.h_cnt          ( h_cnt ),
+
+	.oam_eval_clk   ( oam_eval_clk ),
+	.oam_eval_reset ( oam_eval_reset | ~lcd_on),
+	.oam_eval_end   ( oam_eval_end ),
+
+	.size16         ( size16 ),
+
+	.oam_index      ( spr_index ),
+	.sprite_cnt     ( sprite_cnt ),
+
+	.oam_l_q        ( oam_l_q ),
+	.oam_h_q        ( oam_h_q ),
+
+	.extra_wait     ( extra_wait ),
+	.oam_eval_extra ( oam_eval_extra ),
+	.oam_extra_addr ( oam_extra_addr ) ,
+
+	.spr_fetch_attr ( spr_extra_fetch_attr ),
+
+	.tile_fetch     ( extra_tile_fetch ),
+	.tile_data_in   ( tile_data_in ),
+	.tile_addr      ( extra_tile_addr ),
+
+	.spr_found      ( spr_extra_found ),
+	.spr_tile0      ( spr_extra_tile0 ),
+	.spr_tile1      ( spr_extra_tile1 ),
+	.spr_pal        ( spr_extra_pal ),
+	.spr_prio       ( spr_extra_prio ),
+	.spr_cgb_pal    ( spr_extra_cgb_pal ),
+	.spr_index      ( spr_extra_index )
+);
 
 endmodule
