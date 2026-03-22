@@ -1642,10 +1642,6 @@ begin
 				when others => null;
 			end case;
 
-			if apu_channel_enable_debug(k) = '0' then
-				wav_analog := (others => '0');
-			end if;
-
 			if ch_map(k) = '1' then
 				snd_right_in := snd_right_in + wav_analog;
 			end if;

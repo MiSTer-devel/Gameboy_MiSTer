@@ -270,13 +270,6 @@ localparam CONF_STR = {
 	"P3-;",
 	"P3o3,Super Game Boy + GBC,Off,On;",
 
-	"P4,Debug;",
-	"P4-;",
-	"P4O[60],Square 1,On,Off;",
-	"P4O[61],Square 2,On,Off;",
-	"P4O[62],Wave,On,Off;",
-	"P4O[63],Noise,On,Off;",
-
 	"-;",
 	"R0,Reset;",
 	"J1,A,B,Select,Start,FastForward,Savestates,Rewind;",
