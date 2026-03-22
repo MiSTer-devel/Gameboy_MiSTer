@@ -16,7 +16,7 @@ package pBus_savestates is
       upper       : integer range 0 to BUS_buswidth-1;
       lower       : integer range 0 to BUS_buswidth-1;
       size        : integer range 0 to (2**BUS_busadr)-1;
-      default     : std_logic_vector(BUS_buswidth-1 downto 0);
+      def     : std_logic_vector(BUS_buswidth-1 downto 0);
    end record;
   
 end package;
@@ -146,7 +146,7 @@ begin
 		Adr   => Reg.Adr,  
 		upper => Reg.upper,
 		lower => Reg.lower,
-		def   => Reg.default  
+		def   => Reg.def  
    )
    port map
    (

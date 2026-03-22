@@ -1,183 +1,152 @@
-//
-// timer.v
-//
-// Gameboy for the MIST board https://github.com/mist-devel
-// 
-// Copyright (c) 2015 Till Harbaum <till@harbaum.org> 
-// 
-// This source file is free software: you can redistribute it and/or modify 
-// it under the terms of the GNU General Public License as published 
-// by the Free Software Foundation, either version 3 of the License, or 
-// (at your option) any later version. 
-// 
-// This source file is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of 
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the 
-// GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License 
-// along with this program.  If not, see <http://www.gnu.org/licenses/>. 
-//
+// Implementation follows the gbdev pandocs
+// https://gbdev.io/pandocs/Timer_Obscure_Behaviour.html
+
 
 module timer (
-	input  reset,
-	input  clk_sys,
-	input  ce,    // 4 Mhz cpu clock
-	output reg irq,
+	input  		reset,
+	input  		clk_sys,
+	input  		ce,    // 4 MiHz / 8 MiHz cpu clock
+	input 		ce_4MHz,
+	input 		cpu_speed,
+	output		irq,
 	
-	// cpu register interface
-	input  cpu_sel,
-	input [1:0] cpu_addr,
-	input  cpu_wr,
-	input [7:0] cpu_di,
+	// CPU register interface
+	input  		 cpu_sel,
+	input  [1:0] cpu_addr,
+	input  		 cpu_wr,
+	input  [7:0] cpu_di,
 	output [7:0] cpu_do,
+	output 		 apu_framecount_en,
 	
-	// savestates              
+	// Save states              
 	input  [63:0] SaveStateBus_Din, 
 	input  [9:0]  SaveStateBus_Adr, 
 	input         SaveStateBus_wren,
 	input         SaveStateBus_rst, 
 	output [63:0] SaveStateBus_Dout
 );
+	assign cpu_do = 
+		(cpu_addr == 2'b00) ? div  : 
+		(cpu_addr == 2'b01) ? tima :
+		(cpu_addr == 2'b10) ? tma  :
+					{5'b11111, tac};	
 
-// savestates
-wire [46:0] SS_Timer;
-wire [46:0] SS_Timer_BACK;
+	// https://gbdev.io/pandocs/Timer_Obscure_Behaviour.html#timer-global-circuit
+	// Falling-edge of selected counter
+	assign apu_framecount_en = clk_sound_r && !clk_sound;
 
-eReg_SavestateV #(0, 6, 46, 0, 64'h0000000000000008) iREG_SAVESTATE_Timer (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_Timer_BACK, SS_Timer);  
+	reg clk_sound_r;
+	wire clk_sound = cpu_speed ? div[5] : div[4]; 
 
-// input: 4Mhz
-// clk_div[0] = 2Mhz
-// clk_div[1] = 1Mhz
-// clk_div[2] = 524khz
-// clk_div[3] = 262khz
-// clk_div[4] = 131khz
-// clk_div[5] = 65khz
-// clk_div[6] = 32khz
-// clk_div[7] = 16khz
-// clk_div[8] = 8khz
-// clk_div[9] = 4khz
+	// Use 4 MiHz clock to generate APU trigger to enforce alignment.
+	always @(posedge clk_sys) begin : CLK_SOUND_BLK
+		if (reset)
+			clk_sound_r <= 1'b0;
+		else if (ce_4MHz)
+			clk_sound_r <= clk_sound;
+	end
 
-wire resetdiv = cpu_sel && cpu_wr && (cpu_addr == 2'b00); //resetdiv also resets internal counter
+	// Save states
+	wire [46:0] SS_Timer;
+	wire [46:0] SS_Timer_BACK;
 
-reg [9:0] clk_div;
-reg clk_div_1_9;
-reg clk_div_1_3;
-reg clk_div_1_5;
-reg clk_div_1_7;
-always @(posedge clk_sys)
-	if (reset)
-		clk_div <= SS_Timer[9:0]; // 10'd8;
-	else if(resetdiv)
-		clk_div <= 10'd2;
-	else if (ce)
-		clk_div <= clk_div + 10'd1;
+	eReg_SavestateV #(0, 6, 46, 0, 64'h0000000000000008) iREG_SAVESTATE_Timer (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_Timer_BACK, SS_Timer);  
 
-reg [7:0] div;
-reg [7:0] tma;
-reg [7:0] tima;
-reg [2:0] tac;
-reg tima_overflow;
-reg tima_overflow_1;
-reg tima_overflow_2;
-reg tima_overflow_3;
-reg tima_overflow_4;
+	// Unused legacy bits: 8-9, 29, 39-41
+	assign {SS_Timer_BACK[37:30], SS_Timer_BACK[ 7: 0]} = clk_div;
+	assign SS_Timer_BACK[17:10] = tima;
+	assign SS_Timer_BACK[25:18] = tma;
+	assign SS_Timer_BACK[28:26] = tac;
+	assign SS_Timer_BACK[38] 	= clk_tac_r;
+	assign SS_Timer_BACK[46:42]	= tima_overflow_buffer;
 
-assign SS_Timer_BACK[ 9: 0] = clk_div;
-assign SS_Timer_BACK[17:10] = tima;
-assign SS_Timer_BACK[25:18] = tma;
-assign SS_Timer_BACK[28:26] = tac;
-assign SS_Timer_BACK[29]    = irq;
-assign SS_Timer_BACK[37:30] = div;
-assign SS_Timer_BACK[38]    = clk_div_1_9;
-assign SS_Timer_BACK[39]    = clk_div_1_3;
-assign SS_Timer_BACK[40]    = clk_div_1_5;
-assign SS_Timer_BACK[41]    = clk_div_1_7;
-assign SS_Timer_BACK[42]    = tima_overflow;
-assign SS_Timer_BACK[43]    = tima_overflow_1;
-assign SS_Timer_BACK[44]    = tima_overflow_2;
-assign SS_Timer_BACK[45]    = tima_overflow_3;
-assign SS_Timer_BACK[46]    = tima_overflow_4;
+	reg [15:0] clk_div;
+	wire [7:0] div = clk_div[15:8];
 
-always @(posedge clk_sys) begin
-	if(reset) begin
-		tima            <= SS_Timer[17:10]; // 0
-		tma             <= SS_Timer[25:18]; // 0
-		tac             <= SS_Timer[28:26]; // 0
-		irq             <= SS_Timer[29];    // 0
-		div             <= SS_Timer[37:30]; // 0
-		clk_div_1_9     <= SS_Timer[38];    // 0
-		clk_div_1_3     <= SS_Timer[39];    // 0
-		clk_div_1_5     <= SS_Timer[40];    // 0
-		clk_div_1_7     <= SS_Timer[41];    // 0
-		tima_overflow   <= SS_Timer[42];    // 0
-		tima_overflow_1 <= SS_Timer[43];    // 0
-		tima_overflow_2 <= SS_Timer[44];    // 0
-		tima_overflow_3 <= SS_Timer[45];    // 0
-		tima_overflow_4 <= SS_Timer[46];    // 0
-	end else if (ce) begin
-		irq           <= 1'b0;
+	always @(posedge clk_sys) begin : CLK_DIV_BLK
+		if (reset)
+			clk_div <= {SS_Timer[37:30], SS_Timer[7:0]}; // 16'd8;
+		else if(cpu_sel && cpu_wr && (cpu_addr == 2'b00)) // Writing any value to DIV register clears counter.
+			clk_div <= 16'd2; // For some reason this needs to be set to 2, rather than zero. This differs from sameboy.
+		else if (ce)
+			clk_div <= clk_div + 16'd1;
+	end
 
-		tima_overflow   <= 1'b0;
-		tima_overflow_1 <= tima_overflow;
-		tima_overflow_2 <= tima_overflow_1;
-		tima_overflow_3 <= tima_overflow_2;
-		tima_overflow_4 <= tima_overflow_3;
+	reg [7:0] tma;
 
-		if(clk_div[7:0] == 0)   // 16kHz
-			div <= div + 8'd1;
-
-		clk_div_1_9 <= clk_div[9];
-		clk_div_1_3 <= clk_div[3];
-		clk_div_1_5 <= clk_div[5];
-		clk_div_1_7 <= clk_div[7];
-
-		// timer enabled?
-		if(tac[2]) begin
-			// timer frequency, count up when uppermost clk_div bit switches from 1 to 0
-			if(((tac[1:0] == 2'b00) && (!clk_div[9] && clk_div_1_9)) ||     // 4 khz
-				((tac[1:0] == 2'b01) && (!clk_div[3] && clk_div_1_3)) ||     // 262 khz
-				((tac[1:0] == 2'b10) && (!clk_div[5] && clk_div_1_5)) ||     // 65 khz
-				((tac[1:0] == 2'b11) && (!clk_div[7] && clk_div_1_7))) begin // 16 khz
-
-				tima <= tima + 8'd1;
-				if(tima == 8'hff) begin
-					tima_overflow <= 1'b1;
-				end
-			end
-		end
-		
-		if (tima_overflow_3) begin // 1 cycle = 4 clock cycles after timer overflows
-			irq <= 1'b1;    // irq 
-			tima <= tma;    // reload timer
-		end
-		
-		if (tima_overflow_4) begin // delay 4 is required because cpu write takes place 1 clock cycle later(too late?)
-			if(cpu_sel && cpu_wr && cpu_addr == 2'b10) begin // writing tma when loading tima has instant effect
-				tima <= cpu_di;
-			end
-		end
-		
-		if(cpu_sel && cpu_wr) begin
-			case(cpu_addr)
-				2'b00:  div <= 8'h00;    // writing clears counter
-				2'b01:  begin
-					if (!tima_overflow_4) begin 
-						tima <= cpu_di;
-					end
-					tima_overflow_1 <= 1'b0; // prevent irq and loading of tima with write to tima at the same time
-				end
-				2'b10:  tma <= cpu_di;
-				2'b11:  tac <= cpu_di[2:0];
-			endcase
+	always @(posedge clk_sys) begin : TMA_BLK
+		if (reset)
+			tma <= SS_Timer[25:18]; // 0
+		else if (ce) begin
+			if (cpu_sel && cpu_wr && (cpu_addr == 2'b10))
+				tma <= cpu_di;
 		end
 	end
-end
 
-assign cpu_do = 
-	(cpu_addr == 2'b00)?div:
-	(cpu_addr == 2'b01)?tima:
-	(cpu_addr == 2'b10)?tma:
-	{5'b11111, tac};
-	
+	reg [2:0] tac;
+	// Disabling TAC can create a clock event to TIMA
+	wire clk_tac =  tac[2] &&  (
+						(tac[1:0] == 2'b00) ? clk_div[9]:
+						(tac[1:0] == 2'b01) ? clk_div[3]:
+						(tac[1:0] == 2'b10) ? clk_div[5]:
+											  clk_div[7]
+					);
+	reg  clk_tac_r;
+	always @(posedge clk_sys) begin : TAC_BLK
+		if (reset) begin
+			tac 	  <= SS_Timer[28:26]; // 0
+			clk_tac_r <= SS_Timer[38]; // 0
+		end else if (ce) begin
+			clk_tac_r <= clk_tac;
+			if (cpu_sel && cpu_wr && (cpu_addr == 2'b11))
+				tac <= cpu_di[2:0];
+		end
+	end
+
+	/* Overflow timing explanation (https://gbdev.io/pandocs/Timer_Obscure_Behaviour.html#timer-overflow-behaviour)
+	Here, the timer clock operates at 1/4 of the system clock frequency. That is, the timer aligns with a machine cycle.
+
+	Basic sequence of events with values at each cycle:
+	Clock tick -1: TIMA overflow occurs, i.e. {OVERFLOW_FLAG, TIMA} == (8'hff + 1)
+	Overflow cycle:
+		Clock tick 0: OVERFLOW_BUFFER[0] = 1, TIMA = 0, IRQ = 0,
+		Clock tick 1: OVERFLOW_BUFFER[1] = 1, TIMA = 0, IRQ = 0, 
+		Clock tick 2: OVERFLOW_BUFFER[2] = 1, TIMA = 0, IRQ = 0,
+		Clock tick 3: OVERFLOW_BUFFER[3] = 1, TIMA = 0, IRQ = 0,
+	Interrupt Cycle:
+		Clock tick 4: OVERFLOW_BUFFER[4] = 1, TIMA = 1?,  IRQ = 1,
+		Clock tick 5: OVERFLOW_BUFFER    = X, TIMA = TMA, IRQ = 0,
+
+	If TIMA is written to during the overflow cycle (ticks 0 to 3) the IRQ is prevented and the timer continues as normal.
+	If TMA is written at the same time TMA is loaded into TIMA (tick 5), the new value is also loaded into TIMA.
+	*/
+
+	reg [7:0] tima;
+	reg [4:0] tima_overflow_buffer;
+	assign irq = tima_overflow_buffer[4];
+	always @(posedge clk_sys) begin : TIMA_BLK
+		if(reset) begin
+			tima                 <= SS_Timer[17:10]; // 0
+			tima_overflow_buffer <= SS_Timer[46:42]; // 0
+		end else if (ce) begin			
+			tima_overflow_buffer <= {tima_overflow_buffer[3:0], 1'b0};
+
+			if(clk_tac_r && !clk_tac)
+				{tima_overflow_buffer[0], tima} <= tima + 1'b1;
+			
+			// IRQ asserted with clock tick 4 (beginning of interrupt cycle), TIMA write takes place 1 clock TICK later
+			if (irq) begin
+				tima <= tma;
+				if(cpu_sel && cpu_wr && cpu_addr == 2'b10) // Writing TMA when loading TIMA has instant effect
+					tima <= cpu_di;
+			end
+			
+			if(cpu_sel && cpu_wr && cpu_addr == 2'b01) begin
+				tima_overflow_buffer[4:1] <= 4'b0; // Writing to TIMA during overflow cycle prevents interrupt
+				
+				if (!irq) // Writes to TIMA during interrupt cycle are ignored.
+					tima <= cpu_di;
+			end
+		end
+	end		
 endmodule

@@ -269,7 +269,6 @@ localparam CONF_STR = {
 	"P3OR,Rewind Capture,Off,On;",
 	"P3-;",
 	"P3o3,Super Game Boy + GBC,Off,On;",
-    
 
 	"-;",
 	"R0,Reset;",

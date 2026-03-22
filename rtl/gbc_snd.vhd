@@ -1,8 +1,3 @@
--- Notes:
--- 	When the output DAC of each channel is disabled, the real voltage will drift
---  to 0 V at some unknown rate. Here, it is implemented as an immediate return to "0 V".
---  If this is found to not be accurate enough, an additional timer may be added.
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
@@ -14,9 +9,10 @@ use work.pReg_savestates.all;
 library work;
 entity gbc_snd is
 	port (
-        clk          : in std_logic;
-        ce           : in std_logic;
-        reset        : in std_logic;
+        clk          		 : in std_logic;
+        ce           		 : in std_logic;
+		apu_framecount_en	 : in std_logic;
+        reset        		 : in std_logic;
 
         is_gbc       : in std_logic;
         remove_pops  : in std_logic; -- 0: Accurate output, 1: Toggling DACs will not cause pops but some audio can be inaccurate.
@@ -56,10 +52,8 @@ architecture SYN of gbc_snd is
     subtype wav_t is std_logic_vector(3 downto 0);
     type wav_arr_t is array(0 to 31) of wav_t;
 
-    signal en_snd            : std_logic; -- Enable at base sound frequency (4.19MHz)
     signal en_snd2           : std_logic; -- Enable at clk/2
     signal en_snd4           : std_logic; -- Enable at clk/4
-    signal en_512            : std_logic; -- 512Hz enable 
 
     signal en_snden2         : std_logic; -- Enable at clk/2
     signal en_snden4         : std_logic; -- Enable at clk/4
@@ -219,23 +213,10 @@ begin
       	SaveStateBus_Dout <= wired_or;
    	end process;
 
-    en_snd2 <= en_snd and en_snden2;
-    en_snd4 <= en_snd and en_snden4;
+    en_snd2 <= ce and en_snden2;
+    en_snd4 <= ce and en_snden4;
 
-    process (clk)
-    begin
-        if rising_edge(clk) then
-           	if reset = '1' then
-				en_snd <= SS_Sound1(0); --'0';
-           	else
-				if ce = '1' then
-					en_snd <= not en_snd;
-				end if;
-           	end if;
-      	end if;
-    end process;
-   
-   SS_Sound1_BACK(         0) <= en_snd;
+   SS_Sound1_BACK(         0) <= '0';
    SS_Sound1_BACK(3 downto 1) <= std_logic_vector(to_unsigned(framecnt, 3));
    SS_Sound1_BACK(         4) <= en_len_r ;
    SS_Sound1_BACK(         5) <= en_snden2;
@@ -243,19 +224,16 @@ begin
    SS_Sound1_BACK(         7) <= en_len   ;
    SS_Sound1_BACK(         8) <= en_env   ;
    SS_Sound1_BACK(         9) <= en_sweep ;
-   SS_Sound1_BACK(        10) <= en_512   ;
+   SS_Sound1_BACK(        10) <= '0'   ;
    
 
     -- Calculate divided and frame sequencer clock enables
-    process (clk)
+    frame_sequencer : process (clk)
         variable clkcnt   : unsigned(1 downto 0);
-        variable cnt_512  : unsigned(12 downto 0);
-        variable temp_512 : unsigned(13 downto 0);
     begin
 		if rising_edge(clk) then
 			if reset = '1' then
 				clkcnt  := "00";
-				cnt_512 := (others => '0');
 				framecnt  <= to_integer(unsigned(SS_Sound1(3 downto 1))); -- 0;
 				en_len_r  <= SS_Sound1( 4);                               -- '0';
 				en_snden2 <= SS_Sound1( 5);                               -- '0';
@@ -263,10 +241,8 @@ begin
 				en_len    <= SS_Sound1( 7);                               -- '0';
 				en_env    <= SS_Sound1( 8);                               -- '0';
 				en_sweep  <= SS_Sound1( 9);                               -- '0';
-				en_512    <= SS_Sound1(10);                               -- '0';
 			elsif snd_enable = '0' then --only clock frame sequencer if sound is enabled, restart at 0 
 				clkcnt  := "00";
-				cnt_512 := (others => '0');
 				framecnt  <= 0;
 				en_len_r  <= '0';
 				en_snden2 <= '0';
@@ -274,57 +250,51 @@ begin
 				en_len    <= '0';
 				en_env    <= '0';
 				en_sweep  <= '0';
-				en_512    <= '0';
-			elsif ce = '1' then
-				-- Base clock divider
-				if en_snd = '1' then
+			else
+				-- Frame sequencer (length, envelope, sweep) clock enables
+				if ce = '1' then
+					en_len   <= '0';
+					en_env   <= '0';
+					en_sweep <= '0';
+					en_len_r <= en_len; -- For reg write quirks
+
+					if apu_framecount_en = '1' then
+						if framecnt = 0 or framecnt = 2 or framecnt = 4 or framecnt = 6 then
+							en_len   <= '1';
+						end if;
+						if framecnt = 2 or framecnt = 6 then
+							en_sweep <= '1';
+						end if;
+						if framecnt = 7 then
+							en_env <= '1';
+						end if;
+
+						if framecnt < 7 then
+							framecnt <= framecnt + 1;
+						else
+							framecnt <= 0;
+						end if;
+					end if;
+				end if;
+
+				if ce = '1' then
+					-- Base clock divider
 					clkcnt := clkcnt + 1;
 					if clkcnt(0) = '1' then
 						en_snden2 <= '1';
 					else
 						en_snden2 <= '0';
 					end if;
+					
 					if clkcnt = "11" then
 						en_snden4 <= '1';
 					else
 						en_snden4 <= '0';
 					end if;
 				end if;
-
-				-- Frame sequencer (length, envelope, sweep) clock enables
-				en_len   <= '0';
-				en_env   <= '0';
-				en_sweep <= '0';
-				if en_512 = '1' then
-					en_len_r <= not en_len_r;
-					if framecnt = 0 or framecnt = 2 or framecnt = 4 or framecnt = 6 then
-						en_len   <= '1';
-						en_len_r <= not en_len_r;
-					end if;
-					if framecnt = 2 or framecnt = 6 then
-						en_sweep <= '1';
-					end if;
-					if framecnt = 7 then
-						en_env <= '1';
-					end if;
-
-					if framecnt < 7 then
-						framecnt <= framecnt + 1;
-					else
-						framecnt <= 0;
-					end if;
-				end if;
-
-				--
-				en_512 <= '0';
-				if en_snd = '1' then
-					temp_512 := ('0' & cnt_512) + to_unsigned(1, temp_512'length);
-					cnt_512  := temp_512(temp_512'high - 1 downto temp_512'low);
-					en_512 <= temp_512(13);
-				end if;
 			end if;
 		end if;
-	end process;
+    end process;
    
 	SS_Sound1_BACK(13 downto 11) <= sq1_swper  ;
 	SS_Sound1_BACK(          14) <= sq1_swdir  ;
@@ -369,6 +339,19 @@ begin
 	SS_Sound3_BACK( 7 downto  0) <= ch_map;
 	SS_Sound3_BACK(15 downto  8) <= ch_vol;
 	SS_Sound3_BACK(22 downto 16) <= sq1_slen;
+
+	SS_Sound3_BACK(          23) <= sq1_playing;
+    SS_Sound3_BACK(34 downto 24) <= sq1_fr2;
+    SS_Sound3_BACK(38 downto 35) <= sq1_vol;
+    SS_Sound3_BACK(          39) <= sq2_playing;
+    SS_Sound3_BACK(43 downto 40) <= sq2_vol;
+    SS_Sound3_BACK(45 downto 44) <= "00"; -- unused
+    SS_Sound3_BACK(49 downto 46) <= wav_wav_r;
+    SS_Sound3_BACK(          50) <= wav_playing;
+    SS_Sound3_BACK(55 downto 51) <= std_logic_vector(wav_index);
+    SS_Sound3_BACK(57 downto 56) <= std_logic_vector(wav_access);
+    SS_Sound3_BACK(          58) <= noi_playing;
+    SS_Sound3_BACK(62 downto 59) <= noi_vol;
 	
 	wav_ram_savestate : for k in 0 to 15 generate
 		SS_Wave1_BACK(4*(k+1) - 1  downto  4*k) <= wav_ram(k);
@@ -819,19 +802,6 @@ begin
 
     end process read_registers;
     
-    SS_Sound3_BACK(          23) <= sq1_playing;
-    SS_Sound3_BACK(34 downto 24) <= sq1_fr2;
-    SS_Sound3_BACK(38 downto 35) <= sq1_vol;
-    SS_Sound3_BACK(          39) <= sq2_playing;
-    SS_Sound3_BACK(43 downto 40) <= sq2_vol;
-    SS_Sound3_BACK(45 downto 44) <= "00"; -- unused
-    SS_Sound3_BACK(49 downto 46) <= wav_wav_r;
-    SS_Sound3_BACK(          50) <= wav_playing;
-    SS_Sound3_BACK(55 downto 51) <= std_logic_vector(wav_index);
-    SS_Sound3_BACK(57 downto 56) <= std_logic_vector(wav_access);
-    SS_Sound3_BACK(          58) <= noi_playing;
-    SS_Sound3_BACK(62 downto 59) <= noi_vol;
-
 	square1 : process(clk, sq1_vol, sq1_svol, sq1_envsgn, sq1_out, sq1_suppressed)
 		constant duty_0          : std_logic_vector(0 to 7) := "00000001";
 		constant duty_1          : std_logic_vector(0 to 7) := "10000001";
