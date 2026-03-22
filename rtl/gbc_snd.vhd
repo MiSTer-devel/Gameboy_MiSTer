@@ -255,12 +255,11 @@ begin
 					en_len   <= '0';
 					en_env   <= '0';
 					en_sweep <= '0';
-					en_len_r <= '1';
+					en_len_r <= en_len; -- For reg write quirks
+
 					if apu_framecount_en = '1' then
-						-- en_len_r <= not en_len_r;
 						if framecnt = 0 or framecnt = 2 or framecnt = 4 or framecnt = 6 then
 							en_len   <= '1';
-							en_len_r <= '0';
 						end if;
 						if framecnt = 2 or framecnt = 6 then
 							en_sweep <= '1';
