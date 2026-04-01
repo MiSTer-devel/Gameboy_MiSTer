@@ -6,6 +6,7 @@ module cart_top (
 	input         ce_cpu2x,
 	input         speed,
 	input         megaduck,
+	input         duck_md0_mode,
 	input   [2:0] mapper_sel,
 
 	input  [14:0] cart_addr,
@@ -129,6 +130,7 @@ mappers mappers (
 	.mani161 ( mani161 ),
 
 	.megaduck ( megaduck_en ),
+	.duck_md0_mode ( duck_md0_mode ),
 
 	.isGBC_game ( isGBC_game ),
 
@@ -152,7 +154,7 @@ mappers mappers (
 	.savestate_data2  ( SS_Ext2        ),
 	.savestate_back2  ( SS_Ext2_BACK   ),
 
-	.has_ram  ( |cart_ram_size ),
+	.has_ram  ( |ram_size ),
 	.ram_mask ( ram_mask ),
 	.rom_mask ( rom_mask ),
 
@@ -198,10 +200,10 @@ reg [15:0] cart_logo_data[0:7];
 
 // RAM size
 wire [3:0] ram_mask =                  // 0 - no ram
-	   (cart_ram_size == 1)?4'b0000:   // 1 - 2k, 1 bank
-	   (cart_ram_size == 2)?4'b0000:   // 2 - 8k, 1 bank
-	   (cart_ram_size == 3)?4'b0011:   // 3 - 32k, 4 banks
-	   (cart_ram_size == 5)?4'b0111:   // 5 - 64k, 8 banks
+	   (ram_size == 1)?4'b0000:   // 1 - 2k, 1 bank
+	   (ram_size == 2)?4'b0000:   // 2 - 8k, 1 bank
+	   (ram_size == 3)?4'b0011:   // 3 - 32k, 4 banks
+	   (ram_size == 5)?4'b0111:   // 5 - 64k, 8 banks
 	   4'b1111;                        // 4 - 128k 16 banks
 
 // ROM size
@@ -228,13 +230,18 @@ wire mbc1 = (mapper_sel_r == 3'd3) || (cart_mbc_type == 1) || (cart_mbc_type == 
 wire mbc2 = (cart_mbc_type == 5) || (cart_mbc_type == 6);
 //wire mmm01 = (cart_mbc_type == 11) || (cart_mbc_type == 12) || (cart_mbc_type == 13) || (cart_mbc_type == 14);
 wire mbc3 = (mapper_sel_r == 3'd4) || (cart_mbc_type == 15) || (cart_mbc_type == 16) || (cart_mbc_type == 17) || (cart_mbc_type == 18) || (cart_mbc_type == 19);
-wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (cart_ram_size == 5) );
+wire mbc30 = mbc3 && ( (cart_rom_size == 7) || (ram_size == 5) );
 //wire mbc4 = (cart_mbc_type == 21) || (cart_mbc_type == 22) || (cart_mbc_type == 23);
 wire mbc5 = (cart_mbc_type == 25) || (cart_mbc_type == 26) || (cart_mbc_type == 27) || (cart_mbc_type == 28) || (cart_mbc_type == 29) || (cart_mbc_type == 30);
 wire mbc6 = (cart_mbc_type == 32);
 wire mbc7 = (cart_mbc_type == 34);
 wire rocket = (cart_mbc_type == 151) || (cart_mbc_type == 153);
-wire megaduck_en = (cart_mbc_type == 250); // Use a wire to ensure enable is load while loading
+wire megaduck_en = (cart_mbc_type == 250); // Use a wire to ensure enable is low while loading
+wire duck_md0_cart = megaduck_en && duck_md0_mode;
+
+// MD0 system ROM/laptop carts expose the 32KB external memory cart.
+assign ram_size = duck_md0_cart ? 8'd3 : cart_ram_size;
+
 wire gb_camera = (cart_mbc_type == 252);
 wire tama = (cart_mbc_type == 253);
 
@@ -362,8 +369,6 @@ always @(posedge clk_sys) begin
 	end
 end
 
-assign ram_size = cart_ram_size;
-
 reg cart_ready_r = 0;
 reg ioctl_wait_r;
 always @(posedge clk_sys) begin
@@ -413,13 +418,13 @@ wire [7:0] cram_di = sleep_savestate ? Savestate_CRAMWriteData : mbc_cram_wr ? m
 // RAM size
 assign ram_mask_file =              // 0 - no ram
 		(mbc2 || mbc7 || tama)?8'h01:       // mbc2 512x4bits, mbc7 256 bytes EEPROM, TAMA 32 bytes
-	   (cart_ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
-	   (cart_ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
-	   (cart_ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
-	   (cart_ram_size == 5)?8'h7F:  // 5 - 64k, 8 banks	 sd_lba[6:0]
+	   (ram_size == 1)?8'h03:  // 1 - 2k, 1 bank		 sd_lba[1:0]
+	   (ram_size == 2)?8'h0F:  // 2 - 8k, 1 bank		 sd_lba[3:0]
+	   (ram_size == 3)?8'h3F:  // 3 - 32k, 4 banks	 sd_lba[5:0]
+	   (ram_size == 5)?8'h7F:  // 5 - 64k, 8 banks	 sd_lba[6:0]
 		8'hFF;                      // 4 - 128k 16 banks  sd_lba[7:0] 1111
 
-assign has_save = mbc_battery && (cart_ram_size > 0 || mbc2 || mbc7 || tama);
+assign has_save = mbc_battery && (|ram_size || mbc2 || mbc7 || tama);
 
 // Up to 8kb * 16banks of Cart Ram (128kb)
 dpram #(16) cram_l (

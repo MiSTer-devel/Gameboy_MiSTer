@@ -25,6 +25,7 @@ module mappers(
 	input         mani161,
 
 	input         megaduck,
+	input         duck_md0_mode,
 
 	input         isGBC_game,
 
@@ -571,6 +572,7 @@ sachen map_sachen (
 
 megaduck map_megaduck (
 	.enable           ( megaduck ),
+	.duck_md0_mode    ( duck_md0_mode ),
 
 	.clk_sys          ( clk_sys ),
 	.ce_cpu           ( ce ),
