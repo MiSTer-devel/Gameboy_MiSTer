@@ -8,7 +8,7 @@ _This is a port of [Gameboy for MiST](https://github.com/mist-devel/gameboy)_
 ## Features
 * Original Gameboy & Gameboy Color Support
 * Super Gameboy Support - Borders, Palettes and Multiplayer
-* MegaDuck Support
+* MegaDuck Handheld & Laptop Support
 * Custom Borders
 * SaveStates
 * Fastforward 

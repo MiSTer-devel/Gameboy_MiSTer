@@ -204,7 +204,7 @@ assign AUDIO_MIX = status[8:7];
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXXX
+// XXXXXXXXXXX XXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXXXXX
 
 `include "build_id.v" 
 localparam CONF_STR = {
@@ -212,6 +212,7 @@ localparam CONF_STR = {
 	"FS1,GBCGB BIN,Load ROM;",
 	"OEF,System,Auto,Gameboy,Gameboy Color,MegaDuck;",
 	"D7o79,Mapper,Auto,WisdomTree,Mani161,MBC1,MBC3;",
+	"d7o[50:48],Mapper,Auto,MD0,MD1,MD2;",
 	"-;",
 	"ONO,Super Game Boy,Off,Palette,On;",
 	"d5FC2,SGB,Load SGB border;",
@@ -262,6 +263,7 @@ localparam CONF_STR = {
 	"P3O6,Link Port,Disabled,Enabled;",
 	"P3O[45],WorkBoy Keyboard,Off,On;",
 	"P3O[46],iG Keyboard/Mouse,Off,On;",
+	"d7P3O[47],MegaDuck Laptop,Off,On;",
 	"P3o6,Rumble,On,Off;",
 	"P3-;",
 	"P3OP,FastForward Sound,On,Off;",
@@ -510,6 +512,10 @@ wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
 wire rumbling;
 wire [2:0] mapper_sel = status[41:39];
+wire [2:0] duck_mapper_sel = status[50:48];
+// The existing MegaDuck mapper path already handles MD1/MD2. Only MD0 needs
+// an explicit cart-side mode select.
+wire duck_md0_mode = megaduck && (duck_mapper_sel == 3'd1);
 
 assign joy0_rumble = {8'd0, ((rumbling & ~status[38]) ? 8'd128 : 8'd0)};
 
@@ -528,6 +534,7 @@ cart_top cart (
 	.ce_cpu2x    ( ce_cpu2x   ),
 	.speed       ( speed      ),
 	.megaduck    ( megaduck   ),
+	.duck_md0_mode ( duck_md0_mode ),
 	.mapper_sel  ( mapper_sel ),
 
 	.cart_addr   ( cart_addr  ),
@@ -1059,9 +1066,12 @@ wire ser_clk_in;
 wire ser_clk_out;
 wire workboy_ena = status[45];
 wire ig_kb_ena   = status[46];
-wire serial_ena  = status[6] & ~workboy_ena & ~ig_kb_ena;
+wire duck_laptop_ena = status[47] & megaduck;
+wire serial_ena  = status[6] & ~workboy_ena & ~ig_kb_ena & ~duck_laptop_ena;
 wire workboy_data_out;
 wire ig_kb_data_out;
+wire duck_laptop_data_out;
+wire duck_laptop_clk_out;
 
 workboy workboy
 (
@@ -1084,12 +1094,27 @@ ig_kb ig_kb
 	.serial_data_out(ig_kb_data_out)
 );
 
-assign ser_data_in = ig_kb_ena   ? ig_kb_data_out   :
+megaduck_laptop megaduck_laptop
+(
+	.clk_sys(clk_sys),
+	.reset(reset | ~duck_laptop_ena),
+	.ce_32k(ce_32k),
+	.ps2_key(ps2_key),
+	.rtc_bcd(RTC_bcd),
+	.serial_clk_in(ser_clk_out),
+	.serial_data_in(ser_data_out),
+	.serial_clk_out(duck_laptop_clk_out),
+	.serial_data_out(duck_laptop_data_out)
+);
+
+assign ser_data_in = duck_laptop_ena ? duck_laptop_data_out :
+                     ig_kb_ena   ? ig_kb_data_out   :
                      workboy_ena ? workboy_data_out  :
                      serial_ena  ? USER_IN[2]        : 1'b1;
 assign USER_OUT[1] = serial_ena ? ser_data_out : 1'b1;
 
-assign ser_clk_in = serial_ena ? USER_IN[0] : 1'b1;
+assign ser_clk_in = duck_laptop_ena ? duck_laptop_clk_out :
+                    serial_ena ? USER_IN[0] : 1'b1;
 assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
 
 
