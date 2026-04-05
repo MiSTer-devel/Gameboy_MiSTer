@@ -72,6 +72,7 @@ reg reg_start;
 reg cram_wr_r;
 reg ram_io;
 reg prev_cram_rd;
+reg prev_cart_wr;
 
 reg [6:0] rtc_seconds;
 reg [14:0] rtc_subseconds;
@@ -107,7 +108,8 @@ assign savestate_back[   34] = reg_start;
 assign savestate_back[   35] = cram_wr_r;
 assign savestate_back[   36] = ram_io;
 assign savestate_back[   37] = prev_cram_rd;
-assign savestate_back[63:38] = 0;
+assign savestate_back[   38] = prev_cart_wr;
+assign savestate_back[63:39] = 0;
 
 always @(posedge clk_sys) begin
 	if(savestate_load & enable) begin
@@ -123,6 +125,7 @@ always @(posedge clk_sys) begin
 		cram_wr_r    <= savestate_data[   35]; //1'd0;
 		ram_io       <= savestate_data[   36]; //1'd0;
 		prev_cram_rd <= savestate_data[   37]; //1'd0;
+		prev_cart_wr <= savestate_data[   38]; //1'd0;
 	end else if(~enable) begin
 		rom_bank_reg <= 5'd0;
 		unlocked     <= 1'd0;
@@ -136,27 +139,31 @@ always @(posedge clk_sys) begin
 		cram_wr_r    <= 1'd0;
 		ram_io       <= 1'd0;
 		prev_cram_rd <= 1'd0;
+		prev_cart_wr <= 1'd0;
 	end else begin
 
-		if (ce_cpu & cart_wr & ~nCS & ~cart_addr[14]) begin // $A000-BFFF
-			if (cart_addr[0]) begin
-				reg_index <= cart_di[3:0]; // Register index
-				if (cart_di[3:0] == 4'hA) begin
-					unlocked <= 1'b1;
+		if (ce_cpu) begin
+			prev_cart_wr <= cart_wr;
+			if (prev_cart_wr & ~cart_wr & ~nCS & ~cart_addr[14]) begin // $A000-BFFF
+				if (cart_addr[0]) begin
+					reg_index <= cart_di[3:0]; // Register index
+					if (cart_di[3:0] == 4'hA) begin
+						unlocked <= 1'b1;
+					end
+				end else if (unlocked) begin
+					case (reg_index)
+						4'd0: rom_bank_reg[3:0] <= cart_di[3:0];
+						4'd1: rom_bank_reg[4]   <= cart_di[0];
+						4'd4: reg_data_in[3:0]  <= cart_di[3:0];
+						4'd5: reg_data_in[7:4]  <= cart_di[3:0];
+						4'd6: { rtc_sel, ram_read, reg_addr[4] } <= cart_di[3:0];
+						4'd7:  begin
+								reg_addr[3:0] <= cart_di[3:0];
+								reg_start <= 1'b1;
+							  end
+						default ;
+					endcase
 				end
-			end else if (unlocked) begin
-				case (reg_index)
-					4'd0: rom_bank_reg[3:0] <= cart_di[3:0];
-					4'd1: rom_bank_reg[4]   <= cart_di[0];
-					4'd4: reg_data_in[3:0]  <= cart_di[3:0];
-					4'd5: reg_data_in[7:4]  <= cart_di[3:0];
-					4'd6: { rtc_sel, ram_read, reg_addr[4] } <= cart_di[3:0];
-					4'd7:  begin
-							reg_addr[3:0] <= cart_di[3:0];
-							reg_start <= 1'b1;
-						  end
-					default ;
-				endcase
 			end
 		end
 

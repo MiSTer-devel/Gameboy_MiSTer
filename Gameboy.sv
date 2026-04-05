@@ -360,7 +360,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
-	.ioctl_wait(ioctl_wait),
+	.ioctl_wait(ioctl_wait | save_wait),
 	.ioctl_index(filetype),
 	
 	.sd_lba('{sd_lba}),
@@ -417,6 +417,7 @@ wire cart_wr;
 wire cart_oe;
 wire [7:0] cart_di, cart_do;
 wire nCS; // WRAM or Cart RAM CS
+wire sdram_rd;
 
 wire cart_download = ioctl_download && (filetype[5:0] == 6'h01 || filetype == 8'h80);
 wire md_download = ioctl_download && (filetype == 8'h81);
@@ -461,52 +462,82 @@ end
 
 ////////////////////////////////////////////////////////////////////////////////
 
-wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc_addr[0], ~mbc_addr[0]};
+localparam CARTRAM_BANK = 2'b01;
+
+//wire  [1:0] sdram_ds = cart_download ? 2'b11 : {mbc_addr[0], ~mbc_addr[0]};
 wire [15:0] sdram_do;
-wire [15:0] sdram_di = cart_download ? ioctl_dout : 16'd0;
-wire [23:0] sdram_addr = cart_download? ioctl_addr[24:1]: {2'b00, mbc_addr[22:1]};
-wire sdram_oe = ~cart_download & cart_rd & ~cram_rd;
-wire sdram_we = cart_download & dn_write;
-wire sdram_refresh_force;
-wire sdram_autorefresh = !ff_on;
+wire [15:0] sdram_di = cart_download ? ioctl_dout :
+						savestate_ovr ? Savestate_CRAMWriteData :
+						cart_di;
 
-assign SDRAM_CKE = 1;
+wire [24:0] sdram_addr = cart_download ? ioctl_addr[24:0] :
+						(savestate_ovr | is_cram_addr) ? { CARTRAM_BANK, 6'd0, cram_addr } :
+						{2'b00, mbc_addr[22:0]};
 
-sdram sdram (
-   // interface to the MT48LC16M16 chip
-   .sd_data        ( SDRAM_DQ                  ),
-   .sd_addr        ( SDRAM_A                   ),
-   .sd_dqm         ( {SDRAM_DQMH, SDRAM_DQML}  ),
-   .sd_cs          ( SDRAM_nCS                 ),
-   .sd_ba          ( SDRAM_BA                  ),
-   .sd_we          ( SDRAM_nWE                 ),
-   .sd_ras         ( SDRAM_nRAS                ),
-   .sd_cas         ( SDRAM_nCAS                ),
-   .sd_clk         ( SDRAM_CLK                 ),
+wire sdram_oe = ~cart_download & (savestate_ovr ? Savestate_CRAMRdEn : sdram_rd);
+wire sdram_we = (cart_download & dn_write) | cram_wr;
+wire sdram_pause_refresh;
+wire sdram_busy;
 
-    // system interface
-   .clk            ( clk_ram                   ),
-   .sync           ( ce_cpu2x                  ),
-   .init           ( ~pll_locked               ),
+wire [15:0] save_dout;
 
-   // cpu interface
-   .din            ( sdram_di                  ),
-   .addr           ( sdram_addr                ),
-   .ds             ( sdram_ds                  ),
-   .we             ( sdram_we                  ),
-   .oe             ( sdram_oe                  ),
-   .autorefresh    ( sdram_autorefresh         ),
-   .refresh        ( sdram_refresh_force       ),
-   .dout           ( sdram_do                  )
+assign Savestate_CRAMReadData = bram_save ? Savestate_CRAM_Q : sdram_do;
+
+sdram sdram
+(
+	.SDRAM_DQ(SDRAM_DQ),
+	.SDRAM_A(SDRAM_A),
+	.SDRAM_DQML(SDRAM_DQML),
+	.SDRAM_DQMH(SDRAM_DQMH),
+	.SDRAM_BA(SDRAM_BA),
+	.SDRAM_nCS(SDRAM_nCS),
+	.SDRAM_nWE(SDRAM_nWE),
+	.SDRAM_nRAS(SDRAM_nRAS),
+	.SDRAM_nCAS(SDRAM_nCAS),
+	.SDRAM_CLK(SDRAM_CLK),
+	.SDRAM_CKE(SDRAM_CKE),
+
+	// system interface
+	.clk        ( clk_ram           ),
+	.init       (0), //~clock_locked),
+
+	// ROM + Cart RAM
+	.ch0_addr   ( sdram_addr  ),
+	.ch0_wr     ( sdram_we ),
+	.ch0_din    ( sdram_di  ),
+	.ch0_rd     ( sdram_oe ),
+	.ch0_dout   ( sdram_do   ),
+	.ch0_word   ( cart_download | savestate_ovr),
+	.ch0_busy   ( sdram_busy),
+
+	// HPS Cart RAM Save/Load
+	.ch1_addr   ( { CARTRAM_BANK, 6'd0, save_addr, 1'b0 } ),
+	.ch1_wr     ( save_wr ),
+	.ch1_din    ( bk_data  ),
+	.ch1_rd     ( save_rd ),
+	.ch1_dout   ( save_dout ),
+	.ch1_word   ( 1'b1 ),
+	.ch1_busy   ( save_busy ),
+
+	.ch2_addr   ( 0 ),
+	.ch2_wr     ( 0 ),
+	.ch2_din    ( 0 ),
+	.ch2_rd     ( 0 ),
+	.ch2_dout   (   ),
+	.ch2_busy   (   ),
+
+	.refresh    ( sdram_pause_refresh )
 );
 
 wire dn_write;
 wire cart_ready;
-wire cram_rd, cram_wr;
-wire [7:0] rom_do = (mbc_addr[0]) ? sdram_do[15:8] : sdram_do[7:0];
+wire cram_rd, cram_wr, cram_bram_wr, is_cram_addr;
+wire [16:0] cram_addr;
+wire [15:0] Savestate_CRAM_Q;
+
 wire [7:0] ram_mask_file, cart_ram_size;
 wire isGBC_game, isSGB_game;
-wire cart_has_save;
+wire cart_has_save, bram_save;
 wire [31:0] RTC_timestampOut;
 wire [47:0] RTC_savedtimeOut;
 wire RTC_inuse;
@@ -552,14 +583,18 @@ cart_top cart (
 	.dn_write    ( dn_write    ),
 	.cart_ready  ( cart_ready  ),
 
+	.is_cram_addr( is_cram_addr),
 	.cram_rd     ( cram_rd     ),
 	.cram_wr     ( cram_wr     ),
+	.cram_bram_wr( cram_bram_wr ),
+	.cram_addr   ( cram_addr   ),
 
 	.cart_download ( cart_download ),
 
 	.ram_mask_file ( ram_mask_file ),
 	.ram_size      ( cart_ram_size ),
 	.has_save      ( cart_has_save ),
+	.bram_save     ( bram_save   ),
 
 	.isGBC_game    ( isGBC_game    ),
 	.isSGB_game    ( isSGB_game    ),
@@ -577,7 +612,7 @@ cart_top cart (
 	.bk_q           ( bk_q           ),
 	.img_size       ( img_size       ),
 
-	.rom_di         ( rom_do       ),
+	.rom_di         ( sdram_do[7:0]  ),
 
 	.joystick_analog_0 ( joystick_analog_0 ),
 
@@ -593,12 +628,12 @@ cart_top cart (
 	.SaveStateExt_rst ( SaveStateBus_rst  ),
 	.SaveStateExt_Dout( SaveStateBus_Dout ),
 	.savestate_load   ( savestate_load    ),
-	.sleep_savestate  ( sleep_savestate   ),
+	.savestate_ovr    ( savestate_ovr     ),
 
 	.Savestate_CRAMAddr     ( Savestate_CRAMAddr      ),
 	.Savestate_CRAMRWrEn    ( Savestate_CRAMRWrEn     ),
 	.Savestate_CRAMWriteData( Savestate_CRAMWriteData ),
-	.Savestate_CRAMReadData ( Savestate_CRAMReadData  ),
+	.Savestate_CRAM_Q       ( Savestate_CRAM_Q        ),
 	
 	.rumbling (rumbling)
 );
@@ -672,6 +707,8 @@ gb gb (
 
 	.nCS         ( nCS        ),
 
+	.sdram_rd    ( sdram_rd   ),
+
 	.boot_gba_en    ( boot_gba_available && status[37] ),
 	.fast_boot_en   ( fastboot_available && status[42] ),
 
@@ -719,6 +756,7 @@ gb gb (
 	.load_state      (ss_load),
 	.savestate_number(ss_slot),
 	.sleep_savestate (sleep_savestate),
+	.savestate_ovr   (savestate_ovr),
 	
 	.SaveStateExt_Din (SaveStateBus_Din),
 	.SaveStateExt_Adr (SaveStateBus_Adr),
@@ -728,6 +766,7 @@ gb gb (
 	.SaveStateExt_load(savestate_load),
 	
 	.Savestate_CRAMAddr     (Savestate_CRAMAddr),
+	.Savestate_CRAMRdEn     (Savestate_CRAMRdEn),
 	.Savestate_CRAMRWrEn    (Savestate_CRAMRWrEn),
 	.Savestate_CRAMWriteData(Savestate_CRAMWriteData),
 	.Savestate_CRAMReadData (Savestate_CRAMReadData),
@@ -740,6 +779,8 @@ gb gb (
 	.SAVE_out_be(ss_be),            
 	.SAVE_out_done(ss_ack),            // should be one cycle high when write is done or read value is valid
 	
+	.savestate_sdram_busy(sdram_busy),
+
 	.rewind_on(status[27]),
 	.rewind_active(status[27] & joystick_0[10])
 );
@@ -901,9 +942,8 @@ wire ce_cpu, ce_cpu_n, ce_cpu2x;
 wire cart_act = cart_wr | cart_rd;
 
 wire fastforward = joystick_0[8] && !ioctl_download && !OSD_STATUS;
-wire ff_on;
 
-wire sleep_savestate;
+wire sleep_savestate, savestate_ovr;
 
 reg paused;
 always_ff @(posedge clk_sys) begin
@@ -916,12 +956,13 @@ speedcontrol speedcontrol
 	.pause       (paused),
 	.speedup     (fast_forward),
 	.cart_act    (cart_act),
+	.save_act    (bk_state),
 	.DMA_on      (DMA_on),
 	.ce          (ce_cpu),
 	.ce_n        (ce_cpu_n),
 	.ce_2x       (ce_cpu2x),
-	.refresh     (sdram_refresh_force),
-	.ff_on       (ff_on)
+	.refresh     (sdram_pause_refresh),
+	.ff_on       ()
 );
 
 ///////////////////////////// Fast Forward Latch /////////////////////////////////
@@ -966,9 +1007,10 @@ wire [63:0] SaveStateBus_Dout;
 wire        savestate_load;
 
 wire [19:0] Savestate_CRAMAddr;     
+wire        Savestate_CRAMRdEn;
 wire        Savestate_CRAMRWrEn;    
-wire [7:0]  Savestate_CRAMWriteData;
-wire [7:0]  Savestate_CRAMReadData;
+wire [15:0] Savestate_CRAMWriteData;
+wire [15:0] Savestate_CRAMReadData;
 	
 wire [63:0] ss_dout, ss_din;
 wire [27:2] ss_addr;
@@ -1121,18 +1163,7 @@ assign USER_OUT[0] = (serial_ena & sc_int_clock_out) ? ser_clk_out : 1'b1;
 
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 
-wire [16:0] bk_addr = {sd_lba[7:0],sd_buff_addr};
-wire bk_wr = (sd_lba[7:0] > ram_mask_file) ? 1'b0 : sd_buff_wr & sd_ack; // only restore data amount of saveram, don't save on RTC data
-wire bk_rtc_wr = (sd_lba[7:0] > ram_mask_file) & sd_buff_wr & sd_ack;
-wire [15:0] bk_data = sd_buff_dout;
-wire [15:0] bk_q;
-assign sd_buff_din = (sd_lba[7:0] <= ram_mask_file) ? bk_q :  // normal saveram data or RTC data
-					 (sd_buff_addr == 8'd0) ? RTC_timestampOut[15:0]  :
-					 (sd_buff_addr == 8'd1) ? RTC_timestampOut[31:16] :
-					 (sd_buff_addr == 8'd2) ? RTC_savedtimeOut[15:0]  :
-					 (sd_buff_addr == 8'd3) ? RTC_savedtimeOut[31:16] :
-					 (sd_buff_addr == 8'd4) ? RTC_savedtimeOut[47:32] :
-					 16'hFFFF;
+
 
 
 
@@ -1156,7 +1187,7 @@ always @(posedge clk_sys) begin
 	else if (bk_state)
 		new_load <= 1'b0;
 
-	if (cram_wr & ~OSD_STATUS & sav_supported)
+	if ((cram_wr | cram_bram_wr) & ~OSD_STATUS & sav_supported)
 		sav_pending <= 1'b1;
 	else if (bk_state)
 		sav_pending <= 1'b0;
@@ -1208,6 +1239,48 @@ always @(posedge clk_sys) begin
 			end
 		end
 	end
+end
+
+wire [15:0] bk_addr = {sd_lba[7:0],sd_buff_addr};
+wire bk_addr_end = (sd_lba[7:0] > ram_mask_file);
+wire bk_wr = bk_addr_end ? 1'b0 : sd_buff_wr & sd_ack; // only restore data amount of saveram, don't save on RTC data
+wire bk_rtc_wr = bk_addr_end & sd_buff_wr & sd_ack;
+wire [15:0] bk_data = sd_buff_dout;
+wire [15:0] bk_q;
+assign sd_buff_din = (sd_lba[7:0] <= ram_mask_file) ? ( bram_save ? bk_q : save_dout ) :  // normal saveram data or RTC data
+					 (sd_buff_addr == 8'd0) ? RTC_timestampOut[15:0]  :
+					 (sd_buff_addr == 8'd1) ? RTC_timestampOut[31:16] :
+					 (sd_buff_addr == 8'd2) ? RTC_savedtimeOut[15:0]  :
+					 (sd_buff_addr == 8'd3) ? RTC_savedtimeOut[31:16] :
+					 (sd_buff_addr == 8'd4) ? RTC_savedtimeOut[47:32] :
+					 16'hFFFF;
+
+
+wire save_busy;
+reg save_rd, save_wr;
+reg save_wait;
+reg [15:0] save_addr;
+
+always @(posedge clk_sys) begin
+
+	if(~save_busy & ~save_rd & ~save_wr) save_wait <= 0;
+
+	if(~bk_state) begin
+		save_addr <= '1;
+		save_wait <= 0;
+	end else if(sd_ack & ~save_busy) begin
+		if( ~bk_loading & ~bk_addr_end & (save_addr != bk_addr) ) begin
+			save_rd <= 1;
+			save_addr <= bk_addr;
+			save_wait <= 1;
+		end
+		if( bk_loading & ~bk_addr_end & sd_buff_wr ) begin
+			save_wr <= 1;
+			save_addr <= bk_addr;
+			save_wait <= 1;
+		end
+	end
+	if(~bk_state | save_busy) {save_rd, save_wr} <= 0;
 end
 
 
