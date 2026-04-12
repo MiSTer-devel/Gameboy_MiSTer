@@ -239,6 +239,7 @@ localparam CONF_STR = {
 	"h1P1FC3,GBP,Load Palette;",
 	"P1OG,Frame blend,Off,On;",
 	"d4P1OU,GBC Colors,Corrected,Raw;",
+	"H9P1FC7,LUT,Load GBC Color LUT;",
 	"P1O5,Stabilize video(buffer),Off,On;",
 	"P1-;",
 	"P1O34,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -350,6 +351,8 @@ wire        sys_auto     = (status[15:14] == 0);
 wire        sys_gbc      = (status[15:14] == 2);
 wire        sys_megaduck = (status[15:14] == 3);
 
+wire        gbc_raw_colors = status[30];
+
 hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -377,8 +380,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({7'h0, 
-        fastboot_available,
+	.status_menumask({6'h0,
+        gbc_raw_colors, fastboot_available,
         sys_megaduck, boot_gba_available, sgb_border_en, isGBC,
         cart_ready, sav_supported, |tint, gg_available}),
 	.status_in({status[63:34],ss_slot,status[31:0]}),
@@ -426,6 +429,7 @@ wire sgb_border_download = ioctl_download && (filetype == 2);
 wire cgb_boot_download = ioctl_download && (filetype == 4);
 wire dmg_boot_download = ioctl_download && (filetype == 5);
 wire sgb_boot_download = ioctl_download && (filetype == 6);
+wire cgb_lut_download = ioctl_download && (filetype == 7);
 wire boot_download = cgb_boot_download | dmg_boot_download | sgb_boot_download;
 
 ///////////////////////////// Bootrom added features ///////////////////////////
@@ -816,7 +820,7 @@ lcd lcd
 	.inv    ( status[12]  ),
 	.double_buffer( status[5]),
 	.frame_blend( status[16] ),
-	.originalcolors( status[30] ),
+	.originalcolors( gbc_raw_colors ),
 	.analog_wide ( status[34] ),
 
 	// Palettes
@@ -824,6 +828,11 @@ lcd lcd
 	.pal2   (palette[103:80]),
 	.pal3   (palette[79:56]),
 	.pal4   (palette[55:32]),
+
+	.lut_download (cgb_lut_download),
+	.ioctl_wr     (ioctl_wr),
+	.ioctl_addr   (ioctl_addr),
+	.ioctl_dout   (ioctl_dout),
 
 	.sgb_border_pix ( sgb_border_pix),
 	.sgb_pal_en     ( sgb_pal_en ),

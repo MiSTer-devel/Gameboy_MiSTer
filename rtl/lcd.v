@@ -23,6 +23,11 @@ module lcd
 	input [23:0] pal3,
 	input [23:0] pal4,
 
+	input        lut_download,
+	input        ioctl_wr,
+	input [15:0] ioctl_addr,
+	input [15:0] ioctl_dout,
+
 	input [15:0] sgb_border_pix,
 	input        sgb_pal_en,
 	input        sgb_en,
@@ -301,38 +306,68 @@ function [7:0] blend;
 	end
 endfunction
 
-reg [3:0] color_lut_sr;
-wire [7:0] color_lut_dout;
+// Color LUT 16bit to 24bit writes
+reg [23:0] color_lut_data;
+reg [7:0] color_lut_temp;
+reg [1:0] color_cnt;
+reg [14:0] color_lut_wr_addr;
+reg color_lut_wr, prev_color_lut_wr;
+reg prev_lut_download;
+always@(posedge clk_sys) begin
+	prev_lut_download <= lut_download;
 
-wire [9:0] color_lut_addr =
-		color_lut_sr[0] ? { r5, r5 } : // red only
-		color_lut_sr[1] ? { b5, g5 } : // mixed blue + green
-						  { b5, b5 };  // blue only
+	if (~prev_lut_download & lut_download) begin
+		color_cnt <= 2'd0;
+		color_lut_wr_addr <= 15'd0;
+	end
 
-// Color LUT for mix of 2 colors with 2 stage gamma
-dpram_dif #(10,8,10,8,"lcd_color_lut.mif") lcd_color_lut (
-	.clock (clk_vid),
+	prev_color_lut_wr <= color_lut_wr;
+	if (prev_color_lut_wr & ~color_lut_wr) begin
+		color_lut_wr_addr <= color_lut_wr_addr + 1'b1;
+	end
 
-	.address_a (color_lut_addr),
-	.q_a (color_lut_dout)
-);
-
-
-reg [7:0] r_lut, g_lut, b_lut;
-always@(posedge clk_vid) begin
-	color_lut_sr <= { color_lut_sr[2:0], (ce_pix | ce_pix_n) };
-
-	if (color_lut_sr[1]) begin r_lut <= color_lut_dout; end
-	if (color_lut_sr[2]) begin g_lut <= color_lut_dout; end
-	if (color_lut_sr[3]) begin b_lut <= color_lut_dout; end
+	color_lut_wr <= 0;
+	if (lut_download & ioctl_wr) begin
+		color_cnt <= color_cnt + 1'b1;
+		case (color_cnt)
+			2'd0: begin
+				color_lut_data[15:0] <= ioctl_dout[15:0];
+			end
+			2'd1: begin
+				color_lut_data[23:16] <= ioctl_dout[7:0];
+				color_lut_temp <= ioctl_dout[15:8];
+				color_lut_wr <= 1'b1;
+			end
+			2'd2: begin
+				color_lut_data[23:0] <= { ioctl_dout[15:0], color_lut_temp };
+				color_lut_wr <= 1'b1;
+				color_cnt <= 2'd0;
+			end
+		endcase
+	end
 end
+
+wire [23:0] color_lut_dout;
+
+// Color 3D LUT
+dpram #(15,24, "lcd_color_lut.mif") lcd_color_lut (
+	.clock_a (clk_vid),
+	.address_a ( { r5, g5, b5 } ),
+	.q_a (color_lut_dout),
+
+	.clock_b (clk_sys),
+	.address_b (color_lut_wr_addr),
+	.data_b (color_lut_data),
+	.wren_b (color_lut_wr),
+	.q_b ()
+);
 
 reg [7:0] r_tmp, g_tmp, b_tmp;
 always@(*) begin
 	if (~sgb_pal_en & isGBC & !originalcolors) begin
-		r_tmp = r_lut;
-		g_tmp = g_lut;
-		b_tmp = b_lut;
+		r_tmp = color_lut_dout[7:0];
+		g_tmp = color_lut_dout[15:8];
+		b_tmp = color_lut_dout[23:16];
 	end else if (sgb_pal_en | (isGBC & originalcolors)) begin
 		r_tmp = {r5,r5[4:2]};
 		g_tmp = {g5,g5[4:2]};
