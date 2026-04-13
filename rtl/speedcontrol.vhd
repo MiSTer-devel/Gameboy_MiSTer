@@ -9,6 +9,7 @@ entity speedcontrol is
       pause       : in     std_logic;
       speedup     : in     std_logic;
       cart_act    : in     std_logic;
+      save_act    : in     std_logic;
       DMA_on      : in     std_logic;
       ce          : out    std_logic := '0';
       ce_n        : out    std_logic := '0';
@@ -64,7 +65,7 @@ begin
                if (pause = '1' and clkdiv = "111" and cart_act = '0') then
                   state       <= PAUSED;
                   unpause_cnt <= 0;
-               elsif (speedup = '1' and pause = '0' and DMA_on = '0' and clkdiv = "000") then
+               elsif (speedup = '1' and pause = '0' and DMA_on = '0' and save_act = '0' and clkdiv = "000") then
                   state           <= FASTFORWARDSTART;
                   fastforward_cnt <= 0;
                else
@@ -82,7 +83,11 @@ begin
                
             when PAUSED =>
                if (unpause_cnt = 0) then
-                  refresh <= '1';
+                  if (refreshcnt > 117) then
+                     refresh <= '1';
+                  elsif (refreshcnt = 0) then
+                     refreshcnt <= 127;
+                  end if;
                end if;
                
                if (pause = '0') then
@@ -102,7 +107,7 @@ begin
                end if;
 
             when FASTFORWARD =>
-               if (pause = '1' or speedup = '0' or DMA_on = '1') then
+               if (pause = '1' or speedup = '0' or DMA_on = '1' or save_act = '1') then
                   state           <= FASTFORWARDEND;
                   fastforward_cnt <= 0;
                   if (clkdiv(0) = '1') then
@@ -111,11 +116,12 @@ begin
                elsif (cart_act = '1' and cart_act_1 = '0') then
                   state      <= RAMACCESS;
                   sdram_busy <= 1;
-               elsif (cart_act = '0' and refreshcnt = 0) then
-                  refreshcnt <= 127;
-                  refresh    <= '1';
-                  state      <= RAMACCESS;
-                  sdram_busy <= 1;
+             -- Refresh is already done in current SDRAM controller
+             --elsif (cart_act = '0' and refreshcnt = 0) then
+             --   refreshcnt <= 127;
+             --   refresh    <= '1';
+             --   state      <= RAMACCESS;
+             --   sdram_busy <= 1;
                else
                   clkdiv(0) <= not clkdiv(0);
                   if (clkdiv(0) = '0') then

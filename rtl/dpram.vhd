@@ -7,7 +7,8 @@ USE altera_mf.altera_mf_components.all;
 ENTITY dpram IS
 	generic (
 		 addr_width : integer := 8;
-		 data_width : integer := 8
+		 data_width : integer := 8;
+		 mem_init_file : string := " "
 	); 
 	PORT
 	(
@@ -50,6 +51,7 @@ BEGIN
 		power_up_uninitialized => "FALSE",
 		read_during_write_mode_port_a => "NEW_DATA_NO_NBE_READ",
 		read_during_write_mode_port_b => "NEW_DATA_NO_NBE_READ",
+		init_file => mem_init_file, 
 		widthad_a => addr_width,
 		widthad_b => addr_width,
 		width_a => data_width,

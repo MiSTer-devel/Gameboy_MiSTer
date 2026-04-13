@@ -129,7 +129,12 @@ dpram #(7,8) oam_data_h (
 	.q_b       (Savestate_OAMRAMReadDataH)
 );
 
-assign Savestate_OAMRAMReadData = Savestate_OAMRAMAddr[0] ? Savestate_OAMRAMReadDataH : Savestate_OAMRAMReadDataL;
+reg Savestate_OAMRAMAddr0_d;
+always @(posedge clk) begin
+	Savestate_OAMRAMAddr0_d <= Savestate_OAMRAMAddr[0];
+end
+
+assign Savestate_OAMRAMReadData = Savestate_OAMRAMAddr0_d ? Savestate_OAMRAMReadDataH : Savestate_OAMRAMReadDataL;
 
 reg [7:0] sprite_x[0:SPRITES_PER_LINE-1];
 reg [3:0] sprite_y[0:SPRITES_PER_LINE-1];

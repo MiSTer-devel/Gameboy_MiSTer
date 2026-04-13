@@ -33,15 +33,18 @@ entity gb_savestates is
       saving_savestate        : out    std_logic := '0';
       sleep_savestate         : out    std_logic := '0';
       clock_ena_in            : in     std_logic;
+
+      memory_busy             : in     std_logic;
             
       Save_RAMAddr            : buffer std_logic_vector(19 downto 0) := (others => '0');
-      Save_RAMWrEn            : out    std_logic_vector(4 downto 0) := (others => '0');
-      Save_RAMWriteData       : out    std_logic_vector(7 downto 0) := (others => '0');
+      Save_RAMRdEn            : buffer std_logic_vector(4 downto 0) := (others => '0');
+      Save_RAMWrEn            : buffer std_logic_vector(4 downto 0) := (others => '0');
+      Save_RAMWriteData       : out    std_logic_vector(15 downto 0) := (others => '0');
       Save_RAMReadData_WRAM   : in     std_logic_vector(7 downto 0);
       Save_RAMReadData_VRAM   : in     std_logic_vector(7 downto 0);
       Save_RAMReadData_ORAM   : in     std_logic_vector(7 downto 0);
       Save_RAMReadData_ZRAM   : in     std_logic_vector(7 downto 0);
-      Save_RAMReadData_CRAM   : in     std_logic_vector(7 downto 0);
+      Save_RAMReadData_CRAM   : in     std_logic_vector(15 downto 0);
       
       bus_out_Din             : out    std_logic_vector(63 downto 0) := (others => '0');
       bus_out_Dout            : in     std_logic_vector(63 downto 0);
@@ -90,8 +93,10 @@ architecture arch of gb_savestates is
       LOADINTERNALS_READ,
       LOADINTERNALS_WRITE,
       LOADMEMORY_NEXT,
+      LOADMEMORY_NEXT_WAIT,
       LOADMEMORY_READ,
-      LOADMEMORY_WRITE
+      LOADMEMORY_WRITE,
+      LOAD_FINISH
    );
    signal state : tstate := IDLE;
    
@@ -101,10 +106,16 @@ architecture arch of gb_savestates is
    signal settle              : integer range 0 to SETTLECOUNT := 0;
    
    signal bytecounter         : integer range 0 to 7 := 0;
+
    signal Save_RAMReadData    : std_logic_vector(7 downto 0);
+   signal Save_RAMReadDataH   : std_logic_vector(7 downto 0);
    signal RAMAddrNext         : std_logic_vector(19 downto 0) := (others => '0');
    
    signal header_amount       : unsigned(31 downto 0) := (others => '0');
+
+   signal memory_is_slow      : std_logic;
+   signal memory_is_word      : std_logic;
+   signal memory_ready        : std_logic;
 
 begin 
 
@@ -114,13 +125,20 @@ begin
                        Save_RAMReadData_VRAM when savetype_counter = 1 else
                        Save_RAMReadData_ORAM when savetype_counter = 2 else
                        Save_RAMReadData_ZRAM when savetype_counter = 3 else
-                       Save_RAMReadData_CRAM;
+                       Save_RAMReadData_CRAM(7 downto 0);
+
+   Save_RAMReadDataH <= Save_RAMReadData_CRAM(15 downto 8);
+
+   memory_is_slow <= '1' when savetype_counter = 4 else '0';
+   memory_is_word <= '1' when savetype_counter = 4 else '0';
+   memory_ready   <= '1' when memory_is_slow = '0'
+                         or (memory_busy = '0' and Save_RAMRdEn = "00000" and Save_RAMWrEn = "00000")
+                         else '0';
 
    process (clk)
    begin
       if rising_edge(clk) then
    
-         Save_RAMWrEn <= (others => '0');
          bus_out_ena   <= '0';
          BUS_wren      <= '0';
          BUS_rst       <= '0';
@@ -136,6 +154,11 @@ begin
             when x"03"  => savetypes(4) <=  32768; -- 32  KByte
             when others => savetypes(4) <= 131072; -- 128 KByte 
          end case;
+
+         if (memory_is_slow = '0' or memory_busy = '1') then
+            Save_RAMRdEn <= (others => '0');
+            Save_RAMWrEn <= (others => '0');
+         end if;
    
          case state is
          
@@ -198,11 +221,16 @@ begin
             
             when SAVEMEMORY_NEXT =>
                if (savetype_counter < SAVETYPESCOUNT) then
-                  state        <= SAVEMEMORY_FIRST;
+                  if (memory_is_slow = '1') then
+                     state        <= SAVEMEMORY_READ;
+                  else
+                     state        <= SAVEMEMORY_FIRST;
+                  end if;
                   bytecounter  <= 0;
                   count        <= 8;
                   maxcount     <= savetypes(savetype_counter);
                   Save_RAMAddr <= (others => '0');
+                  Save_RAMRdEn(savetype_counter) <= '1';
                else
                   state          <= SAVESIZEAMOUNT;
                   bus_out_Adr    <= std_logic_vector(to_unsigned(savestate_address, 26));
@@ -215,18 +243,35 @@ begin
                
             when SAVEMEMORY_FIRST =>
                state          <= SAVEMEMORY_READ;
-               Save_RAMAddr   <= std_logic_vector(unsigned(Save_RAMAddr) + 1);         
+               if (memory_is_word = '1') then
+                  Save_RAMAddr   <= std_logic_vector(unsigned(Save_RAMAddr) + 2);
+               else
+                  Save_RAMAddr   <= std_logic_vector(unsigned(Save_RAMAddr) + 1);
+               end if;
+               Save_RAMRdEn(savetype_counter) <= '1';
             
             when SAVEMEMORY_READ =>
-               bus_out_Din(bytecounter * 8 + 7 downto bytecounter * 8)  <= Save_RAMReadData;
-               if (bytecounter < 7) then
-                  bytecounter    <= bytecounter + 1;
-                  Save_RAMAddr   <= std_logic_vector(unsigned(Save_RAMAddr) + 1);
-               else
-                  state          <= SAVEMEMORY_WRITE;
-                  bus_out_ena    <= '1';
+               if (memory_ready = '1') then
+                  if (memory_is_word = '1') then
+                     bus_out_Din(bytecounter * 8 + 15 downto bytecounter * 8)  <= Save_RAMReadDataH & Save_RAMReadData;
+                  else
+                     bus_out_Din(bytecounter * 8 + 7 downto bytecounter * 8)  <= Save_RAMReadData;
+                  end if;
+
+                  if (memory_is_word = '1' and bytecounter < 6) then
+                     bytecounter    <= bytecounter + 2;
+                     Save_RAMAddr   <= std_logic_vector(unsigned(Save_RAMAddr) + 2);
+                     Save_RAMRdEn(savetype_counter) <= '1';
+                  elsif (memory_is_word = '0' and bytecounter < 7) then
+                     bytecounter    <= bytecounter + 1;
+                     Save_RAMAddr   <= std_logic_vector(unsigned(Save_RAMAddr) + 1);
+                     Save_RAMRdEn(savetype_counter) <= '1';
+                  else
+                     state          <= SAVEMEMORY_WRITE;
+                     bus_out_ena    <= '1';
+                  end if;
                end if;
-               
+
             when SAVEMEMORY_WRITE =>
                if (bus_out_done = '1') then
                   bus_out_Adr <= std_logic_vector(unsigned(bus_out_Adr) + 2);
@@ -309,10 +354,8 @@ begin
                   bytecounter    <= 0;
                   bus_out_ena    <= '1';
                else
-                  state             <= IDLE;
+                  state             <= LOAD_FINISH;
                   reset_out         <= '1';
-                  loading_savestate <= '0';
-                  sleep_savestate   <= '0';
                   load_done         <= '1';
                end if;
             
@@ -322,25 +365,45 @@ begin
                end if;
                
             when LOADMEMORY_WRITE =>
-               RAMAddrNext                    <= std_logic_vector(unsigned(RAMAddrNext) + 1);
-               Save_RAMAddr                   <= RAMAddrNext;
-               Save_RAMWrEn(savetype_counter) <= '1';
-               Save_RAMWriteData              <= bus_out_Dout(bytecounter * 8 + 7 downto bytecounter * 8);
-               if (bytecounter < 7) then
-                  bytecounter       <= bytecounter + 1;
-               else
-                  bus_out_Adr  <= std_logic_vector(unsigned(bus_out_Adr) + 2);
-                  if (count < maxcount) then
-                     state          <= LOADMEMORY_READ;
-                     count          <= count + 8;
-                     bytecounter    <= 0;
-                     bus_out_ena    <= '1';
-                  else 
-                     savetype_counter <= savetype_counter + 1;
-                     state            <= LOADMEMORY_NEXT;
+               if (memory_ready = '1') then
+                  if (memory_is_word = '1') then
+                     RAMAddrNext                    <= std_logic_vector(unsigned(RAMAddrNext) + 2);
+                  else
+                     RAMAddrNext                    <= std_logic_vector(unsigned(RAMAddrNext) + 1);
+                  end if;
+                  Save_RAMAddr                   <= RAMAddrNext;
+                  Save_RAMWrEn(savetype_counter) <= '1';
+                  Save_RAMWriteData( 7 downto 0) <= bus_out_Dout(bytecounter * 8 + 7 downto bytecounter * 8);
+                  Save_RAMWriteData(15 downto 8) <= bus_out_Dout(bytecounter * 8 + 15 downto bytecounter * 8 + 8);
+
+                  if (memory_is_word = '1' and bytecounter < 6) then
+                     bytecounter       <= bytecounter + 2;
+                  elsif (memory_is_word = '0' and bytecounter < 7) then
+                     bytecounter       <= bytecounter + 1;
+                  else
+                     bus_out_Adr  <= std_logic_vector(unsigned(bus_out_Adr) + 2);
+                     if (count < maxcount) then
+                        state          <= LOADMEMORY_READ;
+                        count          <= count + 8;
+                        bytecounter    <= 0;
+                        bus_out_ena    <= '1';
+                     else
+                        state          <= LOADMEMORY_NEXT_WAIT;
+                     end if;
                   end if;
                end if;
-         
+
+            when LOADMEMORY_NEXT_WAIT =>
+               if (memory_ready = '1') then
+                  savetype_counter <= savetype_counter + 1;
+                  state            <= LOADMEMORY_NEXT;
+               end if;
+
+            when LOAD_FINISH =>
+               state             <= IDLE;
+               loading_savestate <= '0';
+               sleep_savestate   <= '0';
+
          end case;
          
       end if;

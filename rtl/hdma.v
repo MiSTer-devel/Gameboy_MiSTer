@@ -16,6 +16,7 @@ module hdma(
 	// dma connection
 	output reg hdma_rd,
 	output reg hdma_active,
+	output hdma_rd_clk,
 	output [15:0] hdma_source_addr,
 	output [15:0] hdma_target_addr,
 
@@ -53,6 +54,7 @@ wire [1:0] byte_cycles = speed ? 2'd3 : 2'd1;
 reg [1:0] hdma_cnt;
 
 //assign hdma_rd = hdma_active;
+assign hdma_rd_clk = hdma_rd & (hdma_cnt != byte_cycles);
 assign hdma_source_addr = { hdma_source, byte_cnt };
 assign hdma_target_addr = { hdma_target, byte_cnt };
 

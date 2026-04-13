@@ -46,6 +46,8 @@ module gb (
 	// WRAM or Cart RAM CS
 	output nCS,
 
+	output sdram_rd,
+
 	input cgb_boot_download,
 	input dmg_boot_download,
 	input sgb_boot_download,
@@ -98,6 +100,7 @@ module gb (
 	input        load_state,
 	input  [1:0] savestate_number,
 	output       sleep_savestate,
+	output       savestate_ovr,
 	
 	output [63:0] SaveStateExt_Din, 
 	output [9:0]  SaveStateExt_Adr, 
@@ -107,9 +110,10 @@ module gb (
 	output        SaveStateExt_load,
 	
 	output [19:0] Savestate_CRAMAddr,     
+	output        Savestate_CRAMRdEn,
 	output        Savestate_CRAMRWrEn,    
-	output [7:0]  Savestate_CRAMWriteData,
-	input  [7:0]  Savestate_CRAMReadData,
+	output [15:0] Savestate_CRAMWriteData,
+	input  [15:0] Savestate_CRAMReadData,
 
 	output [63:0] SAVE_out_Din,  	// data read from savestate
 	input  [63:0] SAVE_out_Dout, 	// data written to savestate
@@ -119,6 +123,8 @@ module gb (
 	output  [7:0] SAVE_out_be,     
 	input         SAVE_out_done,    // should be one cycle high when write is done or read value is valid
 	
+	input         savestate_sdram_busy,
+
 	input         rewind_on,
 	input         rewind_active
 );
@@ -128,9 +134,10 @@ wire [63:0] SaveStateBus_Din;
 wire [9:0] SaveStateBus_Adr;
 wire SaveStateBus_wren, SaveStateBus_rst;
   
-wire [7:0] Savestate_RAMWriteData;
+wire [15:0] Savestate_RAMWriteData;
 wire [7:0] Savestate_RAMReadData_WRAM, Savestate_RAMReadData_VRAM, Savestate_RAMReadData_ORAM, Savestate_RAMReadData_ZRAM;
 wire [19:0] Savestate_RAMAddr;
+wire [4:0] Savestate_RAMRdEn;
 wire [4:0] Savestate_RAMRWrEn;
 
 localparam SAVESTATE_MODULES    = 8;
@@ -239,6 +246,7 @@ reg vram_bank; //0-1 FF4F - VBK
 
 wire [7:0] hdma_do;
 wire hdma_active;
+wire hdma_rd_clk;
 
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
@@ -297,6 +305,7 @@ wire cpu_rd_n;
 wire cpu_iorq_n;
 wire cpu_m1_n;
 wire cpu_mreq_n;
+wire cpu_phi_early;
 
 wire clk = clk_sys & ce;
 
@@ -306,6 +315,8 @@ wire clk_cpu = clk_sys & ce_cpu;
 // when hdma is enabled stop CPU (GBC). Finish read/write before stopping CPU
 wire hdma_cpu_stop = (isGBC & hdma_active & cpu_rd_n & cpu_wr_n);
 wire cpu_clken = ~hdma_cpu_stop & ce_cpu;
+
+assign sdram_rd = ~cpu_phi_early | hdma_rd_clk; // For SDRAM read & refresh
 
 reg reset_r  = 1;
 wire reset_ss;
@@ -366,6 +377,7 @@ GBse cpu (
    .DI                ( genie_ovr ? genie_data : cpu_di),
    .DO                ( cpu_do          ),
 	.STOP              ( cpu_stop        ),
+    .phi_early        ( cpu_phi_early    ),
     .isGBC             ( isGBC           ),
    // savestates
    .SaveStateBus_Din  (SaveStateBus_Din ), 
@@ -733,7 +745,7 @@ video video (
    
    .Savestate_OAMRAMAddr      (Savestate_RAMAddr[7:0]),
    .Savestate_OAMRAMRWrEn     (Savestate_RAMRWrEn[2]),
-   .Savestate_OAMRAMWriteData (Savestate_RAMWriteData),
+   .Savestate_OAMRAMWriteData (Savestate_RAMWriteData[7:0]),
    .Savestate_OAMRAMReadData  (Savestate_RAMReadData_ORAM),
 	
 	.SaveStateBus_Din  (SaveStateBus_Din ), 
@@ -770,7 +782,7 @@ dpram #(13) vram0 (
 	.clock_b   (clk_sys),
 	.address_b (Savestate_RAMAddr[12:0]),
 	.wren_b    (Savestate_RAMRWrEn[1] & !Savestate_RAMAddr[13]),
-	.data_b    (Savestate_RAMWriteData),
+	.data_b    (Savestate_RAMWriteData[7:0]),
 	.q_b       (Savestate_RAMReadData_VRAM0)
 );
 
@@ -785,7 +797,7 @@ dpram #(13) vram1 (
 	.clock_b   (clk_sys),
 	.address_b (Savestate_RAMAddr[12:0]),
 	.wren_b    (Savestate_RAMRWrEn[1] & Savestate_RAMAddr[13]),
-	.data_b    (Savestate_RAMWriteData),
+	.data_b    (Savestate_RAMWriteData[7:0]),
 	.q_b       (Savestate_RAMReadData_VRAM1)
 );
 
@@ -826,6 +838,7 @@ hdma hdma(
 	// dma connection
 	.hdma_rd           ( hdma_rd          ),
 	.hdma_active       ( hdma_active      ),
+	.hdma_rd_clk       ( hdma_rd_clk      ),
 	.hdma_source_addr  ( hdma_source_addr ),
 	.hdma_target_addr  ( hdma_target_addr ),
 	
@@ -853,7 +866,7 @@ dpram #(7) zpram (
 	.clock_b   (clk_sys),
 	.address_b (Savestate_RAMAddr[6:0]),
 	.wren_b    (Savestate_RAMRWrEn[3]),
-	.data_b    (Savestate_RAMWriteData),
+	.data_b    (Savestate_RAMWriteData[7:0]),
 	.q_b       (Savestate_RAMReadData_ZRAM)
 );
 
@@ -888,7 +901,7 @@ dpram #(15) wram (
 	.clock_b   (clk_sys),
 	.address_b (Savestate_RAMAddr[14:0]),
 	.wren_b    (Savestate_RAMRWrEn[0]),
-	.data_b    (Savestate_RAMWriteData),
+	.data_b    (Savestate_RAMWriteData[7:0]),
 	.q_b       (Savestate_RAMReadData_WRAM)
 );
 
@@ -1024,7 +1037,7 @@ assign ext_bus_a15 = ext_bus_i[15] | sel_boot_rom;
 assign ext_bus_addr = ext_bus_i[14:0];
 
 assign ext_bus_rd = hdma_read_ext_bus | dma_read_ext_bus | (sel_ext_bus & ~cpu_rd_n);
-assign ext_bus_wr = (sel_ext_bus & ~cpu_wr_n_edge) & ~hdma_read_ext_bus & ~dma_read_ext_bus;
+assign ext_bus_wr = (sel_ext_bus & ~cpu_wr_n) & ~hdma_read_ext_bus & ~dma_read_ext_bus;
 
 assign ext_bus_wram_sel = ~nCS &  ext_bus_addr[14];
 assign ext_bus_cram_sel = ~nCS & ~ext_bus_addr[14];
@@ -1056,6 +1069,7 @@ assign SaveStateExt_rst  = SaveStateBus_rst;
 assign SaveStateExt_load = savestate_loaded;
 
 assign Savestate_CRAMAddr      = Savestate_RAMAddr;    
+assign Savestate_CRAMRdEn      = Savestate_RAMRdEn[4];
 assign Savestate_CRAMRWrEn     = Savestate_RAMRWrEn[4];
 assign Savestate_CRAMWriteData = Savestate_RAMWriteData;
 
@@ -1064,6 +1078,7 @@ wire [63:0] SaveStateBus_Dout  = SaveStateBus_wired_or[0] | SaveStateBus_wired_o
                                  SaveStateExt_Dout;
  
 wire sleep_rewind, sleep_savestates;
+wire loading_savestate, saving_savestate;
  
 gb_savestates gb_savestates (
    .clk                    (clk_sys),
@@ -1088,12 +1103,15 @@ gb_savestates gb_savestates (
    .BUS_rst                (SaveStateBus_rst), 
    .BUS_Dout               (SaveStateBus_Dout),
       
-   //.loading_savestate      (loading_savestate),
-   //.saving_savestate       (saving_savestate),
+   .loading_savestate      (loading_savestate),
+   .saving_savestate       (saving_savestate),
    .sleep_savestate        (sleep_savestates),
    .clock_ena_in           (ce_2x),
    
+   .memory_busy            (savestate_sdram_busy),
+
    .Save_RAMAddr           (Savestate_RAMAddr),     
+   .Save_RAMRdEn           (Savestate_RAMRdEn),
    .Save_RAMWrEn           (Savestate_RAMRWrEn),           
    .Save_RAMWriteData      (Savestate_RAMWriteData),   
    .Save_RAMReadData_WRAM  (Savestate_RAMReadData_WRAM),
@@ -1132,6 +1150,6 @@ gb_statemanager #(58720256, 33554432) gb_statemanager (
 );
 
 assign sleep_savestate = sleep_rewind | sleep_savestates;
-
+assign savestate_ovr = loading_savestate | saving_savestate;
 
 endmodule
