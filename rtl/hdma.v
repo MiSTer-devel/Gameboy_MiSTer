@@ -10,13 +10,16 @@ module hdma(
 	input        wr,
 	output [7:0] dout,
 	input  [7:0] din,
-	
+
+	input  cpu_phi_r_ce,
+	input  cpu_phi_f_ce,
+	input  hdma_phi_r_ce, // 2MHz PHI
+	input  hdma_phi_f_ce,
+
 	input [1:0] lcd_mode, 
 	
 	// dma connection
-	output reg hdma_rd,
-	output reg hdma_active,
-	output hdma_rd_clk,
+	output hdma_rd,
 	output [15:0] hdma_source_addr,
 	output [15:0] hdma_target_addr,
 
@@ -32,11 +35,7 @@ module hdma(
 wire [47:0] SS_HDMA;
 wire [47:0] SS_HDMA_BACK;
 
-eReg_SavestateV #(0, 7, 47, 0, 64'h0000E00001FFFFF0) iREG_SAVESTATE_HDMA (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_HDMA_BACK, SS_HDMA);
-
-//"The preparation time (4 clocks) is the same in single and double speed mode"
-localparam START_DELAY = 3'd4, END_DELAY = 3'd4;
-
+eReg_SavestateV #(0, 7, 47, 0, 64'h000000000FFFFFF0) iREG_SAVESTATE_HDMA (clk, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_Dout, SS_HDMA_BACK, SS_HDMA);
 
 // ff51-ff55 HDMA1-5 (GBC)
 reg [15:4] hdma_source;  // ff51, ff52 only top 4 bits used
@@ -45,40 +44,36 @@ reg [15:4] hdma_target;  // ff53, ff54 only top 4 bits used
 reg        hdma_mode;    // ff55 bit 7 - 0 = General Purpose DMA / 1 = H-Blank DMA
 reg        hdma_enabled; // ff55 !bit 7 when read
 reg [7:0]  hdma_length;  // ff55 bit 6:0 - dma transfer length (hdma_length+1)*16 bytes
-reg        hdma_end;
-// it takes about 8us to transfer a block of 16 bytes. -> 500ns per byte -> 2Mhz
-// 32 cycles in Normal Speed Mode, and 64 'fast' cycles in Double Speed Mode
-reg [3:0] byte_cnt;  // 16bytes
-// Normal speed: 2 cycles, Double speed: 4 cycles per byte.
-wire [1:0] byte_cycles = speed ? 2'd3 : 2'd1;
-reg [1:0] hdma_cnt;
 
-//assign hdma_rd = hdma_active;
-assign hdma_rd_clk = hdma_rd & (hdma_cnt != byte_cycles);
+reg        hdma_active;
+reg        hdma_run;
+reg        hdma_trigger;
+reg        hdma_init;
+
+// it takes about 8us to transfer a block of 16 bytes. -> 500ns per byte -> 2Mhz
+reg [3:0] byte_cnt;  // 16bytes
+
+assign hdma_rd = hdma_active;
 assign hdma_source_addr = { hdma_source, byte_cnt };
 assign hdma_target_addr = { hdma_target, byte_cnt };
 
-reg [2:0] dma_delay;
-
 reg [1:0] hdma_state;
 parameter active=2'd0,blocksent=2'd1,wait_h=2'd2;
-
-wire mode_gdma = (hdma_mode == 1'b0);
-wire mode_hdma = (hdma_mode == 1'b1);
 
 assign SS_HDMA_BACK[    0] = hdma_active ;
 assign SS_HDMA_BACK[ 2: 1] = hdma_state  ;
 assign SS_HDMA_BACK[    3] = hdma_enabled;
 assign SS_HDMA_BACK[15: 4] = hdma_source ;
-assign SS_HDMA_BACK[24:16] = hdma_target[12:4];
-assign SS_HDMA_BACK[27:25] = dma_delay   ;
-assign SS_HDMA_BACK[   28] = hdma_rd     ;
-assign SS_HDMA_BACK[   29] = hdma_end    ;
+assign SS_HDMA_BACK[27:16] = hdma_target;
+assign SS_HDMA_BACK[   28] = hdma_run;
+assign SS_HDMA_BACK[   29] = 1'b0;
 assign SS_HDMA_BACK[   30] = hdma_mode   ;
 assign SS_HDMA_BACK[38:31] = hdma_length ;
 assign SS_HDMA_BACK[42:39] = byte_cnt    ;
-assign SS_HDMA_BACK[44:43] = hdma_cnt    ;
-assign SS_HDMA_BACK[47:45] = hdma_target[15:13];
+assign SS_HDMA_BACK[44:43] = 2'd0;
+assign SS_HDMA_BACK[   45] = hdma_trigger;
+assign SS_HDMA_BACK[   46] = hdma_init;
+assign SS_HDMA_BACK[   47] = 1'b0;
 
 
 always @(posedge clk) begin
@@ -87,18 +82,17 @@ always @(posedge clk) begin
 		hdma_state   <= SS_HDMA[ 2: 1]; // wait_h;
 		hdma_enabled <= SS_HDMA[    3]; // 1'b0;
 		hdma_source  <= SS_HDMA[15: 4]; // 12'hFFF;
-		hdma_target  <= { SS_HDMA[47:45], SS_HDMA[24:16] }; // 12'hFFF;
-		dma_delay    <= SS_HDMA[27:25]; // 3'd0;
-		hdma_rd      <= SS_HDMA[   28]; // 0;
-		hdma_end     <= SS_HDMA[   29]; // 0;
+		hdma_target  <= SS_HDMA[27:16]; // 12'hFFF;
+		hdma_run     <= SS_HDMA[   28]; // 1'b0;
 		hdma_mode    <= SS_HDMA[   30]; // 1'b0;
 		hdma_length  <= SS_HDMA[38:31]; // 8'd0;
 		byte_cnt     <= SS_HDMA[42:39]; // 4'd0;
-		hdma_cnt     <= SS_HDMA[44:43]; // 2'd0;
+		hdma_trigger <= SS_HDMA[   45]; // 1'b0;
+		hdma_init    <= SS_HDMA[   46]; // 1'b0;
 	end
-	else if(ce) begin
-	   if(sel_reg && wr) begin
-		
+	else begin
+
+		if(ce & sel_reg & wr) begin
 			case (addr)
 				4'd1: hdma_source[15:8] <= din;
 				4'd2: hdma_source[7:4]  <= din[7:4];
@@ -110,82 +104,78 @@ always @(posedge clk) begin
 							hdma_length <= {1'b0,din[6:0]};
 							if (hdma_mode == 1 && hdma_enabled && !din[7]) begin  //terminate a pending H-Blank transfer by writing zero to Bit 7 of FF55
 								hdma_enabled <= 1'b0;
+								hdma_trigger <= 1'b0;
 							end else begin  //normal trigger
 								hdma_enabled <= 1'b1;
 								hdma_mode <= din[7];
-								dma_delay <= START_DELAY;
-								hdma_cnt <= 2'd0;
-								byte_cnt <= 4'd0;
-								if (din[7] == 1) hdma_state <= wait_h;
+								if (din[7] == 1) begin
+									hdma_state <= wait_h;
+								end else begin
+									hdma_trigger <= 1'b1;
+								end
 							end
 						end
 			endcase
 		end
 
-		// Currently IRAM takes 1 CPU cycle to get data. If hdma_active is lowered
-		// at the same time as hdma_rd then the CPU will read invalid data.
-		if (hdma_end) begin
-			if (dma_delay > 0) begin
-				dma_delay <= dma_delay - 1'b1;
-			end else begin
-				hdma_active <= 0;
-				hdma_end <= 0;
+		if (cpu_phi_r_ce) begin
+			hdma_init <= hdma_trigger;
+			hdma_active <= hdma_run;
+		end
+
+		if (cpu_phi_f_ce) begin
+			if (hdma_init) begin
+				hdma_trigger <= 1'b0;
+				hdma_run <= 1'b1;
+				byte_cnt <= 4'd0;
 			end
 		end
 
-		//mode 0 GDMA do the transfer in one go after inital delay
-		//mode 1 HDMA transfer 1 block (16bytes) in each H-Blank only
-		if (hdma_enabled) begin
+		if (hdma_phi_r_ce) begin
+			if (hdma_active) begin
+				byte_cnt <= byte_cnt + 1'b1;
+				if (&byte_cnt) begin
+					hdma_source <= hdma_source + 1'b1;
+					hdma_target <= hdma_target + 1'b1;
+					hdma_length <= hdma_length - 1'd1;
+				end
+			end
+		end
 
-			if (mode_gdma || (mode_hdma && hdma_state == active)) begin
-				hdma_active <= 1'b1;
-				if (dma_delay>0) begin
-					dma_delay <= dma_delay - 1'b1;
-					if (dma_delay == 1)
-						hdma_rd <= 1'b1;
-				end else begin
-					hdma_cnt <= hdma_cnt + 1'd1;
-					if (hdma_cnt == byte_cycles) begin
-						hdma_cnt <= 2'd0;
-						byte_cnt <= byte_cnt + 1'b1;
-						if (&byte_cnt) begin
-							hdma_source <= hdma_source + 1'b1;
-							hdma_target <= hdma_target + 1'b1;
-							hdma_length <= hdma_length - 1'd1;
-							if (hdma_length == 0 || &hdma_target) begin
-								hdma_enabled <= 1'b0;
-								hdma_end <= 1'b1;
-								hdma_rd <= 1'b0;
-								dma_delay <= END_DELAY;
-							end
-							if (mode_hdma) begin
-								hdma_state <= blocksent;
-								hdma_end <= 1'b1;
-								hdma_rd <= 1'b0;
-								dma_delay <= END_DELAY;
-							end
-						end
+		if (hdma_phi_f_ce) begin
+			if (hdma_active) begin
+				if (&byte_cnt) begin
+					if (hdma_length == 0 || &hdma_target) begin
+						hdma_run <= 1'b0;
+						hdma_enabled <= 1'b0;
+					end
+					if (hdma_mode) begin
+						hdma_state <= blocksent;
+						hdma_run <= 1'b0;
 					end
 				end
 			end
+		end
 
-			if (mode_hdma) begin
+		if (ce) begin
+			if (hdma_mode) begin
 				case (hdma_state)
 
 					wait_h: begin
-									if (lcd_mode == 2'b00) begin	// Mode 00:  h-blank
-										dma_delay <= START_DELAY;
+									if (lcd_mode == 2'b00 && hdma_enabled) begin // Mode 00:  h-blank
 										hdma_state <= active;
+										hdma_trigger <= 1'b1;
 									end
 							end
 
 					blocksent: begin
-									if (lcd_mode == 2'b11) // wait for mode 3, mode before h-blank
+									if (lcd_mode != 2'b00) // wait for end of Mode 0 
 										hdma_state <= wait_h;
 								end
 				endcase
 			end
 		end
+
 	end
 end
 

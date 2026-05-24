@@ -39,6 +39,10 @@ module video (
 	input [7:0] cpu_di,
 	output [7:0] cpu_do,
 
+	input cpu_phi,
+	input cpu_phi_r_ce,
+	input cpu_phi_f_ce,
+
 	// output to lcd
 	output lcd_on,
 	output lcd_clkena,
@@ -85,8 +89,8 @@ module video (
 localparam SAVESTATE_MODULES    = 19;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
-wire [60:0] SS_Video1;
-wire [60:0] SS_Video1_BACK;
+wire [62:0] SS_Video1;
+wire [62:0] SS_Video1_BACK;
 wire [63:0] SS_Video2;
 wire [63:0] SS_Video2_BACK;
 wire [63:0] SS_Video3;
@@ -134,13 +138,13 @@ wire [3:0] sprite_index;
 
 wire oam_eval_end;
 
-reg dma_active;
+reg dma_active, dma_written, dma_trigger;
 reg [7:0] dma;
-reg [9:0] dma_cnt;     // dma runs 4*160 clock cycles = 160us @ 4MHz
+reg [7:0] dma_cnt;     // 160 PHI cycles
 
 // give dma access to oam
 wire [7:0] oam_addr = dma_active?dma_addr[7:0]:cpu_addr;
-wire oam_wr = dma_active?(dma_cnt[1:0] == 2):(cpu_wr && cpu_sel_oam && oam_cpu_allow);
+wire oam_wr = (dma_active & ~cpu_phi) | (cpu_wr && cpu_sel_oam && oam_cpu_allow);
 wire [7:0] oam_di = dma_active?dma_data:cpu_di;
 
 // $ff40 LCDC
@@ -217,24 +221,44 @@ integer i;
 // --------------------------------------------------------------------
 
 assign SS_Video1_BACK[    0] = dma_active;
-assign SS_Video1_BACK[10: 1] = dma_cnt;
+assign SS_Video1_BACK[10: 3] = dma_cnt;
+assign SS_Video1_BACK[   61] = dma_written;
+assign SS_Video1_BACK[   62] = dma_trigger;
 
-assign dma_addr = { dma, dma_cnt[9:2] };
+assign dma_addr = { dma, dma_cnt[7:0] };
 assign dma_rd = dma_active;
 
 always @(posedge clk) begin
 	if(reset) begin
-		dma_active <= SS_Video1[    0]; //1'b0;
-		dma_cnt    <= SS_Video1[10: 1]; //10'd0;
-	end else if (ce_cpu) begin
+		dma_active  <= SS_Video1[    0]; //1'b0;
+		dma_cnt     <= SS_Video1[10: 3]; //8'd0;
+		dma_written <= SS_Video1[   61]; //1'b0;
+		dma_trigger <= SS_Video1[   62]; //1'b0;
+	end else begin
 		// writing the dma register engages the dma engine
-		if(cpu_sel_reg && cpu_wr && (cpu_addr == 8'h46)) begin
-			dma_active <= 1'b1;
-			dma_cnt <= 10'd0;
-		end else if(dma_cnt != 160*4-1)
-			dma_cnt <= dma_cnt + 10'd1;
-		else
-			dma_active <= 1'b0;
+		if (ce_cpu & cpu_sel_reg && cpu_wr && (cpu_addr == 8'h46)) begin
+			dma_written <= 1'b1;
+		end
+
+		if (cpu_phi_r_ce) begin
+			dma_trigger <= dma_written;
+			if (dma_trigger) begin
+				dma_active <= 1'b1;
+			end else if (dma_active) begin
+				if (dma_cnt == 8'h9f) begin
+					dma_active <= 1'b0;
+				end else begin
+					dma_cnt <= dma_cnt + 1'b1;
+				end
+			end
+		end
+
+		if (cpu_phi_f_ce) begin
+			if (dma_trigger) begin
+				dma_cnt <= 8'd0;
+				dma_written <= 1'b0;
+			end
+		end
 	end
 end
 

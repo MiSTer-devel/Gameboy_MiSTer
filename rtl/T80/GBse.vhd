@@ -100,7 +100,7 @@ entity GBse is
 		A                 : out    std_logic_vector(15 downto 0);
 		DI                : in     std_logic_vector(7 downto 0);
 		DO                : out    std_logic_vector(7 downto 0);
-		phi_early         : out    std_logic; -- for SDRAM
+		TS                : out    std_logic_vector(2 downto 0);
 		isGBC             : in     std_logic; -- Gameboy Color
 		-- savestates              
 		SaveStateBus_Din  : in     std_logic_vector(BUS_buswidth-1 downto 0);
@@ -148,7 +148,7 @@ begin
 		SaveStateBus_Dout <= wired_or;
 	end process;
 
-	phi_early <= not TState(1) and not TState(0);
+	TS <= TState;
 
 	u0 : T80
 		generic map
