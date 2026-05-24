@@ -46,6 +46,8 @@ module gb (
 	// WRAM or Cart RAM CS
 	output nCS,
 
+	output PHI,
+
 	output sdram_rd,
 
 	input cgb_boot_download,
@@ -143,9 +145,9 @@ wire [4:0] Savestate_RAMRWrEn;
 localparam SAVESTATE_MODULES    = 8;
 wire [63:0] SaveStateBus_wired_or[0:SAVESTATE_MODULES-1];
 
-wire [56:0] SS_Top;
-wire [56:0] SS_Top_BACK;
-eReg_SavestateV #(0, 31, 56, 0, 64'h0000000000800000) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);
+wire [60:0] SS_Top;
+wire [60:0] SS_Top_BACK;
+eReg_SavestateV #(0, 31, 60, 0, 64'h1000000000800000) iREG_SAVESTATE_Top (clk_sys, SaveStateBus_Din, SaveStateBus_Adr, SaveStateBus_wren, SaveStateBus_rst, SaveStateBus_wired_or[6], SS_Top_BACK, SS_Top);
 
 wire [10:0] SS_Top2;
 wire [10:0] SS_Top2_BACK;
@@ -245,8 +247,6 @@ reg [2:0] wram_bank; //1-7 FF70 - SVBK
 reg vram_bank; //0-1 FF4F - VBK
 
 wire [7:0] hdma_do;
-wire hdma_active;
-wire hdma_rd_clk;
 
 reg cpu_speed; // - 0 Normal mode (4MHz) - 1 Double Speed Mode (8MHz)
 reg prepare_switch; // set to 1 to toggle speed
@@ -305,18 +305,17 @@ wire cpu_rd_n;
 wire cpu_iorq_n;
 wire cpu_m1_n;
 wire cpu_mreq_n;
-wire cpu_phi_early;
+wire cpu_halt_n;
+wire [2:0] cpu_tstate;
 
 wire clk = clk_sys & ce;
 
 wire ce_cpu = cpu_speed ? ce_2x:ce;
 wire clk_cpu = clk_sys & ce_cpu;
 
-// when hdma is enabled stop CPU (GBC). Finish read/write before stopping CPU
-wire hdma_cpu_stop = (isGBC & hdma_active & cpu_rd_n & cpu_wr_n);
+// when hdma is enabled stop CPU (GBC).
+wire hdma_cpu_stop = (isGBC & hdma_rd);
 wire cpu_clken = ~hdma_cpu_stop & ce_cpu;
-
-assign sdram_rd = ~cpu_phi_early | hdma_rd_clk; // For SDRAM read & refresh
 
 reg reset_r  = 1;
 wire reset_ss;
@@ -325,6 +324,55 @@ wire reset_ss;
 always  @ (posedge clk) begin
 	reset_r <= reset;
 end
+
+// Generate PHI signal. Normally the CPU runs from the PHI signal but the current CPU does not use it.
+// So here we sync to the CPU Tstates.
+reg [2:0] phi_clk_div;
+always @(posedge clk_sys) begin
+	if (reset_ss) begin
+		phi_clk_div <= SS_Top[59:57]; // 3'd0;
+	end else begin
+		if (ce_2x) begin
+			phi_clk_div <= phi_clk_div + 1'b1;
+		end
+
+		if (cpu_clken & cpu_halt_n) begin
+			if (cpu_tstate == 3'd4) begin
+				if (cpu_speed) begin
+					phi_clk_div[1:0] <= 2'd1;
+				end else begin
+					phi_clk_div <= 3'd2;
+				end
+			end
+		end
+	end
+end
+
+wire phi_1m = ~phi_clk_div[2];
+wire phi_2m = ~phi_clk_div[1];
+
+wire phi_early_1m = ~|phi_clk_div[2:1];
+wire phi_early_2m = ~|phi_clk_div[1:0];
+
+wire cpu_phi = (cpu_speed ? phi_2m : phi_1m) | ~cpu_halt_n;
+
+reg cpu_phi_d;
+
+assign SS_Top_BACK[59:57] = phi_clk_div;
+assign SS_Top_BACK[   60] = cpu_phi_d;
+
+always @(posedge clk_sys) begin
+	if(reset_ss) cpu_phi_d <= SS_Top[60]; // 1'b1
+	else if (ce_2x) cpu_phi_d <= cpu_phi;
+end
+
+wire cpu_phi_r_ce = ce_2x & cpu_halt_n & (cpu_speed ? (phi_clk_div[1:0] == 2'd3) : (phi_clk_div == 3'd7) );
+//wire cpu_phi_f_ce = ce_2x & cpu_halt_n & (cpu_speed ? (phi_clk_div[1:0] == 2'd1) : (phi_clk_div == 3'd3) );
+// There is an issue with falling edge missing when going out of Halt with the current CPU so do it another way.
+wire cpu_phi_f_ce = ce_2x & cpu_phi_d & ~cpu_phi;
+
+wire hdma_phi_r_ce = ce_2x & (phi_clk_div[1:0] == 2'd3);
+wire hdma_phi_f_ce = ce_2x & (phi_clk_div[1:0] == 2'd1);
 
 reg old_cpu_wr_n;
 
@@ -371,13 +419,13 @@ GBse cpu (
    .RD_n              ( cpu_rd_n        ),
    .WR_n              ( cpu_wr_n        ),
    .RFSH_n            (                 ),
-   .HALT_n            (                 ),
+   .HALT_n            ( cpu_halt_n      ),
    .BUSAK_n           (                 ),
    .A                 ( cpu_addr_raw        ),
    .DI                ( genie_ovr ? genie_data : cpu_di),
    .DO                ( cpu_do          ),
 	.STOP              ( cpu_stop        ),
-    .phi_early        ( cpu_phi_early    ),
+    .TS               ( cpu_tstate       ),
     .isGBC             ( isGBC           ),
    // savestates
    .SaveStateBus_Din  (SaveStateBus_Din ), 
@@ -719,6 +767,10 @@ video video (
 	.cpu_wr      ( !cpu_wr_n_edge ),
 	.cpu_di      ( cpu_do        ),
 	.cpu_do      ( video_do      ),
+
+	.cpu_phi      ( cpu_phi       ),
+	.cpu_phi_r_ce ( cpu_phi_r_ce  ),
+	.cpu_phi_f_ce ( cpu_phi_f_ce  ),
 	
 	.lcd_on      ( lcd_on        ),
 	.lcd_clkena  ( lcd_clkena    ),
@@ -764,8 +816,8 @@ wire [7:0] vram_di = (hdma_read_wram_bus) ? wram_do :
                         (hdma_read_ext_bus) ? ext_bus_di :
                         cpu_do;
 
-wire vram_wren = video_rd?1'b0:!vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
-wire vram1_wren = video_rd?1'b0:vram_bank&&((hdma_rd&&isGBC)||cpu_wr_vram);
+wire vram_wren  = video_rd ? 1'b0 : !vram_bank && ((hdma_rd & isGBC & ~phi_2m) | cpu_wr_vram);
+wire vram1_wren = video_rd ? 1'b0 :  vram_bank && ((hdma_rd & isGBC & ~phi_2m) | cpu_wr_vram);
 
 wire [15:0] hdma_target_addr;
 wire [12:0] vram_addr = video_rd?video_addr:(hdma_rd&&isGBC)?hdma_target_addr[12:0]:(dma_rd&&dma_sel_vram)?dma_addr[12:0]:cpu_addr[12:0];
@@ -832,13 +884,16 @@ hdma hdma(
 	.wr			       ( !cpu_wr_n_edge   ),
 	.dout			       ( hdma_do       ),
 	.din               ( cpu_do        ),
-	
+
+	.cpu_phi_r_ce      ( cpu_phi_r_ce  ),
+	.cpu_phi_f_ce      ( cpu_phi_f_ce  ),
+	.hdma_phi_r_ce     ( hdma_phi_r_ce ),
+	.hdma_phi_f_ce     ( hdma_phi_f_ce ),
+
 	.lcd_mode          ( lcd_mode      ),
 	
 	// dma connection
 	.hdma_rd           ( hdma_rd          ),
-	.hdma_active       ( hdma_active      ),
-	.hdma_rd_clk       ( hdma_rd_clk      ),
 	.hdma_source_addr  ( hdma_source_addr ),
 	.hdma_target_addr  ( hdma_target_addr ),
 	
@@ -1050,7 +1105,12 @@ assign cart_sel = ext_bus_rom_sel | ext_bus_cram_sel;
 assign cart_rd = cart_sel & ext_bus_rd;
 assign cart_wr = cart_sel & ext_bus_wr;
 
-assign DMA_on = cart_sel & (hdma_active | dma_rd);
+assign PHI = hdma_read_ext_bus ? phi_2m : cpu_phi;
+
+wire phi_early = (cpu_speed | hdma_read_ext_bus) ? phi_early_2m : phi_early_1m;
+assign sdram_rd = ~phi_early; // For SDRAM read & refresh
+
+assign DMA_on = cart_sel & (hdma_rd | dma_rd);
 
 // --------------------------------------------------------------------
 // ------------------------ savestates -------------------------
