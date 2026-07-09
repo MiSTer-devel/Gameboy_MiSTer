@@ -232,7 +232,7 @@ always @(posedge clk_sys) begin
 					buffer[3]  <= rtc_bcd[15:8];
 					buffer[4]  <= rtc_bcd[23:16];
 					buffer[5]  <= rtc_bcd[31:24];
-					buffer[6]  <= rtc_bcd[39:32];
+					buffer[6]  <= {rtc_bcd[50:48], rtc_bcd[36:32]};
 					buffer[15] <= year_tm;
 				end else if ((mode != CMD_W) && (rx_byte == CMD_W)) begin
 					next_byte    = RESP_D;
