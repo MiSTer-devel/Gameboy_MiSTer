@@ -98,6 +98,59 @@ localparam CONF_STR = {
 	"P1O78,Stereo mix,none,25%,50%,100%;",
 	"P1O[43],Audio mode,Accurate,No Pops;",
 
+	"P4,BrickBoy Mods;",
+	"P4O[51],DMG Panel,Off,On;",
+	"P4O[52],Speaker,Original,BrickBoy;",
+	"P4P5,Adjust Effects;",
+	"P4S1,BBP,Mount BrickBoy Preset;",
+	"DFP4T[126],Save Mounted Preset;",
+	"P4T[127],Reload Mounted Preset;",
+	"P4T[125],Randomize Effects;",
+	"P4T[124],Reset BrickBoy Defaults;",
+	"P5P4,Back to BrickBoy Mods;",
+	"P5O[82:80],Section,Panel,Colour,Optics,Motion/STN,Ageing;",
+	"hAP5O[58:56],Panel Trim,Normal,-9%,-6%,-3%,+3%,+6%,+9%,+12%;",
+	"hAP5O[61:59],Warmth,Normal,-9%,-6%,-3%,+3%,+6%,+9%,+12%;",
+	"hAP5O[64:62],Grain,Normal,Off,Half,3,2x,3x,4x,5x;",
+	"hAP5O[65],Profile,Nostalgia,Measured;",
+	"hAP5O[67:66],Grid,Original,Off,Low,Full;",
+	"hAP5O[69:68],Dot Fill,Original,Small,Large,Solid;",
+	"hAP5O[71:70],Gap Darkness,Original,Off,Half,Strong;",
+	"hAP5O[73:72],Density,Original,Low,High,Maximum;",
+	"hBP5O[58:56],Ink Red,1,Off,2,3,4,5,6,7;",
+	"hBP5O[61:59],Ink Green,2,Off,1,3,4,5,6,7;",
+	"hBP5O[64:62],Ink Blue,2,Off,1,3,4,5,6,7;",
+	"hBP5O[66:65],Off-element Tint,Normal,Off,High,Max;",
+	"hBP5O[68:67],Reflector Saturation,Low,Off,Mid,High;",
+	"hBP5O[70:69],Brightness,Original,Dim,Unity,Bright;",
+	"hBP5O[72:71],Contrast,Original,Low,Unity,High;",
+	"hBP5O[74:73],Saturation,Original,Mono,Full,Vivid;",
+	"hBP5O[76:75],Gamma,Original,Linear,1.5,2.0;",
+	"hBP5O[78:77],Black Lift,Original,Off,Quarter,Half;",
+	"hCP5O[57:56],Shadow,Original,Off,Half,Strong;",
+	"hCP5O[59:58],Reflection,Original,Off,Half,Strong;",
+	"hCP5O[61:60],Vignette,Original,Off,Half,Strong;",
+	"hCP5O[63:62],Matte Grain,Original,Off,Half,Strong;",
+	"hCP5O[65:64],Air Gap,Original,Shallow,Deep,Maximum;",
+	"hCP5O[67:66],Shadow Blur,Original,Sharp,Soft,Maximum;",
+	"hDP5O[57:56],Persistence,Original,Off,Low,High;",
+	"hDP5O[59:58],Ghost Gate,Original,Soft,Hard,Maximum;",
+	"hDP5O[61:60],Ghost Gamma,Original,Linear,1.6,3.0;",
+	"hDP5O[63:62],STN Bleed,Original,Off,Half,Strong;",
+	"hDP5O[65:64],Crosstalk,Original,Off,Half,Strong;",
+	"hDP5O[67:66],Column Noise,Original,Off,Half,Strong;",
+	"hDP5O[69:68],Edge Banding,Original,Off,Half,Strong;",
+	"hDP5O[71:70],Panel Cold,Original,Mild,Strong,Maximum;",
+	"hEP5O[57:56],Dimming,Off,Mild,Strong,Maximum;",
+	"hEP5O[59:58],Frontlight,Off,Mild,Strong,Maximum;",
+	"hEP5O[61:60],Backlight,Off,Mild,Strong,Maximum;",
+	"hEP5O[63:62],Contrast Fade,Off,Mild,Strong,Maximum;",
+	"hEP5O[65:64],Dust,Off,Mild,Strong,Maximum;",
+	"hEP5O[67:66],Dead Lines,None,Min,Mid,Max;",
+	"hEP5O[69:68],Dead-Line Flicker,Off,Subtle,Unstable,Severe;",
+	"hEP5O[71:70],Edge Bias,Original,Off,Quarter,Half;",
+	"hEP5O[73:72],Stuck Dark,Original,None,Quarter,Half;",
+	"hEP5O[75:74],Row Rate,Original,None,Half,Full;",
     "P2,Bootroms;",
 	"P2-;",
 	"P2FC4,BIN,Load GBC Boot;",
@@ -138,7 +191,10 @@ localparam CONF_STR = {
 	"Restore state 3,",
 	"Save to state 4,",
 	"Restore state 4,",
-	"Rewinding...;",
+	"Rewinding...,",
+	"BrickBoy preset loaded,",
+	"BrickBoy preset write completed,",
+	"BrickBoy preset error - remount;",
 	"V,v",`BUILD_DATE
 };
 
@@ -160,7 +216,7 @@ pll pll
 
 ///////////////////////////////////////////////////
 
-wire [63:0] status;
+wire [127:0] status;
 wire  [1:0] buttons;
 wire        forced_scandoubler;
 wire        direct_video;
@@ -189,7 +245,20 @@ wire [15:0] sd_buff_din;
 wire        sd_buff_wr;
 wire        img_mounted;
 wire        img_readonly;
-wire [63:0] img_size;
+// Slot 0 metadata is latched so mounting a preset cannot change cartridge
+// mapper/save-size decisions. hps_io shares size/read-only across mount events.
+wire [1:0] mounted_slots, ack_slots;
+wire [63:0] mounted_size;
+wire mounted_readonly;
+reg [63:0] img_size = 0;
+assign img_mounted = mounted_slots[0];
+assign img_readonly = mounted_readonly;
+assign sd_ack = ack_slots[0];
+always @(posedge clk_sys) if(mounted_slots[0]) img_size <= mounted_size;
+wire brick_sd_rd, brick_sd_wr;
+wire [15:0] brick_sd_din;
+wire brick_can_save, brick_preset_busy, brick_preset_error, brick_editor_busy;
+wire [4:0] brick_bank_visible = 5'b00001 << status[82:80];
 wire [15:0] joy0_rumble;
 
 wire [64:0] RTC_bcd;
@@ -201,7 +270,7 @@ wire        sys_megaduck = (status[15:14] == 3);
 
 wire        gbc_raw_colors = status[30];
 
-hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -214,26 +283,27 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.ioctl_wait(ioctl_wait | save_wait),
 	.ioctl_index(filetype),
 	
-	.sd_lba('{sd_lba}),
-	.sd_rd(sd_rd),
-	.sd_wr(sd_wr),
-	.sd_ack(sd_ack),
+	.sd_lba('{sd_lba,32'd0}),
+	.sd_blk_cnt('{6'd0,6'd0}),
+	.sd_rd({brick_sd_rd,sd_rd}),
+	.sd_wr({brick_sd_wr,sd_wr}),
+	.sd_ack(ack_slots),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din('{sd_buff_din}),
+	.sd_buff_din('{sd_buff_din,brick_sd_din}),
 	.sd_buff_wr(sd_buff_wr),
-	.img_mounted(img_mounted),
-	.img_readonly(img_readonly),
-	.img_size(img_size),
+	.img_mounted(mounted_slots),
+	.img_readonly(mounted_readonly),
+	.img_size(mounted_size),
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({6'h0,
+	.status_menumask({(!brick_can_save || brick_editor_busy),brick_bank_visible,
         gbc_raw_colors, fastboot_available,
         sys_megaduck, boot_gba_available, sgb_border_en, isGBC,
         cart_ready, sav_supported, |tint, gg_available}),
-	.status_in({status[63:34],ss_slot,status[31:0]}),
-	.status_set(statusUpdate),
+	.status_in(brick_status_in),
+	.status_set(brick_combined_status_set),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
 	.forced_scandoubler(forced_scandoubler),
@@ -249,8 +319,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
 
-	.info_req(ss_info_req),
-	.info(ss_info),
+	.info_req(ss_info_req | brick_info_req),
+	.info(ss_info_req ? ss_info : brick_info),
 	
 	.RTC(RTC_bcd),
 	.TIMESTAMP(RTC_time)
@@ -637,8 +707,8 @@ gb gb (
 	.rewind_active(status[27] & joystick_0[10])
 );
 
-assign AUDIO_L = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_L;
-assign AUDIO_R = (fast_forward && status[25]) ? 16'd0 : GB_AUDIO_R;
+assign AUDIO_L = (fast_forward && status[25]) ? 16'd0 : (status[52] ? brick_audio_l : GB_AUDIO_L);
+assign AUDIO_R = (fast_forward && status[25]) ? 16'd0 : (status[52] ? brick_audio_r : GB_AUDIO_R);
 
 // the lcd to vga converter
 wire [7:0] R,G,B;
@@ -756,6 +826,8 @@ sgb sgb (
 	.sgb_lcd_vsync   ( sgb_lcd_vsync   )
 );
 
+`include "rtl/brickboy/brick_integration.svh"
+
 reg HSync, VSync;
 always @(posedge CLK_VIDEO) begin
 	if(ce_pix) begin
@@ -765,7 +837,7 @@ always @(posedge CLK_VIDEO) begin
 end
 
 assign VGA_F1 = 0;
-assign VGA_SL = sl[1:0];
+assign VGA_SL = brick_active ? 2'd0 : sl[1:0];
 
 wire [2:0] scale = status[20:18];
 wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
@@ -775,7 +847,16 @@ video_mixer #(.LINE_LENGTH(200), .GAMMA(1)) video_mixer
 (
 	.*,
 	.freeze_sync(),
-	.hq2x(scale==1)
+    .ce_pix(brick_active ? brick_ce_pix : ce_pix),
+    .R(brick_active ? brick_rgb[23:16] : R),
+    .G(brick_active ? brick_rgb[15:8] : G),
+    .B(brick_active ? brick_rgb[7:0] : B),
+    .HSync(brick_active ? brick_hs : HSync),
+    .VSync(brick_active ? brick_vs : VSync),
+    .HBlank(brick_active ? brick_hblank : HBlank),
+    .VBlank(brick_active ? brick_vblank : VBlank),
+    .scandoubler(!brick_active && scandoubler),
+    .hq2x(!brick_active && scale==1)
 );
 
 wire [1:0] ar = status[4:3];
@@ -785,8 +866,8 @@ video_freak video_freak
 	.VGA_DE_IN(VGA_DE),
 	.VGA_DE(),
 
-	.ARX((!ar) ? (sgb_border_en ? 12'd16 : 12'd10) : (ar - 1'd1)),
-	.ARY((!ar) ? (sgb_border_en ? 12'd14 : 12'd9 ) : 12'd0),
+	.ARX((!ar) ? ((sgb_border_en && !brick_active) ? 12'd16 : 12'd10) : (ar - 1'd1)),
+	.ARY((!ar) ? ((sgb_border_en && !brick_active) ? 12'd14 : 12'd9 ) : 12'd0),
 	.CROP_SIZE(0),
 	.CROP_OFF(0),
 	.SCALE(status[22:21])

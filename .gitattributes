@@ -1,1 +1,4 @@
 *.lut binary
+
+# Generated BrickBoy lookup tables remain available but collapse in GitHub diffs.
+rtl/brickboy/*.hex linguist-generated=true

@@ -1,0 +1,20 @@
+Fitter Status : Successful - Tue Sep 08 12:48:12 2026
+Quartus Prime Version : 17.0.0 Build 595 04/25/2017 SJ Lite Edition
+Revision Name : Gameboy
+Top-level Entity Name : sys_top
+Family : Cyclone V
+Device : 5CSEBA6U23I7
+Timing Models : Final
+Logic utilization (in ALMs) : 21,617 / 41,910 ( 52 % )
+Total registers : 27784
+Total pins : 145 / 314 ( 46 % )
+Total virtual pins : 0
+Total block memory bits : 3,125,941 / 5,662,720 ( 55 % )
+Total RAM Blocks : 401 / 553 ( 73 % )
+Total DSP Blocks : 35 / 112 ( 31 % )
+Total HSSI RX PCSs : 0
+Total HSSI PMA RX Deserializers : 0
+Total HSSI TX PCSs : 0
+Total HSSI PMA TX Serializers : 0
+Total PLLs : 3 / 6 ( 50 % )
+Total DLLs : 0 / 4 ( 0 % )

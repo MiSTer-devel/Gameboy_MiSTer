@@ -38,3 +38,14 @@ c5_pin_model_dump.txt
 *_netlist
 *.cdf
 BootROMs/obj/*
+integration-*.log
+settings-test.log
+raster-test.log
+vinegar-test.log
+experiment-vinegar-backup/
+experiment-no-vinegar-backup/
+preset-test.log
+banked-test.log
+__pycache__/
+core
+.brickboy-tests/

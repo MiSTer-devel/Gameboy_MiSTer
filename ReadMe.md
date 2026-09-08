@@ -54,3 +54,12 @@ Gamepad:
 - <kbd>SAVESTATEBUTTON</kbd>+<kbd>LEFT</kbd>/<kbd>RIGHT</kbd> prev/next savestate slot
 - <kbd>SAVESTATEBUTTON</kbd>+<kbd>START</kbd>+<kbd>DOWN</kbd> saves to the selected slot
 - <kbd>SAVESTATEBUTTON</kbd>+<kbd>START</kbd>+<kbd>UP</kbd> loads from the selected slot
+
+## Experimental BrickBoy submenu
+
+This local branch adds an optional DMG panel renderer under **BrickBoy Mods**,
+with a sectioned effects editor and explicitly mounted `.BBP` presets.
+See [preset usage](presets/README.md); remount a saved preset after core reload
+to restore all sections. Vinegar is excluded from this integration trial.
+See [integration notes, limitations, tests and credits](BRICKBOY.md).
+It is not an upstream release and has not yet been hardware-validated.
