@@ -12,6 +12,7 @@
 //   Space=137  Enter=133  Backspace=135  Escape=134  Tab=136
 //   Minus=138  Equals=139  [=140  ]=141  \=142  ;=144  '=145  `=146
 //   Comma=147  Period=148  Slash=149
+//   Right=172  Left=173  Down=174  Up=175 (unchanged by Shift)
 //   Shifted symbols: _  +  {  }  |  :  "  ~  <  >  ?  (standard US ASCII)
 //   Idle / no new key: 0x00 (ignored by keyboard ROM: value must be >=1 and <254;
 //                             ignored by mouse ROM: only non-zero bytes are buffered)
@@ -64,14 +65,22 @@ localparam [1:0] TX_MOUSE_Y = 2'd2; // X byte loaded; Y byte is next
 localparam [1:0] TX_MOUSE_Z = 2'd3; // Y byte loaded; return to idle after
 
 // ---------------------------------------------------------------------------
-// PS/2 keyboard scancode → insideGadgets output byte (unshifted)
+// PS/2 set 2 scancode → insideGadgets output byte (unshifted)
 // ---------------------------------------------------------------------------
 function automatic [7:0] map_ps2_unshifted;
 	input [7:0] scancode;
 	input       extended;
 	begin
 		map_ps2_unshifted = IG_NONE;
-		if (!extended) begin
+		if (extended) begin
+			case (scancode)
+				8'h74: map_ps2_unshifted = 8'd172;  // Right Arrow (79+93)
+				8'h6B: map_ps2_unshifted = 8'd173;  // Left Arrow  (80+93)
+				8'h72: map_ps2_unshifted = 8'd174;  // Down Arrow  (81+93)
+				8'h75: map_ps2_unshifted = 8'd175;  // Up Arrow    (82+93)
+				default: ;
+			endcase
+		end else begin
 			case (scancode)
 				// Letters — ASCII lowercase == USB HID + 93 for a-z
 				8'h1C: map_ps2_unshifted = 8'd97;   // a
